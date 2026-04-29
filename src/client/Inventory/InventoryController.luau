@@ -9,12 +9,12 @@ local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
+local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local InventoryBarView = require(script.Parent.InventoryBarView)
 
-type ItemId = InventoryTypes.ItemId
-type InventoryEntry = InventoryTypes.InventoryEntry
 type InventorySnapshot = InventoryTypes.InventorySnapshot
+type ItemId = InventoryTypes.ItemId
 type InventoryBarViewInstance = InventoryBarView.InventoryBarView
 
 local hasStarted = false
@@ -22,6 +22,7 @@ local latestSnapshot: InventorySnapshot? = nil
 local snapshotChangedListeners: { (InventorySnapshot) -> () } = {}
 
 local HOTBAR_KEYCODES: { [Enum.KeyCode]: number } = {
+	[Enum.KeyCode.Zero] = 0,
 	[Enum.KeyCode.One] = 1,
 	[Enum.KeyCode.Two] = 2,
 	[Enum.KeyCode.Three] = 3,
@@ -39,41 +40,43 @@ local function disableDefaultBackpack()
 	end)
 end
 
-local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent)
+local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent, RemoteEvent, RemoteEvent)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
-	local inventoryFolder = rootFolder:WaitForChild(RemoteNames.inventoryFolderName) :: Folder
-	local inventoryUpdated = inventoryFolder:WaitForChild(RemoteNames.inventoryUpdatedEventName) :: RemoteEvent
-	local getInventorySnapshot = inventoryFolder:WaitForChild(RemoteNames.getInventorySnapshotFunctionName) :: RemoteFunction
-	local setEquippedItem = inventoryFolder:WaitForChild(RemoteNames.setEquippedItemEventName) :: RemoteEvent
+	local remotesFolder = rootFolder:WaitForChild(RemoteNames.inventoryFolderName) :: Folder
 
-	return inventoryUpdated, getInventorySnapshot, setEquippedItem
+	local inventoryUpdated = remotesFolder:WaitForChild(RemoteNames.inventoryUpdatedEventName) :: RemoteEvent
+	local getInventorySnapshot = remotesFolder:WaitForChild(RemoteNames.getInventorySnapshotFunctionName) :: RemoteFunction
+	local setSelectedSlot = remotesFolder:WaitForChild(RemoteNames.setSelectedSlotEventName) :: RemoteEvent
+	local assignHotbarSlot = remotesFolder:WaitForChild(RemoteNames.assignHotbarSlotEventName) :: RemoteEvent
+	local clearHotbarSlot = remotesFolder:WaitForChild(RemoteNames.clearHotbarSlotEventName) :: RemoteEvent
+
+	return inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, clearHotbarSlot
 end
 
-local function getSlotEntry(snapshot: InventorySnapshot, slotIndex: number): InventoryEntry?
-	return snapshot.entries[slotIndex]
-end
-
-local function requestSlotEquip(snapshot: InventorySnapshot, slotIndex: number, setEquippedItem: RemoteEvent)
-	local entry = getSlotEntry(snapshot, slotIndex)
-	if entry == nil then
-		return
-	end
-
-	local nextEquippedItemId: ItemId? = entry.itemId
-	if snapshot.equippedItemId == entry.itemId then
-		nextEquippedItemId = nil
-	end
-
-	setEquippedItem:FireServer(nextEquippedItemId)
-end
-
-local function publishSnapshot(snapshot: InventorySnapshot, view: InventoryBarViewInstance): ()
+local function publishSnapshot(snapshot: InventorySnapshot, view: InventoryBarViewInstance)
 	latestSnapshot = snapshot
 	view:render(snapshot)
 
 	for _, listener in ipairs(snapshotChangedListeners) do
 		listener(snapshot)
 	end
+end
+
+local function requestSlotSelection(snapshot: InventorySnapshot, slotIndex: number, setSelectedSlot: RemoteEvent)
+	if not HotbarConfig.isSlotIndexInRange(slotIndex) then
+		return
+	end
+
+	if snapshot.hotbarSlots[slotIndex] == nil then
+		return
+	end
+
+	local nextSelectedSlotIndex: number? = slotIndex
+	if snapshot.selectedSlotIndex == slotIndex then
+		nextSelectedSlotIndex = nil
+	end
+
+	setSelectedSlot:FireServer(nextSelectedSlotIndex)
 end
 
 local InventoryController = {}
@@ -88,17 +91,26 @@ function InventoryController.start()
 	disableDefaultBackpack()
 
 	local view = InventoryBarView.new()
-	local inventoryUpdated, getInventorySnapshot, setEquippedItem = getInventoryRemotes()
+	local inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, clearHotbarSlot = getInventoryRemotes()
 	local initialSnapshot = getInventorySnapshot:InvokeServer() :: InventorySnapshot
 
 	publishSnapshot(initialSnapshot, view)
+
 	view:connectSlotActivated(function(slotIndex: number)
 		local currentSnapshot = latestSnapshot
 		if currentSnapshot == nil then
 			return
 		end
 
-		requestSlotEquip(currentSnapshot, slotIndex, setEquippedItem)
+		requestSlotSelection(currentSnapshot, slotIndex, setSelectedSlot)
+	end)
+
+	view:connectHotbarAssignRequested(function(itemId: ItemId, slotIndex: number)
+		assignHotbarSlot:FireServer(slotIndex, itemId)
+	end)
+
+	view:connectHotbarClearRequested(function(slotIndex: number)
+		clearHotbarSlot:FireServer(slotIndex)
 	end)
 
 	inventoryUpdated.OnClientEvent:Connect(function(snapshot: InventorySnapshot)
@@ -124,7 +136,7 @@ function InventoryController.start()
 			return
 		end
 
-		requestSlotEquip(currentSnapshot, slotIndex, setEquippedItem)
+		requestSlotSelection(currentSnapshot, slotIndex, setSelectedSlot)
 	end)
 end
 

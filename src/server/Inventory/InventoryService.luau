@@ -6,18 +6,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 
+local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
+local InventoryUtils = require(inventoryFolder:WaitForChild("InventoryUtils") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
+local StartingHotbarConfig = require(inventoryFolder:WaitForChild("StartingHotbarConfig") :: ModuleScript)
 local StartingInventoryConfig = require(inventoryFolder:WaitForChild("StartingInventoryConfig") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
-type ItemId = InventoryTypes.ItemId
+type HotbarSlots = InventoryTypes.HotbarSlots
 type InventoryEntry = InventoryTypes.InventoryEntry
 type InventorySnapshot = InventoryTypes.InventorySnapshot
+type ItemDefinition = InventoryTypes.ItemDefinition
+type ItemId = InventoryTypes.ItemId
 
 type PlayerInventoryState = {
 	quantitiesByItemId: { [ItemId]: number },
-	equippedItemId: ItemId?,
+	hotbarSlots: HotbarSlots,
+	selectedSlotIndex: number?,
 }
 
 local playerInventories: { [Player]: PlayerInventoryState } = {}
@@ -26,43 +32,99 @@ local hasStarted = false
 local function createInventoryState(): PlayerInventoryState
 	return {
 		quantitiesByItemId = {},
-		equippedItemId = nil,
+		hotbarSlots = {
+			[HotbarConfig.lockedSlotIndex] = "Scythe",
+		},
+		selectedSlotIndex = HotbarConfig.defaultSelectedSlotIndex,
 	}
-end
-
-local function addItem(state: PlayerInventoryState, itemId: ItemId, quantity: number)
-	local currentQuantity = state.quantitiesByItemId[itemId] or 0
-	state.quantitiesByItemId[itemId] = currentQuantity + quantity
 end
 
 local function getItemQuantity(state: PlayerInventoryState, itemId: ItemId): number
 	return state.quantitiesByItemId[itemId] or 0
 end
 
+local function addItem(state: PlayerInventoryState, itemId: ItemId, quantity: number)
+	if quantity <= 0 then
+		return
+	end
+
+	local currentQuantity = getItemQuantity(state, itemId)
+	state.quantitiesByItemId[itemId] = currentQuantity + quantity
+end
+
 local function playerHasItem(state: PlayerInventoryState, itemId: ItemId): boolean
 	return getItemQuantity(state, itemId) > 0
 end
 
-local function sanitizeEquippedItem(state: PlayerInventoryState)
-	local equippedItemId = state.equippedItemId
-	if equippedItemId == nil then
+local function findAssignedSlotIndex(state: PlayerInventoryState, itemId: ItemId): number?
+	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+		if state.hotbarSlots[slotIndex] == itemId then
+			return slotIndex
+		end
+	end
+
+	return nil
+end
+
+local function sanitizeState(state: PlayerInventoryState)
+	if getItemQuantity(state, "Scythe") <= 0 then
+		state.quantitiesByItemId.Scythe = 1
+	end
+
+	state.hotbarSlots[HotbarConfig.lockedSlotIndex] = "Scythe"
+
+	local seenAssignedItems: { [ItemId]: boolean } = {
+		Scythe = true,
+	}
+
+	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+		local itemId = state.hotbarSlots[slotIndex]
+		if itemId ~= nil then
+			local isInvalidAssignment = itemId == "Scythe"
+				or not playerHasItem(state, itemId)
+				or seenAssignedItems[itemId] == true
+
+			if isInvalidAssignment then
+				state.hotbarSlots[slotIndex] = nil
+			else
+				seenAssignedItems[itemId] = true
+			end
+		end
+	end
+
+	local selectedSlotIndex = state.selectedSlotIndex
+	if selectedSlotIndex == nil then
 		return
 	end
 
-	if not playerHasItem(state, equippedItemId) then
-		state.equippedItemId = nil
+	if not HotbarConfig.isSlotIndexInRange(selectedSlotIndex) then
+		state.selectedSlotIndex = nil
+		return
+	end
+
+	if state.hotbarSlots[selectedSlotIndex] == nil then
+		state.selectedSlotIndex = nil
 	end
 end
 
 local function removeItem(state: PlayerInventoryState, itemId: ItemId, quantity: number): boolean
-	local currentQuantity = getItemQuantity(state, itemId)
-	if currentQuantity < quantity then
+	if itemId == "Scythe" then
 		return false
 	end
 
-	state.quantitiesByItemId[itemId] = currentQuantity - quantity
-	sanitizeEquippedItem(state)
+	local currentQuantity = getItemQuantity(state, itemId)
+	if quantity <= 0 or currentQuantity < quantity then
+		return false
+	end
 
+	local nextQuantity = currentQuantity - quantity
+	if nextQuantity > 0 then
+		state.quantitiesByItemId[itemId] = nextQuantity
+	else
+		state.quantitiesByItemId[itemId] = nil
+	end
+
+	sanitizeState(state)
 	return true
 end
 
@@ -72,9 +134,24 @@ local function applyStartingInventory(state: PlayerInventoryState)
 	end
 end
 
-local function buildSnapshot(state: PlayerInventoryState): InventorySnapshot
-	sanitizeEquippedItem(state)
+local function applyStartingHotbar(state: PlayerInventoryState)
+	for slotIndex, itemIdValue in pairs(StartingHotbarConfig) do
+		if type(slotIndex) == "number"
+			and HotbarConfig.isAssignableSlotIndex(slotIndex)
+			and type(itemIdValue) == "string"
+			and ItemCatalog.hasItemDefinition(itemIdValue)
+		then
+			local itemId = itemIdValue :: ItemId
+			if playerHasItem(state, itemId) then
+				state.hotbarSlots[slotIndex] = itemId
+			end
+		end
+	end
 
+	sanitizeState(state)
+end
+
+local function getSortedEntries(state: PlayerInventoryState): { InventoryEntry }
 	local entries: { InventoryEntry } = {}
 
 	for itemId, quantity in pairs(state.quantitiesByItemId) do
@@ -87,19 +164,26 @@ local function buildSnapshot(state: PlayerInventoryState): InventorySnapshot
 	end
 
 	table.sort(entries, function(leftEntry, rightEntry)
-		local leftDefinition = ItemCatalog.getItemDefinition(leftEntry.itemId)
-		local rightDefinition = ItemCatalog.getItemDefinition(rightEntry.itemId)
+		local leftDefinition: ItemDefinition = ItemCatalog.getItemDefinition(leftEntry.itemId)
+		local rightDefinition: ItemDefinition = ItemCatalog.getItemDefinition(rightEntry.itemId)
 
-		if leftDefinition.hotbarOrder == rightDefinition.hotbarOrder then
+		if leftDefinition.inventoryOrder == rightDefinition.inventoryOrder then
 			return leftDefinition.displayName < rightDefinition.displayName
 		end
 
-		return leftDefinition.hotbarOrder < rightDefinition.hotbarOrder
+		return leftDefinition.inventoryOrder < rightDefinition.inventoryOrder
 	end)
 
+	return entries
+end
+
+local function buildSnapshot(state: PlayerInventoryState): InventorySnapshot
+	sanitizeState(state)
+
 	return {
-		entries = entries,
-		equippedItemId = state.equippedItemId,
+		entries = getSortedEntries(state),
+		hotbarSlots = InventoryUtils.cloneHotbarSlots(state.hotbarSlots),
+		selectedSlotIndex = state.selectedSlotIndex,
 	}
 end
 
@@ -111,6 +195,7 @@ local function getPlayerInventoryState(player: Player): PlayerInventoryState
 
 	local newState = createInventoryState()
 	applyStartingInventory(newState)
+	applyStartingHotbar(newState)
 	playerInventories[player] = newState
 
 	return newState
@@ -119,37 +204,90 @@ end
 local function pushInventoryUpdate(player: Player)
 	local inventoryRemotes = Remotes.getInventoryRemotes()
 	local inventoryState = getPlayerInventoryState(player)
-	local snapshot = buildSnapshot(inventoryState)
-
-	inventoryRemotes.inventoryUpdated:FireClient(player, snapshot)
+	inventoryRemotes.inventoryUpdated:FireClient(player, buildSnapshot(inventoryState))
 end
 
-local function setEquippedItem(player: Player, itemId: ItemId?)
+local function setSelectedSlot(player: Player, requestedSlotIndex: number?)
 	local inventoryState = getPlayerInventoryState(player)
+	sanitizeState(inventoryState)
 
-	if itemId == nil then
-		inventoryState.equippedItemId = nil
+	if requestedSlotIndex == nil then
+		inventoryState.selectedSlotIndex = nil
 		pushInventoryUpdate(player)
 		return
 	end
 
-	if not playerHasItem(inventoryState, itemId) then
+	if not HotbarConfig.isSlotIndexInRange(requestedSlotIndex) then
 		pushInventoryUpdate(player)
 		return
 	end
 
-	if inventoryState.equippedItemId == itemId then
-		inventoryState.equippedItemId = nil
+	if inventoryState.hotbarSlots[requestedSlotIndex] == nil then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	if inventoryState.selectedSlotIndex == requestedSlotIndex then
+		inventoryState.selectedSlotIndex = nil
 	else
-		inventoryState.equippedItemId = itemId
+		inventoryState.selectedSlotIndex = requestedSlotIndex
 	end
 
+	pushInventoryUpdate(player)
+end
+
+local function assignItemToHotbarSlot(player: Player, requestedSlotIndex: number, requestedItemId: ItemId)
+	local inventoryState = getPlayerInventoryState(player)
+	sanitizeState(inventoryState)
+
+	if not HotbarConfig.isAssignableSlotIndex(requestedSlotIndex) then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	if requestedItemId == "Scythe" or not playerHasItem(inventoryState, requestedItemId) then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	local sourceSlotIndex = findAssignedSlotIndex(inventoryState, requestedItemId)
+	local targetItemId = inventoryState.hotbarSlots[requestedSlotIndex]
+
+	if sourceSlotIndex == requestedSlotIndex then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	inventoryState.hotbarSlots[requestedSlotIndex] = requestedItemId
+
+	if sourceSlotIndex ~= nil then
+		inventoryState.hotbarSlots[sourceSlotIndex] = targetItemId
+	end
+
+	sanitizeState(inventoryState)
+	pushInventoryUpdate(player)
+end
+
+local function clearHotbarSlot(player: Player, requestedSlotIndex: number)
+	local inventoryState = getPlayerInventoryState(player)
+	if not HotbarConfig.isAssignableSlotIndex(requestedSlotIndex) then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	inventoryState.hotbarSlots[requestedSlotIndex] = nil
+	if inventoryState.selectedSlotIndex == requestedSlotIndex then
+		inventoryState.selectedSlotIndex = nil
+	end
+
+	sanitizeState(inventoryState)
 	pushInventoryUpdate(player)
 end
 
 local function initializePlayer(player: Player)
 	local inventoryState = createInventoryState()
 	applyStartingInventory(inventoryState)
+	applyStartingHotbar(inventoryState)
 	playerInventories[player] = inventoryState
 	pushInventoryUpdate(player)
 end
@@ -169,16 +307,25 @@ function InventoryService.start()
 
 	local inventoryRemotes = Remotes.getInventoryRemotes()
 	inventoryRemotes.getInventorySnapshot.OnServerInvoke = function(player: Player): InventorySnapshot
-		local inventoryState = getPlayerInventoryState(player)
-		return buildSnapshot(inventoryState)
+		return buildSnapshot(getPlayerInventoryState(player))
 	end
-	inventoryRemotes.setEquippedItem.OnServerEvent:Connect(function(player: Player, requestedItemId: unknown)
-		if requestedItemId == nil then
-			setEquippedItem(player, nil)
+
+	inventoryRemotes.setSelectedSlot.OnServerEvent:Connect(function(player: Player, requestedSlotIndex: unknown)
+		if requestedSlotIndex == nil then
+			setSelectedSlot(player, nil)
 			return
 		end
 
-		if type(requestedItemId) ~= "string" then
+		if type(requestedSlotIndex) ~= "number" then
+			pushInventoryUpdate(player)
+			return
+		end
+
+		setSelectedSlot(player, requestedSlotIndex)
+	end)
+
+	inventoryRemotes.assignHotbarSlot.OnServerEvent:Connect(function(player: Player, requestedSlotIndex: unknown, requestedItemId: unknown)
+		if type(requestedSlotIndex) ~= "number" or type(requestedItemId) ~= "string" then
 			pushInventoryUpdate(player)
 			return
 		end
@@ -188,7 +335,16 @@ function InventoryService.start()
 			return
 		end
 
-		setEquippedItem(player, requestedItemId :: ItemId)
+		assignItemToHotbarSlot(player, requestedSlotIndex, requestedItemId :: ItemId)
+	end)
+
+	inventoryRemotes.clearHotbarSlot.OnServerEvent:Connect(function(player: Player, requestedSlotIndex: unknown)
+		if type(requestedSlotIndex) ~= "number" then
+			pushInventoryUpdate(player)
+			return
+		end
+
+		clearHotbarSlot(player, requestedSlotIndex)
 	end)
 
 	Players.PlayerAdded:Connect(initializePlayer)
@@ -201,8 +357,14 @@ end
 
 function InventoryService.getEquippedItemId(player: Player): ItemId?
 	local inventoryState = getPlayerInventoryState(player)
-	sanitizeEquippedItem(inventoryState)
-	return inventoryState.equippedItemId
+	sanitizeState(inventoryState)
+
+	local selectedSlotIndex = inventoryState.selectedSlotIndex
+	if selectedSlotIndex == nil then
+		return nil
+	end
+
+	return inventoryState.hotbarSlots[selectedSlotIndex]
 end
 
 function InventoryService.tryConsumeItem(player: Player, itemId: ItemId, quantity: number): boolean

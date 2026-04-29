@@ -105,12 +105,8 @@ local function connectPartForDeferredTracking(part: BasePart)
 	end)
 end
 
-local function getPlacedObjectsFolder(): Folder?
-	local existingFolder = Workspace:FindFirstChild(PLACED_OBJECTS_FOLDER_NAME)
-	if existingFolder == nil then
-		return nil
-	end
-
+local function getPlacedObjectsFolder(): Folder
+	local existingFolder = Workspace:WaitForChild(PLACED_OBJECTS_FOLDER_NAME)
 	assert(existingFolder:IsA("Folder"), string.format("%s must be a Folder", PLACED_OBJECTS_FOLDER_NAME))
 	return existingFolder
 end
@@ -125,9 +121,6 @@ function ProductionStatusController.start()
 	hasStarted = true
 
 	local placedObjectsFolder = getPlacedObjectsFolder()
-	if placedObjectsFolder == nil then
-		return
-	end
 
 	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
 		if child:IsA("BasePart") then

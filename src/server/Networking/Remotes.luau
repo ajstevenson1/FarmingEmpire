@@ -9,7 +9,9 @@ local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: Modu
 type InventoryRemotes = {
 	inventoryUpdated: RemoteEvent,
 	getInventorySnapshot: RemoteFunction,
-	setEquippedItem: RemoteEvent,
+	setSelectedSlot: RemoteEvent,
+	assignHotbarSlot: RemoteEvent,
+	clearHotbarSlot: RemoteEvent,
 }
 
 local cachedInventoryRemotes: InventoryRemotes? = nil
@@ -70,7 +72,9 @@ function Remotes.getInventoryRemotes(): InventoryRemotes
 	cachedInventoryRemotes = {
 		inventoryUpdated = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.inventoryUpdatedEventName),
 		getInventorySnapshot = getOrCreateRemoteFunction(inventoryFolder, RemoteNames.getInventorySnapshotFunctionName),
-		setEquippedItem = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.setEquippedItemEventName),
+		setSelectedSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.setSelectedSlotEventName),
+		assignHotbarSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.assignHotbarSlotEventName),
+		clearHotbarSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.clearHotbarSlotEventName),
 	}
 
 	return cachedInventoryRemotes

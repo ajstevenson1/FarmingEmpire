@@ -6,7 +6,9 @@ local RemoteNames = {
 	placementFolderName = "Placement",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
-	setEquippedItemEventName = "SetEquippedItem",
+	setSelectedSlotEventName = "SetSelectedSlot",
+	assignHotbarSlotEventName = "AssignHotbarSlot",
+	clearHotbarSlotEventName = "ClearHotbarSlot",
 	requestPlacementEventName = "RequestPlacement",
 }
 

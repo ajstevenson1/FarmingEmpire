@@ -6,15 +6,26 @@ type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
 
 local itemsById: { [ItemId]: ItemDefinition } = {
+	Scythe = table.freeze({
+		id = "Scythe",
+		displayName = "Scythe",
+		kind = "Tool",
+		maxStack = 1,
+		inventoryOrder = 0,
+	}),
 	WheatField = table.freeze({
 		id = "WheatField",
 		displayName = "Wheat Field",
 		kind = "Placeable",
 		maxStack = 99,
-		hotbarOrder = 1,
-		placementFootprint = Vector3.new(4, 1, 4),
-		placementPreviewColor = Color3.fromRGB(102, 181, 104),
-		placedPartColor = Color3.fromRGB(166, 124, 82),
+		inventoryOrder = 10,
+	}),
+	Wheat = table.freeze({
+		id = "Wheat",
+		displayName = "Wheat",
+		kind = "Resource",
+		maxStack = 999,
+		inventoryOrder = 20,
 	}),
 }
 

@@ -10,11 +10,15 @@ local localPlayer = Players.LocalPlayer
 assert(localPlayer ~= nil, "LocalPlayer must exist before starting placement")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 
+local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
+local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
+local InventoryUtils = require(inventoryFolder:WaitForChild("InventoryUtils") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
@@ -65,7 +69,7 @@ local function getAssignedPlot(): BasePart?
 end
 
 local function getEquippedPlaceableItem(snapshot: InventorySnapshot): (ItemId?, ItemDefinition?)
-	local equippedItemId = snapshot.equippedItemId
+	local equippedItemId = InventoryUtils.getSelectedItemId(snapshot)
 	if equippedItemId == nil then
 		return nil, nil
 	end
@@ -150,6 +154,9 @@ function PlacementController.start()
 			return
 		end
 
+		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
+		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+
 		local plot = getAssignedPlot()
 		if plot == nil then
 			previewView:hide()
@@ -164,22 +171,22 @@ function PlacementController.start()
 			return
 		end
 
-		local grid = PlotMath.worldPositionToGrid(plot.CFrame, plot.Size, itemDefinition.placementFootprint, raycastResult.Position)
+		local grid = PlotMath.worldPositionToGrid(plot.CFrame, plot.Size, placementFootprint, raycastResult.Position)
 		if grid == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, itemDefinition.placementFootprint, grid.x, grid.z)
+		local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, placementFootprint, grid.x, grid.z)
 		if placementCFrame == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local isValid = not isGridOccupied(plot.Name, itemDefinition.placementFootprint, grid)
-		previewView:show(itemDefinition, placementCFrame, isValid)
+		local isValid = not isGridOccupied(plot.Name, placementFootprint, grid)
+		previewView:show(buildingDefinition, itemDefinition, placementCFrame, isValid)
 		currentPreviewState = {
 			gridX = grid.x,
 			gridZ = grid.z,
@@ -211,11 +218,14 @@ function PlacementController.start()
 			return
 		end
 
+		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
+		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+
 		local currentGrid = {
 			x = previewState.gridX,
 			z = previewState.gridZ,
 		}
-		if isGridOccupied(plot.Name, itemDefinition.placementFootprint, currentGrid) then
+		if isGridOccupied(plot.Name, placementFootprint, currentGrid) then
 			return
 		end
 

@@ -6,6 +6,10 @@ type InventoryEntry = InventoryTypes.InventoryEntry
 
 local startingInventory: { InventoryEntry } = {
 	{
+		itemId = "Scythe",
+		quantity = 1,
+	},
+	{
 		itemId = "WheatField",
 		quantity = 3,
 	},

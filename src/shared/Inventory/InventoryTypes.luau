@@ -1,16 +1,14 @@
 --!strict
 
-export type ItemId = "WheatField"
+export type ItemId = "Scythe" | "WheatField" | "Wheat"
+export type ItemKind = "Tool" | "Placeable" | "Resource"
 
 export type ItemDefinition = {
 	id: ItemId,
 	displayName: string,
-	kind: "Placeable",
+	kind: ItemKind,
 	maxStack: number,
-	hotbarOrder: number,
-	placementFootprint: Vector3,
-	placementPreviewColor: Color3,
-	placedPartColor: Color3,
+	inventoryOrder: number,
 }
 
 export type InventoryEntry = {
@@ -18,9 +16,14 @@ export type InventoryEntry = {
 	quantity: number,
 }
 
+export type HotbarSlots = {
+	[number]: ItemId?,
+}
+
 export type InventorySnapshot = {
 	entries: { InventoryEntry },
-	equippedItemId: ItemId?,
+	hotbarSlots: HotbarSlots,
+	selectedSlotIndex: number?,
 }
 
 return {}

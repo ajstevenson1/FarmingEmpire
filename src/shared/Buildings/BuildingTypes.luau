@@ -6,6 +6,16 @@ export type ProductionBehaviorId = "GrowAndHarvest" | "PassiveStockpile" | "Inpu
 
 export type ProductionState = "Growing" | "Ready"
 
+export type GrowthVisualStage = {
+	modelName: string,
+	minProgress: number,
+}
+
+export type GrowthVisualConfig = {
+	assetFolderName: string,
+	stages: { GrowthVisualStage },
+}
+
 export type GrowAndHarvestProductionConfig = {
 	behaviorId: "GrowAndHarvest",
 	cycleDurationSeconds: number,
@@ -18,6 +28,7 @@ export type BuildingDefinition = {
 	id: BuildingId,
 	displayName: string,
 	productionConfig: GrowAndHarvestProductionConfig,
+	growthVisualConfig: GrowthVisualConfig,
 }
 
 return {}

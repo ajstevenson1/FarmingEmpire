@@ -13,6 +13,7 @@ local BuildingAttributeNames = {
 	productionStoredAmount = "ProductionStoredAmount",
 	productionStorageCap = "ProductionStorageCap",
 	isReadyToHarvest = "IsReadyToHarvest",
+	growthVisualStageName = "GrowthVisualStageName",
 }
 
 return table.freeze(BuildingAttributeNames)

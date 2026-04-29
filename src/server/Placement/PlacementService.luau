@@ -4,9 +4,12 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 
+local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
+local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
@@ -63,20 +66,22 @@ local function isPlacementOverlapping(plotName: string, footprint: Vector3, grid
 end
 
 local function createPlacedPart(player: Player, plot: BasePart, itemId: ItemId, itemDefinition: ItemDefinition, gridX: number, gridZ: number): BasePart?
-	local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, itemDefinition.placementFootprint, gridX, gridZ)
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemId)
+	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+	local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, placementFootprint, gridX, gridZ)
 	if placementCFrame == nil then
 		return nil
 	end
 
 	local placedPart = Instance.new("Part")
-	placedPart.Name = string.format("%sPlaced", itemDefinition.id)
+	placedPart.Name = string.format("%sRoot", itemDefinition.id)
 	placedPart.Anchored = true
 	placedPart.CanCollide = false
 	placedPart.CanQuery = true
 	placedPart.CanTouch = false
-	placedPart.Color = itemDefinition.placedPartColor
+	placedPart.Transparency = 1
 	placedPart.Material = Enum.Material.SmoothPlastic
-	placedPart.Size = itemDefinition.placementFootprint
+	placedPart.Size = placementFootprint
 	placedPart.CFrame = placementCFrame
 	placedPart.TopSurface = Enum.SurfaceType.Smooth
 	placedPart.BottomSurface = Enum.SurfaceType.Smooth
@@ -116,11 +121,14 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	if not PlotMath.isGridWithinPlot(plot.Size, itemDefinition.placementFootprint, gridX, gridZ) then
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemId)
+	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+
+	if not PlotMath.isGridWithinPlot(plot.Size, placementFootprint, gridX, gridZ) then
 		return
 	end
 
-	if isPlacementOverlapping(plot.Name, itemDefinition.placementFootprint, gridX, gridZ) then
+	if isPlacementOverlapping(plot.Name, placementFootprint, gridX, gridZ) then
 		return
 	end
 
