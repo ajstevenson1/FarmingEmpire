@@ -26,7 +26,9 @@ type PlayerInventoryState = {
 	selectedSlotIndex: number?,
 }
 
+local InventoryService = {}
 local playerInventories: { [Player]: PlayerInventoryState } = {}
+local selectedItemChangedListeners: { (Player, ItemId?) -> () } = {}
 local hasStarted = false
 
 local function createInventoryState(): PlayerInventoryState
@@ -207,12 +209,24 @@ local function pushInventoryUpdate(player: Player)
 	inventoryRemotes.inventoryUpdated:FireClient(player, buildSnapshot(inventoryState))
 end
 
+local function notifySelectedItemChanged(player: Player, previousItemId: ItemId?, nextItemId: ItemId?)
+	if previousItemId == nextItemId then
+		return
+	end
+
+	for _, listener in ipairs(selectedItemChangedListeners) do
+		listener(player, nextItemId)
+	end
+end
+
 local function setSelectedSlot(player: Player, requestedSlotIndex: number?)
 	local inventoryState = getPlayerInventoryState(player)
 	sanitizeState(inventoryState)
+	local previousItemId = InventoryService.getEquippedItemId(player)
 
 	if requestedSlotIndex == nil then
 		inventoryState.selectedSlotIndex = nil
+		notifySelectedItemChanged(player, previousItemId, nil)
 		pushInventoryUpdate(player)
 		return
 	end
@@ -233,6 +247,7 @@ local function setSelectedSlot(player: Player, requestedSlotIndex: number?)
 		inventoryState.selectedSlotIndex = requestedSlotIndex
 	end
 
+	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 	pushInventoryUpdate(player)
 end
 
@@ -275,12 +290,14 @@ local function clearHotbarSlot(player: Player, requestedSlotIndex: number)
 		return
 	end
 
+	local previousItemId = InventoryService.getEquippedItemId(player)
 	inventoryState.hotbarSlots[requestedSlotIndex] = nil
 	if inventoryState.selectedSlotIndex == requestedSlotIndex then
 		inventoryState.selectedSlotIndex = nil
 	end
 
 	sanitizeState(inventoryState)
+	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 	pushInventoryUpdate(player)
 end
 
@@ -295,8 +312,6 @@ end
 local function cleanupPlayer(player: Player)
 	playerInventories[player] = nil
 end
-
-local InventoryService = {}
 
 function InventoryService.start()
 	if hasStarted then
@@ -369,12 +384,18 @@ end
 
 function InventoryService.tryConsumeItem(player: Player, itemId: ItemId, quantity: number): boolean
 	local inventoryState = getPlayerInventoryState(player)
+	local previousItemId = InventoryService.getEquippedItemId(player)
 	local didConsume = removeItem(inventoryState, itemId, quantity)
 	if didConsume then
+		notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 		pushInventoryUpdate(player)
 	end
 
 	return didConsume
+end
+
+function InventoryService.observeEquippedItemChanged(listener: (Player, ItemId?) -> ())
+	table.insert(selectedItemChangedListeners, listener)
 end
 
 return table.freeze(InventoryService)

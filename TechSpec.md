@@ -18,6 +18,7 @@ The project currently includes:
 - First building: `WheatField`
 - Growth billboard UI
 - Stage-based crop visuals
+- Scythe tool sync for held tool presentation
 
 The project does not yet include:
 
@@ -51,13 +52,14 @@ Implemented behavior:
 
 - Inventory is a unified owned-item list
 - Hotbar is an explicit server-owned loadout
-- Slot `0` is permanently locked to `Scythe`
+- Internal hotbar slot `1` is permanently locked to `Scythe`
 - Players start with `3` `Wheat Field`
-- Players start with `Scythe` in inventory and `Wheat Field` assigned to slot `1`
+- Players start with `Scythe` in inventory and `Wheat Field` assigned to internal slot `2` (player-facing slot `1`)
 - Inventory is stack-based
 - Equipped item is stored as custom state, not a Roblox `Tool`
 - Hotbar is temporary code-generated UI
 - Expanded inventory UI is temporary code-generated scaffolding
+- `Scythe` is the first item that also syncs to a real Roblox `Tool`
 
 Important files:
 
@@ -71,6 +73,7 @@ Important files:
 Current selection/loadout behavior:
 
 - Click slot or press `0-9` to select
+- Click the unlabeled first slot or press `1-9` to select
 - Selecting the same filled slot again deselects it
 - Empty slots cannot be selected
 - Items can be dragged from the expanded inventory list into hotbar slots `1-9`
@@ -86,17 +89,30 @@ Current server-side model:
 
 Current rules:
 
-- Slot `0` is always `Scythe`
+- Internal slot `1` is always `Scythe`
 - `Scythe` cannot be moved, replaced, or cleared
 - Hotbar assignments are references to inventory items, not separate stacks
 - If an item quantity reaches `0`, any hotbar slots referencing it should be cleared automatically
 - Item category determines what selection does, not whether the item is allowed in the hotbar
+- Player-facing labels show no number on the scythe slot, then `1-9` on internal slots `2-10`
 
 Current item behavior by category:
 
 - `Tool` items enter tool mode when selected
 - `Placeable` items enter placement mode when selected
 - `Resource` items may be selected in the hotbar but do not necessarily trigger an action yet
+
+Current tool-sync behavior:
+
+- When slot `0` is selected, the server clones `ReplicatedStorage.Tools.Scythe`
+- The cloned scythe is parented to the player's `Backpack`
+- If the player has a character and humanoid, the server equips that tool immediately
+- When the player deselects `Scythe` or selects a different item, the system-owned scythe tool is removed
+- If the player respawns while `Scythe` is still selected, the tool is re-granted and re-equipped
+
+Important files:
+
+- `src/server/Tools/ToolSyncService.luau`
 
 ## Networking
 Remotes are created by code under `ReplicatedStorage.GameRemotes`.

@@ -111,9 +111,18 @@ local function createLabel(parent: Instance, name: string, size: UDim2, position
 	return label
 end
 
+local function getDisplayLabelForSlot(slotIndex: number): string
+	if slotIndex == HotbarConfig.lockedSlotIndex then
+		return ""
+	end
+
+	return tostring(slotIndex - 1)
+end
+
 local function createSlot(slotIndex: number, parent: Instance): SlotWidgets
 	local button = Instance.new("TextButton")
 	button.Name = string.format("Slot%d", slotIndex)
+	button.LayoutOrder = slotIndex
 	button.AutoButtonColor = false
 	button.BackgroundColor3 = EMPTY_SLOT_COLOR
 	button.BorderSizePixel = 0
@@ -137,7 +146,7 @@ local function createSlot(slotIndex: number, parent: Instance): SlotWidgets
 		UDim2.fromOffset(18, 16),
 		UDim2.fromOffset(8, 6),
 		12,
-		tostring(slotIndex),
+		getDisplayLabelForSlot(slotIndex),
 		Enum.Font.GothamBold
 	)
 	slotNumberLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -287,7 +296,7 @@ function InventoryBarView.new(): InventoryBarView
 		UDim2.new(1, 0, 0, 18),
 		UDim2.fromOffset(0, 32),
 		12,
-		"Drag items from this list into hotbar slots 1-9.",
+		"Drag items from this list into hotbar slots 1-9. The scythe stays in the first slot.",
 		Enum.Font.GothamSemibold
 	)
 
@@ -606,11 +615,11 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 
 		local detailText = string.format("%s  |  x%d", itemDefinition.kind, entry.quantity)
 		if entry.itemId == "Scythe" then
-			detailText = detailText .. "  |  Locked to slot 0"
+			detailText = detailText .. "  |  Locked to first slot"
 		else
 			for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
 				if snapshot.hotbarSlots[slotIndex] == entry.itemId then
-					detailText = detailText .. string.format("  |  In slot %d", slotIndex)
+					detailText = detailText .. string.format("  |  In slot %d", slotIndex - 1)
 					break
 				end
 			end

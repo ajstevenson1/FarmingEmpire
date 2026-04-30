@@ -9,6 +9,7 @@ export type ItemDefinition = {
 	kind: ItemKind,
 	maxStack: number,
 	inventoryOrder: number,
+	toolAssetName: string?,
 }
 
 export type InventoryEntry = {

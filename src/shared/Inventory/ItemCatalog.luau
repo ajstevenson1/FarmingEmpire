@@ -12,6 +12,7 @@ local itemsById: { [ItemId]: ItemDefinition } = {
 		kind = "Tool",
 		maxStack = 1,
 		inventoryOrder = 0,
+		toolAssetName = "Scythe",
 	}),
 	WheatField = table.freeze({
 		id = "WheatField",
@@ -19,6 +20,7 @@ local itemsById: { [ItemId]: ItemDefinition } = {
 		kind = "Placeable",
 		maxStack = 99,
 		inventoryOrder = 10,
+		toolAssetName = nil,
 	}),
 	Wheat = table.freeze({
 		id = "Wheat",
@@ -26,6 +28,7 @@ local itemsById: { [ItemId]: ItemDefinition } = {
 		kind = "Resource",
 		maxStack = 999,
 		inventoryOrder = 20,
+		toolAssetName = nil,
 	}),
 }
 

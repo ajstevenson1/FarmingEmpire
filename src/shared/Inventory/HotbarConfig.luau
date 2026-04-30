@@ -1,9 +1,9 @@
 --!strict
 
 local HotbarConfig = {
-	lockedSlotIndex = 0,
-	firstAssignableSlotIndex = 1,
-	lastSlotIndex = 9,
+	lockedSlotIndex = 1,
+	firstAssignableSlotIndex = 2,
+	lastSlotIndex = 10,
 	defaultSelectedSlotIndex = nil :: number?,
 }
 
