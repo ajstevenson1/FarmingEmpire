@@ -16,6 +16,7 @@ type InventoryRemotes = {
 
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemote: RemoteEvent? = nil
+local cachedHarvestRemote: RemoteEvent? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -90,6 +91,18 @@ function Remotes.getPlacementRemote(): RemoteEvent
 	cachedPlacementRemote = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPlacementEventName)
 
 	return cachedPlacementRemote
+end
+
+function Remotes.getHarvestRemote(): RemoteEvent
+	if cachedHarvestRemote ~= nil then
+		return cachedHarvestRemote
+	end
+
+	local rootFolder = getOrCreateFolder(ReplicatedStorage, RemoteNames.rootFolderName)
+	local harvestFolder = getOrCreateFolder(rootFolder, RemoteNames.harvestFolderName)
+	cachedHarvestRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName)
+
+	return cachedHarvestRemote
 end
 
 return table.freeze(Remotes)

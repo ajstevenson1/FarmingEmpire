@@ -394,6 +394,13 @@ function InventoryService.tryConsumeItem(player: Player, itemId: ItemId, quantit
 	return didConsume
 end
 
+function InventoryService.addItem(player: Player, itemId: ItemId, quantity: number)
+	local inventoryState = getPlayerInventoryState(player)
+	addItem(inventoryState, itemId, quantity)
+	sanitizeState(inventoryState)
+	pushInventoryUpdate(player)
+end
+
 function InventoryService.observeEquippedItemChanged(listener: (Player, ItemId?) -> ())
 	table.insert(selectedItemChangedListeners, listener)
 end

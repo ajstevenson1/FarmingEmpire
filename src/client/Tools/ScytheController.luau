@@ -1,9 +1,15 @@
 --!strict
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local localPlayer = Players.LocalPlayer
 assert(localPlayer ~= nil, "LocalPlayer must exist before starting ScytheController")
+
+local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+
+local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 
 local SYSTEM_TOOL_ITEM_ID_ATTRIBUTE = "SystemToolItemId"
 local SCYTHE_ITEM_ID = "Scythe"
@@ -19,6 +25,12 @@ local hasStarted = false
 local trackedTools: { [Tool]: ToolConnections } = {}
 local swingTracksByTool: { [Tool]: AnimationTrack } = {}
 local nextAllowedSwingTime = 0
+
+local function getHarvestRemote(): RemoteEvent
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local harvestFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
+	return harvestFolder:WaitForChild(RemoteNames.requestScytheSwingEventName) :: RemoteEvent
+end
 
 local function getHumanoid(): Humanoid?
 	local character = localPlayer.Character
@@ -57,31 +69,32 @@ local function getSwingTrack(tool: Tool, animator: Animator): AnimationTrack?
 	return loadedTrack
 end
 
-local function playSwing(tool: Tool)
+local function playSwing(tool: Tool): boolean
 	local now = os.clock()
 	if now < nextAllowedSwingTime then
-		return
+		return false
 	end
 
 	local humanoid = getHumanoid()
 	if humanoid == nil then
-		return
+		return false
 	end
 
 	local animator = getAnimator(humanoid)
 	if animator == nil then
-		return
+		return false
 	end
 
 	local swingTrack = getSwingTrack(tool, animator)
 	if swingTrack == nil then
-		return
+		return false
 	end
 
 	nextAllowedSwingTime = now + SWING_LOCK_DURATION_SECONDS
 
 	swingTrack:Stop(0)
 	swingTrack:Play(0.05, 1, 1)
+	return true
 end
 
 local function cleanupTool(tool: Tool)
@@ -112,7 +125,9 @@ local function bindTool(tool: Tool)
 
 	trackedTools[tool] = {
 		activated = tool.Activated:Connect(function()
-			playSwing(tool)
+			if playSwing(tool) then
+				getHarvestRemote():FireServer()
+			end
 		end),
 		ancestryChanged = tool.AncestryChanged:Connect(function(_, parent)
 			if parent == nil then

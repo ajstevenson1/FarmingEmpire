@@ -163,4 +163,24 @@ function ProductionService.registerPlacedBuilding(part: BasePart, buildingId: Bu
 	trackedBuildingsByPart[part] = createTrackedBuilding(part, buildingDefinition)
 end
 
+function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, BuildingId?)
+	local trackedBuilding = trackedBuildingsByPart[part]
+	if trackedBuilding == nil or not trackedBuilding.runtimeState.isReadyToHarvest then
+		return false, nil
+	end
+
+	local harvestedBuildingId = trackedBuilding.buildingDefinition.id
+	trackedBuilding.runtimeState = GrowAndHarvestBehavior.createRuntimeState(
+		trackedBuilding.buildingDefinition.productionConfig,
+		getCurrentTime()
+	)
+
+	local nextGrowthStage = getCurrentGrowthStage(trackedBuilding.buildingDefinition, trackedBuilding.runtimeState)
+	trackedBuilding.currentGrowthStageName = nextGrowthStage.modelName
+	BuildingVisualService.setGrowthStageVisual(part, trackedBuilding.buildingDefinition.id, nextGrowthStage.modelName)
+	syncPartAttributes(trackedBuilding)
+
+	return true, harvestedBuildingId
+end
+
 return table.freeze(ProductionService)

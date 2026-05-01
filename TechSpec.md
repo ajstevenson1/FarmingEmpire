@@ -19,10 +19,10 @@ The project currently includes:
 - Growth billboard UI
 - Stage-based crop visuals
 - Scythe tool sync for held tool presentation
+- Scythe cone-harvest loop for `WheatField`
 
 The project does not yet include:
 
-- Harvest interaction
 - Produced resource flow from harvest
 - Save/load persistence
 - Livestock buildings
@@ -113,6 +113,31 @@ Current tool-sync behavior:
 Important files:
 
 - `src/server/Tools/ToolSyncService.luau`
+
+## Harvesting
+`Scythe` harvesting is now a server-authoritative cone swing, not a mouse-targeted click.
+
+Current behavior:
+
+- Clicking with the equipped `Scythe` plays the local `Swing` animation
+- The client sends one swing request per successful local swing lock window
+- The server validates that `Scythe` is the currently selected item
+- The server checks for ready placed buildings in a cone in front of the player
+- Harvested `WheatField` buildings reset to `Stage0` and restart their 15 second growth cycle
+- Each harvested `WheatField` grants `1` `Wheat` into the unified inventory
+
+Current cone values:
+
+- Range: `8` studs
+- Half-angle: `30` degrees
+- Vertical tolerance: `6` studs
+- Swing lock / server cooldown: `0.5` seconds
+
+Important files:
+
+- `src/client/Tools/ScytheController.luau`
+- `src/server/Harvest/HarvestService.luau`
+- `src/server/Production/ProductionService.luau`
 
 ## Networking
 Remotes are created by code under `ReplicatedStorage.GameRemotes`.
