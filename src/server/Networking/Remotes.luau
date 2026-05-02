@@ -14,9 +14,28 @@ type InventoryRemotes = {
 	clearHotbarSlot: RemoteEvent,
 }
 
+type ResourceRemotes = {
+	resourceUpdated: RemoteEvent,
+	getResourceSnapshot: RemoteFunction,
+}
+
+type EconomyRemotes = {
+	economyUpdated: RemoteEvent,
+	getEconomySnapshot: RemoteFunction,
+}
+
+type MarketRemotes = {
+	marketUpdated: RemoteEvent,
+	getMarketSnapshot: RemoteFunction,
+	sellAllCider: RemoteEvent,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemote: RemoteEvent? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
+local cachedResourceRemotes: ResourceRemotes? = nil
+local cachedEconomyRemotes: EconomyRemotes? = nil
+local cachedMarketRemotes: MarketRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -60,6 +79,10 @@ local function getOrCreateRemoteFunction(parent: Instance, name: string): Remote
 	return remoteFunction
 end
 
+local function getRootFolder(): Folder
+	return getOrCreateFolder(ReplicatedStorage, RemoteNames.rootFolderName)
+end
+
 local Remotes = {}
 
 function Remotes.getInventoryRemotes(): InventoryRemotes
@@ -67,8 +90,7 @@ function Remotes.getInventoryRemotes(): InventoryRemotes
 		return cachedInventoryRemotes
 	end
 
-	local rootFolder = getOrCreateFolder(ReplicatedStorage, RemoteNames.rootFolderName)
-	local inventoryFolder = getOrCreateFolder(rootFolder, RemoteNames.inventoryFolderName)
+	local inventoryFolder = getOrCreateFolder(getRootFolder(), RemoteNames.inventoryFolderName)
 
 	cachedInventoryRemotes = {
 		inventoryUpdated = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.inventoryUpdatedEventName),
@@ -86,8 +108,7 @@ function Remotes.getPlacementRemote(): RemoteEvent
 		return cachedPlacementRemote
 	end
 
-	local rootFolder = getOrCreateFolder(ReplicatedStorage, RemoteNames.rootFolderName)
-	local placementFolder = getOrCreateFolder(rootFolder, RemoteNames.placementFolderName)
+	local placementFolder = getOrCreateFolder(getRootFolder(), RemoteNames.placementFolderName)
 	cachedPlacementRemote = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPlacementEventName)
 
 	return cachedPlacementRemote
@@ -98,11 +119,53 @@ function Remotes.getHarvestRemote(): RemoteEvent
 		return cachedHarvestRemote
 	end
 
-	local rootFolder = getOrCreateFolder(ReplicatedStorage, RemoteNames.rootFolderName)
-	local harvestFolder = getOrCreateFolder(rootFolder, RemoteNames.harvestFolderName)
+	local harvestFolder = getOrCreateFolder(getRootFolder(), RemoteNames.harvestFolderName)
 	cachedHarvestRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName)
 
 	return cachedHarvestRemote
+end
+
+function Remotes.getResourceRemotes(): ResourceRemotes
+	if cachedResourceRemotes ~= nil then
+		return cachedResourceRemotes
+	end
+
+	local resourcesFolder = getOrCreateFolder(getRootFolder(), RemoteNames.resourcesFolderName)
+	cachedResourceRemotes = {
+		resourceUpdated = getOrCreateRemoteEvent(resourcesFolder, RemoteNames.resourceUpdatedEventName),
+		getResourceSnapshot = getOrCreateRemoteFunction(resourcesFolder, RemoteNames.getResourceSnapshotFunctionName),
+	}
+
+	return cachedResourceRemotes
+end
+
+function Remotes.getEconomyRemotes(): EconomyRemotes
+	if cachedEconomyRemotes ~= nil then
+		return cachedEconomyRemotes
+	end
+
+	local economyFolder = getOrCreateFolder(getRootFolder(), RemoteNames.economyFolderName)
+	cachedEconomyRemotes = {
+		economyUpdated = getOrCreateRemoteEvent(economyFolder, RemoteNames.economyUpdatedEventName),
+		getEconomySnapshot = getOrCreateRemoteFunction(economyFolder, RemoteNames.getEconomySnapshotFunctionName),
+	}
+
+	return cachedEconomyRemotes
+end
+
+function Remotes.getMarketRemotes(): MarketRemotes
+	if cachedMarketRemotes ~= nil then
+		return cachedMarketRemotes
+	end
+
+	local marketFolder = getOrCreateFolder(getRootFolder(), RemoteNames.marketFolderName)
+	cachedMarketRemotes = {
+		marketUpdated = getOrCreateRemoteEvent(marketFolder, RemoteNames.marketUpdatedEventName),
+		getMarketSnapshot = getOrCreateRemoteFunction(marketFolder, RemoteNames.getMarketSnapshotFunctionName),
+		sellAllCider = getOrCreateRemoteEvent(marketFolder, RemoteNames.sellAllCiderEventName),
+	}
+
+	return cachedMarketRemotes
 end
 
 return table.freeze(Remotes)

@@ -1,15 +1,21 @@
 --!strict
 
+local EconomyService = require(script.Economy.EconomyService)
 local HarvestService = require(script.Harvest.HarvestService)
 local InventoryService = require(script.Inventory.InventoryService)
+local MarketService = require(script.Market.MarketService)
 local PlacementService = require(script.Placement.PlacementService)
 local PlotService = require(script.Plots.PlotService)
 local ProductionService = require(script.Production.ProductionService)
+local ResourceService = require(script.Resources.ResourceService)
 local ToolSyncService = require(script.Tools.ToolSyncService)
 
 PlotService.start()
 InventoryService.start()
+ResourceService.start()
+EconomyService.start()
 ToolSyncService.start()
+MarketService.start()
 ProductionService.start()
 HarvestService.start()
 PlacementService.start()

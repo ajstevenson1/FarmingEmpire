@@ -6,6 +6,7 @@ local Workspace = game:GetService("Workspace")
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
+local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
@@ -91,9 +92,9 @@ local function handleScytheSwingRequest(player: Player)
 			and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
 			and isPartInsideScytheCone(rootPart, child)
 		then
-			local didHarvest, harvestedBuildingId = ProductionService.tryHarvestPlacedBuilding(child)
-			if didHarvest and harvestedBuildingId == "WheatField" then
-				InventoryService.addItem(player, "Wheat", 1)
+			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(child)
+			if didHarvest and harvestOutput ~= nil then
+				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
 			end
 		end
 	end

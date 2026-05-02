@@ -7,18 +7,19 @@ type BuildingId = BuildingTypes.BuildingId
 type GrowthVisualStage = BuildingTypes.GrowthVisualStage
 
 local buildingsById: { [BuildingId]: BuildingDefinition } = {
-	WheatField = table.freeze({
-		id = "WheatField",
-		displayName = "Wheat Field",
+	BasicTree = table.freeze({
+		id = "BasicTree",
+		displayName = "Apple Tree",
+		placementSize = Vector3.new(6, 6, 6),
 		productionConfig = table.freeze({
 			behaviorId = "GrowAndHarvest",
-			cycleDurationSeconds = 15,
-			outputResourceName = "Wheat",
-			outputAmount = 1,
-			storageCap = 1,
+			cycleDurationSeconds = 25,
+			outputResourceId = "Apple",
+			outputAmount = 3,
+			storageCap = 3,
 		}),
 		growthVisualConfig = table.freeze({
-			assetFolderName = "WheatField",
+			assetFolderName = "BasicTree",
 			stages = table.freeze({
 				table.freeze({
 					modelName = "Stage0",
@@ -35,6 +36,34 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 				table.freeze({
 					modelName = "Stage3",
 					minProgress = 1,
+				}),
+			}),
+		}),
+	}),
+	CiderMill = table.freeze({
+		id = "CiderMill",
+		displayName = "Cider Mill",
+		placementSize = Vector3.new(8, 6, 8),
+		productionConfig = table.freeze({
+			behaviorId = "InputProcessor",
+			cycleDurationSeconds = 12,
+			inputResourceId = "Apple",
+			inputAmount = 3,
+			outputResourceId = "Cider",
+			outputAmount = 1,
+			idleStatusText = "Idle",
+			blockedStatusText = "Need apples",
+		}),
+		growthVisualConfig = table.freeze({
+			assetFolderName = "CiderMill",
+			stages = table.freeze({
+				table.freeze({
+					modelName = "Stage0",
+					minProgress = 0,
+				}),
+				table.freeze({
+					modelName = "Stage1",
+					minProgress = 0.01,
 				}),
 			}),
 		}),

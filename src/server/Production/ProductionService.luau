@@ -1,5 +1,6 @@
 --!strict
 
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -11,22 +12,26 @@ local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") 
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local BuildingVisualService = require(script.Parent.Parent.Buildings.BuildingVisualService)
 local ProductionBehaviorRegistry = require(script.Parent.ProductionBehaviorRegistry)
-local GrowAndHarvestBehavior = require(script.Parent.Behaviors.GrowAndHarvestBehavior)
+local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
 type GrowthVisualStage = BuildingTypes.GrowthVisualStage
-type RuntimeState = GrowAndHarvestBehavior.RuntimeState
+type HarvestOutput = BuildingTypes.HarvestOutput
+type ProductionBehavior = BuildingTypes.ProductionBehavior
+type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
+type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
 
 type TrackedBuilding = {
 	part: BasePart,
 	buildingDefinition: BuildingDefinition,
-	runtimeState: RuntimeState,
+	runtimeState: ProductionRuntimeState,
 	currentGrowthStageName: string,
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local ITEM_ID_ATTRIBUTE = "ItemId"
+local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local UPDATE_INTERVAL_SECONDS = 0.25
 
 local trackedBuildingsByPart: { [BasePart]: TrackedBuilding } = {}
@@ -46,6 +51,49 @@ local function getCurrentTime(): number
 	return Workspace:GetServerTimeNow()
 end
 
+local function getOwnerPlayer(part: BasePart): Player?
+	local ownerUserId = part:GetAttribute(OWNER_USER_ID_ATTRIBUTE)
+	if type(ownerUserId) ~= "number" then
+		return nil
+	end
+
+	return Players:GetPlayerByUserId(ownerUserId)
+end
+
+local function getProductionBehavior(buildingDefinition: BuildingDefinition): ProductionBehavior
+	local behavior = ProductionBehaviorRegistry.getBehavior(buildingDefinition.productionConfig.behaviorId)
+	assert(behavior ~= nil, string.format("No production behavior registered for %s", buildingDefinition.productionConfig.behaviorId))
+	return behavior
+end
+
+local function getBehaviorContext(part: BasePart): ProductionBehaviorContext
+	return {
+		currentTime = getCurrentTime(),
+		ownerPlayer = getOwnerPlayer(part),
+		getResourceAmount = ResourceService.getResourceAmount,
+		tryConsumeResource = ResourceService.tryConsumeResource,
+		addResource = ResourceService.addResource,
+	}
+end
+
+local function getStorageCap(buildingDefinition: BuildingDefinition): number
+	local productionConfig = buildingDefinition.productionConfig
+	if productionConfig.behaviorId == "GrowAndHarvest" then
+		return productionConfig.storageCap
+	end
+
+	return 0
+end
+
+local function getOutputResourceName(buildingDefinition: BuildingDefinition): string
+	local productionConfig = buildingDefinition.productionConfig
+	if productionConfig.behaviorId == "GrowAndHarvest" then
+		return productionConfig.outputResourceId
+	end
+
+	return productionConfig.outputResourceId
+end
+
 local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	local part = trackedBuilding.part
 	local buildingDefinition = trackedBuilding.buildingDefinition
@@ -61,22 +109,20 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	part:SetAttribute(BuildingAttributeNames.productionTimeLeft, runtimeState.timeLeft)
 	part:SetAttribute(BuildingAttributeNames.productionStatusText, runtimeState.statusText)
 	part:SetAttribute(BuildingAttributeNames.productionDuration, productionConfig.cycleDurationSeconds)
-	part:SetAttribute(BuildingAttributeNames.productionOutputName, productionConfig.outputResourceName)
+	part:SetAttribute(BuildingAttributeNames.productionOutputName, getOutputResourceName(buildingDefinition))
 	part:SetAttribute(BuildingAttributeNames.productionStoredAmount, runtimeState.storedAmount)
-	part:SetAttribute(BuildingAttributeNames.productionStorageCap, productionConfig.storageCap)
+	part:SetAttribute(BuildingAttributeNames.productionStorageCap, getStorageCap(buildingDefinition))
 	part:SetAttribute(BuildingAttributeNames.isReadyToHarvest, runtimeState.isReadyToHarvest)
 	part:SetAttribute(BuildingAttributeNames.growthVisualStageName, currentGrowthStage.modelName)
 end
 
-local function getCurrentGrowthStage(buildingDefinition: BuildingDefinition, runtimeState: RuntimeState): GrowthVisualStage
+local function getCurrentGrowthStage(buildingDefinition: BuildingDefinition, runtimeState: ProductionRuntimeState): GrowthVisualStage
 	return BuildingCatalog.getGrowthStageForProgress(buildingDefinition, runtimeState.progress)
 end
 
 local function createTrackedBuilding(part: BasePart, buildingDefinition: BuildingDefinition): TrackedBuilding
-	local behavior = ProductionBehaviorRegistry.getBehavior(buildingDefinition.productionConfig.behaviorId)
-	assert(behavior ~= nil, string.format("No production behavior registered for %s", buildingDefinition.productionConfig.behaviorId))
-
-	local runtimeState = behavior.createRuntimeState(buildingDefinition.productionConfig, getCurrentTime()) :: RuntimeState
+	local behavior = getProductionBehavior(buildingDefinition)
+	local runtimeState = behavior.createRuntimeState(buildingDefinition.productionConfig, getCurrentTime())
 	local initialGrowthStage = getCurrentGrowthStage(buildingDefinition, runtimeState)
 	local trackedBuilding: TrackedBuilding = {
 		part = part,
@@ -92,14 +138,12 @@ local function createTrackedBuilding(part: BasePart, buildingDefinition: Buildin
 end
 
 local function updateTrackedBuilding(trackedBuilding: TrackedBuilding)
-	local behavior = ProductionBehaviorRegistry.getBehavior(trackedBuilding.buildingDefinition.productionConfig.behaviorId)
-	assert(behavior ~= nil, string.format("No production behavior registered for %s", trackedBuilding.buildingDefinition.productionConfig.behaviorId))
-
+	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
 	trackedBuilding.runtimeState = behavior.updateRuntimeState(
 		trackedBuilding.runtimeState,
 		trackedBuilding.buildingDefinition.productionConfig,
-		getCurrentTime()
-	) :: RuntimeState
+		getBehaviorContext(trackedBuilding.part)
+	)
 
 	local nextGrowthStage = getCurrentGrowthStage(trackedBuilding.buildingDefinition, trackedBuilding.runtimeState)
 	if nextGrowthStage.modelName ~= trackedBuilding.currentGrowthStageName then
@@ -163,24 +207,31 @@ function ProductionService.registerPlacedBuilding(part: BasePart, buildingId: Bu
 	trackedBuildingsByPart[part] = createTrackedBuilding(part, buildingDefinition)
 end
 
-function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, BuildingId?)
+function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, HarvestOutput?)
 	local trackedBuilding = trackedBuildingsByPart[part]
 	if trackedBuilding == nil or not trackedBuilding.runtimeState.isReadyToHarvest then
 		return false, nil
 	end
 
-	local harvestedBuildingId = trackedBuilding.buildingDefinition.id
-	trackedBuilding.runtimeState = GrowAndHarvestBehavior.createRuntimeState(
+	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
+	if behavior.harvest == nil then
+		return false, nil
+	end
+
+	local nextRuntimeState, harvestOutput = behavior.harvest(
+		trackedBuilding.runtimeState,
 		trackedBuilding.buildingDefinition.productionConfig,
 		getCurrentTime()
 	)
+
+	trackedBuilding.runtimeState = nextRuntimeState
 
 	local nextGrowthStage = getCurrentGrowthStage(trackedBuilding.buildingDefinition, trackedBuilding.runtimeState)
 	trackedBuilding.currentGrowthStageName = nextGrowthStage.modelName
 	BuildingVisualService.setGrowthStageVisual(part, trackedBuilding.buildingDefinition.id, nextGrowthStage.modelName)
 	syncPartAttributes(trackedBuilding)
 
-	return true, harvestedBuildingId
+	return true, harvestOutput
 end
 
 return table.freeze(ProductionService)

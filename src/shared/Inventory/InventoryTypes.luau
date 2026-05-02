@@ -1,7 +1,7 @@
 --!strict
 
-export type ItemId = "Scythe" | "WheatField" | "Wheat"
-export type ItemKind = "Tool" | "Placeable" | "Resource"
+export type ItemId = "Scythe" | "BasicTree" | "CiderMill"
+export type ItemKind = "Tool" | "Placeable"
 
 export type ItemDefinition = {
 	id: ItemId,

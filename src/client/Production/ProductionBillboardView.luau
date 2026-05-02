@@ -22,7 +22,9 @@ export type ProductionBillboardView = {
 }
 
 local READY_BAR_COLOR = Color3.fromRGB(107, 204, 113)
-local GROWING_BAR_COLOR = Color3.fromRGB(232, 190, 88)
+local PROCESSING_BAR_COLOR = Color3.fromRGB(232, 190, 88)
+local IDLE_BAR_COLOR = Color3.fromRGB(103, 151, 201)
+local BLOCKED_BAR_COLOR = Color3.fromRGB(207, 98, 98)
 local BAR_BACKGROUND_COLOR = Color3.fromRGB(43, 43, 43)
 
 local ProductionBillboardView = {}
@@ -92,7 +94,7 @@ local function createWidgets(part: BasePart): BillboardWidgets
 
 	local barFill = Instance.new("Frame")
 	barFill.Name = "BarFill"
-	barFill.BackgroundColor3 = GROWING_BAR_COLOR
+	barFill.BackgroundColor3 = PROCESSING_BAR_COLOR
 	barFill.BorderSizePixel = 0
 	barFill.Size = UDim2.fromScale(0, 1)
 	barFill.Parent = barBackground
@@ -106,6 +108,22 @@ local function createWidgets(part: BasePart): BillboardWidgets
 		statusLabel = statusLabel,
 		barFill = barFill,
 	}
+end
+
+local function getBarColor(productionState: string): Color3
+	if productionState == "Ready" then
+		return READY_BAR_COLOR
+	end
+
+	if productionState == "Blocked" then
+		return BLOCKED_BAR_COLOR
+	end
+
+	if productionState == "Idle" then
+		return IDLE_BAR_COLOR
+	end
+
+	return PROCESSING_BAR_COLOR
 end
 
 function ProductionBillboardView.new(part: BasePart): ProductionBillboardView
@@ -130,7 +148,7 @@ function ProductionBillboardView:refresh()
 
 	self._widgets.statusLabel.Text = statusText
 	self._widgets.barFill.Size = UDim2.fromScale(progress, 1)
-	self._widgets.barFill.BackgroundColor3 = if productionState == "Ready" then READY_BAR_COLOR else GROWING_BAR_COLOR
+	self._widgets.barFill.BackgroundColor3 = getBarColor(productionState)
 end
 
 function ProductionBillboardView:destroy()

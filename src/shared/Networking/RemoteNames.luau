@@ -5,6 +5,9 @@ local RemoteNames = {
 	inventoryFolderName = "Inventory",
 	placementFolderName = "Placement",
 	harvestFolderName = "Harvest",
+	resourcesFolderName = "Resources",
+	economyFolderName = "Economy",
+	marketFolderName = "Market",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
 	setSelectedSlotEventName = "SetSelectedSlot",
@@ -12,6 +15,13 @@ local RemoteNames = {
 	clearHotbarSlotEventName = "ClearHotbarSlot",
 	requestPlacementEventName = "RequestPlacement",
 	requestScytheSwingEventName = "RequestScytheSwing",
+	resourceUpdatedEventName = "ResourceUpdated",
+	getResourceSnapshotFunctionName = "GetResourceSnapshot",
+	economyUpdatedEventName = "EconomyUpdated",
+	getEconomySnapshotFunctionName = "GetEconomySnapshot",
+	marketUpdatedEventName = "MarketUpdated",
+	getMarketSnapshotFunctionName = "GetMarketSnapshot",
+	sellAllCiderEventName = "SellAllCider",
 }
 
 return table.freeze(RemoteNames)

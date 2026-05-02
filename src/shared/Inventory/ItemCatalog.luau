@@ -14,19 +14,19 @@ local itemsById: { [ItemId]: ItemDefinition } = {
 		inventoryOrder = 0,
 		toolAssetName = "Scythe",
 	}),
-	WheatField = table.freeze({
-		id = "WheatField",
-		displayName = "Wheat Field",
+	BasicTree = table.freeze({
+		id = "BasicTree",
+		displayName = "Apple Tree",
 		kind = "Placeable",
 		maxStack = 99,
 		inventoryOrder = 10,
 		toolAssetName = nil,
 	}),
-	Wheat = table.freeze({
-		id = "Wheat",
-		displayName = "Wheat",
-		kind = "Resource",
-		maxStack = 999,
+	CiderMill = table.freeze({
+		id = "CiderMill",
+		displayName = "Cider Mill",
+		kind = "Placeable",
+		maxStack = 99,
 		inventoryOrder = 20,
 		toolAssetName = nil,
 	}),

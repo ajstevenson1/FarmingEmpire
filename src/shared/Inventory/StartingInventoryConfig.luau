@@ -10,8 +10,12 @@ local startingInventory: { InventoryEntry } = {
 		quantity = 1,
 	},
 	{
-		itemId = "WheatField",
-		quantity = 15,
+		itemId = "BasicTree",
+		quantity = 12,
+	},
+	{
+		itemId = "CiderMill",
+		quantity = 1,
 	},
 }
 
