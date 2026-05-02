@@ -8,34 +8,13 @@ local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
 type ResourceId = ResourceTypes.ResourceId
 type ResourceSnapshot = ResourceTypes.ResourceSnapshot
 
-type PlayerResourceState = {
-	amountsByResourceId: { [ResourceId]: number },
-}
-
-local playerResources: { [Player]: PlayerResourceState } = {}
 local hasStarted = false
-
-local function createResourceState(): PlayerResourceState
-	return {
-		amountsByResourceId = {},
-	}
-end
-
-local function getPlayerResourceState(player: Player): PlayerResourceState
-	local existingState = playerResources[player]
-	if existingState ~= nil then
-		return existingState
-	end
-
-	local newState = createResourceState()
-	playerResources[player] = newState
-	return newState
-end
 
 local function cloneAmounts(amountsByResourceId: { [ResourceId]: number }): { [ResourceId]: number }
 	local cloned: { [ResourceId]: number } = {}
@@ -46,24 +25,20 @@ local function cloneAmounts(amountsByResourceId: { [ResourceId]: number }): { [R
 	return cloned
 end
 
-local function buildSnapshot(state: PlayerResourceState): ResourceSnapshot
+local function buildSnapshot(player: Player): ResourceSnapshot
 	return {
-		amountsByResourceId = cloneAmounts(state.amountsByResourceId),
+		amountsByResourceId = cloneAmounts(PlayerDataService.getResourceAmounts(player)),
 	}
 end
 
 local function pushResourceUpdate(player: Player)
 	local resourceRemotes = Remotes.getResourceRemotes()
-	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(getPlayerResourceState(player)))
+	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(player))
 end
 
 local function initializePlayer(player: Player)
-	playerResources[player] = createResourceState()
+	PlayerDataService.waitForData(player)
 	pushResourceUpdate(player)
-end
-
-local function cleanupPlayer(player: Player)
-	playerResources[player] = nil
 end
 
 local ResourceService = {}
@@ -77,11 +52,10 @@ function ResourceService.start()
 
 	local resourceRemotes = Remotes.getResourceRemotes()
 	resourceRemotes.getResourceSnapshot.OnServerInvoke = function(player: Player): ResourceSnapshot
-		return buildSnapshot(getPlayerResourceState(player))
+		return buildSnapshot(player)
 	end
 
 	Players.PlayerAdded:Connect(initializePlayer)
-	Players.PlayerRemoving:Connect(cleanupPlayer)
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		initializePlayer(player)
@@ -89,8 +63,7 @@ function ResourceService.start()
 end
 
 function ResourceService.getResourceAmount(player: Player, resourceId: ResourceId): number
-	local state = getPlayerResourceState(player)
-	return state.amountsByResourceId[resourceId] or 0
+	return PlayerDataService.getResourceAmount(player, resourceId)
 end
 
 function ResourceService.tryConsumeResource(player: Player, resourceId: ResourceId, amount: number): boolean
@@ -98,19 +71,12 @@ function ResourceService.tryConsumeResource(player: Player, resourceId: Resource
 		return false
 	end
 
-	local state = getPlayerResourceState(player)
-	local currentAmount = state.amountsByResourceId[resourceId] or 0
+	local currentAmount = PlayerDataService.getResourceAmount(player, resourceId)
 	if currentAmount < amount then
 		return false
 	end
 
-	local nextAmount = currentAmount - amount
-	if nextAmount > 0 then
-		state.amountsByResourceId[resourceId] = nextAmount
-	else
-		state.amountsByResourceId[resourceId] = nil
-	end
-
+	PlayerDataService.setResourceAmount(player, resourceId, currentAmount - amount)
 	pushResourceUpdate(player)
 	return true
 end
@@ -120,8 +86,7 @@ function ResourceService.addResource(player: Player, resourceId: ResourceId, amo
 		return
 	end
 
-	local state = getPlayerResourceState(player)
-	state.amountsByResourceId[resourceId] = (state.amountsByResourceId[resourceId] or 0) + amount
+	PlayerDataService.setResourceAmount(player, resourceId, PlayerDataService.getResourceAmount(player, resourceId) + amount)
 	pushResourceUpdate(player)
 end
 
