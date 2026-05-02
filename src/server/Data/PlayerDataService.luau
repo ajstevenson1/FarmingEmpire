@@ -4,12 +4,16 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 
 type PlayerData = PlayerDataStore.PlayerData
+type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
+type BuildingId = BuildingTypes.BuildingId
 type ResourceId = ResourceTypes.ResourceId
 
 type PlayerDataRecord = {
@@ -27,11 +31,19 @@ local loadingPlayers: { [Player]: boolean } = {}
 local hasStarted = false
 
 local function sanitizeAmount(amount: number): number
-	if amount ~= amount or amount == math.huge or amount < 0 then
+	if amount ~= amount or amount == math.huge or amount == -math.huge or amount < 0 then
 		return 0
 	end
 
 	return math.floor(amount)
+end
+
+local function sanitizeGridCoordinate(coordinate: number): number
+	if coordinate ~= coordinate or coordinate == math.huge or coordinate == -math.huge then
+		return 0
+	end
+
+	return math.floor(coordinate)
 end
 
 local function markDirty(record: PlayerDataRecord)
@@ -185,6 +197,31 @@ function PlayerDataService.getResourceAmounts(player: Player): { [ResourceId]: n
 	end
 
 	return amountsByResourceId
+end
+
+function PlayerDataService.getPlacedBuildings(player: Player): { PlacedBuildingData }
+	local record = loadPlayerData(player)
+	local placedBuildings: { PlacedBuildingData } = {}
+
+	for _, placedBuilding in ipairs(record.data.placedBuildings) do
+		table.insert(placedBuildings, {
+			buildingId = placedBuilding.buildingId,
+			gridX = placedBuilding.gridX,
+			gridZ = placedBuilding.gridZ,
+		})
+	end
+
+	return placedBuildings
+end
+
+function PlayerDataService.addPlacedBuilding(player: Player, buildingId: BuildingId, gridX: number, gridZ: number)
+	local record = loadPlayerData(player)
+	table.insert(record.data.placedBuildings, {
+		buildingId = buildingId,
+		gridX = sanitizeGridCoordinate(gridX),
+		gridZ = sanitizeGridCoordinate(gridZ),
+	})
+	markDirty(record)
 end
 
 function PlayerDataService.saveNow(player: Player): boolean

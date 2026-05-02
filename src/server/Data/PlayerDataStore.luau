@@ -4,21 +4,32 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
+local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 
+type BuildingId = BuildingTypes.BuildingId
 type ResourceId = ResourceTypes.ResourceId
 
 export type PlayerEconomyData = {
 	cash: number,
 }
 
+export type PlacedBuildingData = {
+	buildingId: BuildingId,
+	gridX: number,
+	gridZ: number,
+}
+
 export type PlayerData = {
 	schemaVersion: number,
 	economy: PlayerEconomyData,
 	resources: { [ResourceId]: number },
+	placedBuildings: { PlacedBuildingData },
 }
 
 export type LoadResult = {
@@ -27,7 +38,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_v1"
-local CURRENT_SCHEMA_VERSION = 1
+local CURRENT_SCHEMA_VERSION = 2
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -38,11 +49,23 @@ local function getPlayerKey(userId: number): string
 end
 
 local function sanitizeAmount(value: unknown): number
-	if type(value) ~= "number" or value ~= value or value == math.huge or value < 0 then
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value < 0 then
 		return 0
 	end
 
 	return math.floor(value)
+end
+
+local function sanitizeGridCoordinate(value: unknown): number?
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+		return nil
+	end
+
+	if value ~= math.floor(value) then
+		return nil
+	end
+
+	return value
 end
 
 local function createDefaultData(): PlayerData
@@ -57,6 +80,7 @@ local function createDefaultData(): PlayerData
 			cash = 0,
 		},
 		resources = resources,
+		placedBuildings = {},
 	}
 end
 
@@ -73,6 +97,35 @@ local function sanitizeResources(rawResources: unknown): { [ResourceId]: number 
 	end
 
 	return sanitized
+end
+
+local function sanitizePlacedBuildings(rawPlacedBuildings: unknown): { PlacedBuildingData }
+	local placedBuildings: { PlacedBuildingData } = {}
+	if type(rawPlacedBuildings) ~= "table" then
+		return placedBuildings
+	end
+
+	for _, rawPlacedBuilding in ipairs(rawPlacedBuildings :: { unknown }) do
+		if type(rawPlacedBuilding) == "table" then
+			local rawPlacedBuildingValues = rawPlacedBuilding :: { [string]: unknown }
+			local rawBuildingId = rawPlacedBuildingValues.buildingId
+			local gridX = sanitizeGridCoordinate(rawPlacedBuildingValues.gridX)
+			local gridZ = sanitizeGridCoordinate(rawPlacedBuildingValues.gridZ)
+
+			if type(rawBuildingId) == "string"
+				and BuildingCatalog.hasBuildingDefinition(rawBuildingId)
+				and gridX ~= nil
+				and gridZ ~= nil then
+				table.insert(placedBuildings, {
+					buildingId = rawBuildingId :: BuildingId,
+					gridX = gridX,
+					gridZ = gridZ,
+				})
+			end
+		end
+	end
+
+	return placedBuildings
 end
 
 local function sanitizeData(rawData: unknown): PlayerData
@@ -93,6 +146,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 			cash = sanitizeAmount(rawEconomyValues.cash),
 		},
 		resources = sanitizeResources(rawDataTable.resources),
+		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
 	}
 end
 
@@ -102,12 +156,22 @@ local function cloneData(data: PlayerData): PlayerData
 		resources[resourceId] = sanitizeAmount(data.resources[resourceId])
 	end
 
+	local placedBuildings: { PlacedBuildingData } = {}
+	for _, placedBuilding in ipairs(data.placedBuildings) do
+		table.insert(placedBuildings, {
+			buildingId = placedBuilding.buildingId,
+			gridX = placedBuilding.gridX,
+			gridZ = placedBuilding.gridZ,
+		})
+	end
+
 	return {
 		schemaVersion = CURRENT_SCHEMA_VERSION,
 		economy = {
 			cash = sanitizeAmount(data.economy.cash),
 		},
 		resources = resources,
+		placedBuildings = placedBuildings,
 	}
 end
 

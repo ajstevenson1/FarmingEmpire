@@ -1,5 +1,6 @@
 --!strict
 
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -10,16 +11,18 @@ local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 
+type BuildingId = BuildingTypes.BuildingId
 type ItemId = InventoryTypes.ItemId
-type ItemDefinition = InventoryTypes.ItemDefinition
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
@@ -29,6 +32,7 @@ local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
 
 local hasStarted = false
+local loadedPlayers: { [Player]: boolean } = {}
 
 local function getPlacedObjectsFolder(): Folder
 	local existingFolder = Workspace:FindFirstChild(PLACED_OBJECTS_FOLDER_NAME)
@@ -65,8 +69,8 @@ local function isPlacementOverlapping(plotName: string, footprint: Vector3, grid
 	return false
 end
 
-local function createPlacedPart(player: Player, plot: BasePart, itemId: ItemId, itemDefinition: ItemDefinition, gridX: number, gridZ: number): BasePart?
-	local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemId)
+local function createPlacedPart(player: Player, plot: BasePart, buildingId: BuildingId, gridX: number, gridZ: number): BasePart?
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 	local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, placementFootprint, gridX, gridZ)
 	if placementCFrame == nil then
@@ -74,7 +78,7 @@ local function createPlacedPart(player: Player, plot: BasePart, itemId: ItemId, 
 	end
 
 	local placedPart = Instance.new("Part")
-	placedPart.Name = string.format("%sRoot", itemDefinition.id)
+	placedPart.Name = string.format("%sRoot", buildingDefinition.id)
 	placedPart.Anchored = true
 	placedPart.CanCollide = false
 	placedPart.CanQuery = true
@@ -87,12 +91,61 @@ local function createPlacedPart(player: Player, plot: BasePart, itemId: ItemId, 
 	placedPart.BottomSurface = Enum.SurfaceType.Smooth
 	placedPart:SetAttribute(OWNER_USER_ID_ATTRIBUTE, player.UserId)
 	placedPart:SetAttribute(PLOT_NAME_ATTRIBUTE, plot.Name)
-	placedPart:SetAttribute(ITEM_ID_ATTRIBUTE, itemId)
+	placedPart:SetAttribute(ITEM_ID_ATTRIBUTE, buildingId)
 	placedPart:SetAttribute(GRID_X_ATTRIBUTE, gridX)
 	placedPart:SetAttribute(GRID_Z_ATTRIBUTE, gridZ)
 	placedPart.Parent = getPlacedObjectsFolder()
 
 	return placedPart
+end
+
+local function canPlaceBuildingOnPlot(plot: BasePart, buildingId: BuildingId, gridX: number, gridZ: number): boolean
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
+	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+
+	if not PlotMath.isGridWithinPlot(plot.Size, placementFootprint, gridX, gridZ) then
+		return false
+	end
+
+	if isPlacementOverlapping(plot.Name, placementFootprint, gridX, gridZ) then
+		return false
+	end
+
+	return true
+end
+
+local function loadPlayerPlacedBuildings(player: Player)
+	if loadedPlayers[player] == true then
+		return
+	end
+
+	loadedPlayers[player] = true
+	PlayerDataService.waitForData(player)
+
+	local plot = PlotService.waitForAssignedPlot(player, 10)
+	if plot == nil then
+		return
+	end
+
+	for _, placedBuilding in ipairs(PlayerDataService.getPlacedBuildings(player)) do
+		local buildingId = placedBuilding.buildingId
+		if canPlaceBuildingOnPlot(plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ) then
+			local placedPart = createPlacedPart(player, plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
+			if placedPart ~= nil then
+				ProductionService.registerPlacedBuilding(placedPart, buildingId)
+			end
+		end
+	end
+end
+
+local function cleanupPlayerPlacedBuildings(player: Player)
+	loadedPlayers[player] = nil
+
+	for _, child in ipairs(getPlacedObjectsFolder():GetChildren()) do
+		if child:IsA("BasePart") and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId then
+			child:Destroy()
+		end
+	end
 end
 
 local function handlePlacementRequest(player: Player, requestedGridX: unknown, requestedGridZ: unknown)
@@ -121,14 +174,8 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemId)
-	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
-
-	if not PlotMath.isGridWithinPlot(plot.Size, placementFootprint, gridX, gridZ) then
-		return
-	end
-
-	if isPlacementOverlapping(plot.Name, placementFootprint, gridX, gridZ) then
+	local buildingId = itemId :: BuildingId
+	if not canPlaceBuildingOnPlot(plot, buildingId, gridX, gridZ) then
 		return
 	end
 
@@ -136,12 +183,13 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	local placedPart = createPlacedPart(player, plot, itemId, itemDefinition, gridX, gridZ)
+	local placedPart = createPlacedPart(player, plot, buildingId, gridX, gridZ)
 	if placedPart == nil then
 		return
 	end
 
-	ProductionService.registerPlacedBuilding(placedPart, itemId)
+	ProductionService.registerPlacedBuilding(placedPart, buildingId)
+	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ)
 end
 
 local PlacementService = {}
@@ -156,6 +204,13 @@ function PlacementService.start()
 	local placementRemote = Remotes.getPlacementRemote()
 	placementRemote.OnServerEvent:Connect(handlePlacementRequest)
 	getPlacedObjectsFolder()
+
+	Players.PlayerAdded:Connect(loadPlayerPlacedBuildings)
+	Players.PlayerRemoving:Connect(cleanupPlayerPlacedBuildings)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		loadPlayerPlacedBuildings(player)
+	end
 end
 
 return table.freeze(PlacementService)

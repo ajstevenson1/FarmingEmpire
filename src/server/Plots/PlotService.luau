@@ -92,6 +92,25 @@ function PlotService.getAssignedPlot(player: Player): BasePart?
 	return assignedPlotsByPlayer[player]
 end
 
+function PlotService.waitForAssignedPlot(player: Player, timeoutSeconds: number?): BasePart?
+	local startedAt = os.clock()
+
+	while player.Parent ~= nil do
+		local plot = assignedPlotsByPlayer[player]
+		if plot ~= nil then
+			return plot
+		end
+
+		if timeoutSeconds ~= nil and os.clock() - startedAt >= timeoutSeconds then
+			return nil
+		end
+
+		task.wait()
+	end
+
+	return nil
+end
+
 function PlotService.getAssignedPlotName(player: Player): string?
 	local plot = assignedPlotsByPlayer[player]
 	if plot == nil then

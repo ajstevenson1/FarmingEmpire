@@ -78,7 +78,7 @@ end
 
 local function getStorageCap(buildingDefinition: BuildingDefinition): number
 	local productionConfig = buildingDefinition.productionConfig
-	if productionConfig.behaviorId == "GrowAndHarvest" then
+	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.storageCap
 	end
 
@@ -87,11 +87,20 @@ end
 
 local function getOutputResourceName(buildingDefinition: BuildingDefinition): string
 	local productionConfig = buildingDefinition.productionConfig
-	if productionConfig.behaviorId == "GrowAndHarvest" then
+	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputResourceId
 	end
 
 	return productionConfig.outputResourceId
+end
+
+local function getProductionDuration(buildingDefinition: BuildingDefinition): number
+	local productionConfig = buildingDefinition.productionConfig
+	if productionConfig.behaviorId == "TimedStorageProducer" then
+		return productionConfig.produceIntervalSeconds
+	end
+
+	return productionConfig.cycleDurationSeconds
 end
 
 local function syncPartAttributes(trackedBuilding: TrackedBuilding)
@@ -108,7 +117,7 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	part:SetAttribute(BuildingAttributeNames.productionProgress, runtimeState.progress)
 	part:SetAttribute(BuildingAttributeNames.productionTimeLeft, runtimeState.timeLeft)
 	part:SetAttribute(BuildingAttributeNames.productionStatusText, runtimeState.statusText)
-	part:SetAttribute(BuildingAttributeNames.productionDuration, productionConfig.cycleDurationSeconds)
+	part:SetAttribute(BuildingAttributeNames.productionDuration, getProductionDuration(buildingDefinition))
 	part:SetAttribute(BuildingAttributeNames.productionOutputName, getOutputResourceName(buildingDefinition))
 	part:SetAttribute(BuildingAttributeNames.productionStoredAmount, runtimeState.storedAmount)
 	part:SetAttribute(BuildingAttributeNames.productionStorageCap, getStorageCap(buildingDefinition))
@@ -209,7 +218,7 @@ end
 
 function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, HarvestOutput?)
 	local trackedBuilding = trackedBuildingsByPart[part]
-	if trackedBuilding == nil or not trackedBuilding.runtimeState.isReadyToHarvest then
+	if trackedBuilding == nil then
 		return false, nil
 	end
 
@@ -225,6 +234,10 @@ function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, H
 	)
 
 	trackedBuilding.runtimeState = nextRuntimeState
+	if harvestOutput == nil then
+		syncPartAttributes(trackedBuilding)
+		return false, nil
+	end
 
 	local nextGrowthStage = getCurrentGrowthStage(trackedBuilding.buildingDefinition, trackedBuilding.runtimeState)
 	trackedBuilding.currentGrowthStageName = nextGrowthStage.modelName

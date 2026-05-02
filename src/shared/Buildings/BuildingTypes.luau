@@ -11,7 +11,7 @@ type ResourceId = ResourceTypes.ResourceId
 
 export type BuildingId = "BasicTree" | "CiderMill"
 
-export type ProductionBehaviorId = "GrowAndHarvest" | "InputProcessor"
+export type ProductionBehaviorId = "GrowAndHarvest" | "TimedStorageProducer" | "InputProcessor"
 
 export type ProductionState = "Growing" | "Ready" | "Idle" | "Processing" | "Blocked"
 
@@ -33,6 +33,14 @@ export type GrowAndHarvestProductionConfig = {
 	storageCap: number,
 }
 
+export type TimedStorageProducerProductionConfig = {
+	behaviorId: "TimedStorageProducer",
+	produceIntervalSeconds: number,
+	outputResourceId: ResourceId,
+	outputAmountPerInterval: number,
+	storageCap: number,
+}
+
 export type InputProcessorProductionConfig = {
 	behaviorId: "InputProcessor",
 	cycleDurationSeconds: number,
@@ -44,7 +52,7 @@ export type InputProcessorProductionConfig = {
 	blockedStatusText: string,
 }
 
-export type ProductionConfig = GrowAndHarvestProductionConfig | InputProcessorProductionConfig
+export type ProductionConfig = GrowAndHarvestProductionConfig | TimedStorageProducerProductionConfig | InputProcessorProductionConfig
 
 export type ProductionRuntimeState = {
 	state: ProductionState,

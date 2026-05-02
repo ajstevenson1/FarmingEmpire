@@ -8,12 +8,14 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local GrowAndHarvestBehavior = require(script.Parent.Behaviors.GrowAndHarvestBehavior)
 local InputProcessorBehavior = require(script.Parent.Behaviors.InputProcessorBehavior)
+local TimedStorageProducerBehavior = require(script.Parent.Behaviors.TimedStorageProducerBehavior)
 
 type ProductionBehavior = BuildingTypes.ProductionBehavior
 type ProductionBehaviorId = BuildingTypes.ProductionBehaviorId
 
 local behaviorById: { [ProductionBehaviorId]: ProductionBehavior } = {
 	GrowAndHarvest = GrowAndHarvestBehavior,
+	TimedStorageProducer = TimedStorageProducerBehavior,
 	InputProcessor = InputProcessorBehavior,
 }
 

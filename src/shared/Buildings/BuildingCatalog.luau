@@ -12,11 +12,11 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 		displayName = "Apple Tree",
 		placementSize = Vector3.new(6, 6, 6),
 		productionConfig = table.freeze({
-			behaviorId = "GrowAndHarvest",
-			cycleDurationSeconds = 25,
+			behaviorId = "TimedStorageProducer",
+			produceIntervalSeconds = 5,
 			outputResourceId = "Apple",
-			outputAmount = 3,
-			storageCap = 3,
+			outputAmountPerInterval = 1,
+			storageCap = 10,
 		}),
 		growthVisualConfig = table.freeze({
 			assetFolderName = "BasicTree",
@@ -27,11 +27,11 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 				}),
 				table.freeze({
 					modelName = "Stage1",
-					minProgress = 0.34,
+					minProgress = 0.1,
 				}),
 				table.freeze({
 					modelName = "Stage2",
-					minProgress = 0.67,
+					minProgress = 0.5,
 				}),
 				table.freeze({
 					modelName = "Stage3",
