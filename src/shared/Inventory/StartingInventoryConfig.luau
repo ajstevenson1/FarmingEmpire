@@ -11,7 +11,7 @@ local startingInventory: { InventoryEntry } = {
 	},
 	{
 		itemId = "WheatField",
-		quantity = 3,
+		quantity = 15,
 	},
 }
 

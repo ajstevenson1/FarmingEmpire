@@ -53,7 +53,7 @@ Implemented behavior:
 - Inventory is a unified owned-item list
 - Hotbar is an explicit server-owned loadout
 - Internal hotbar slot `1` is permanently locked to `Scythe`
-- Players start with `3` `Wheat Field`
+- Players start with `15` `Wheat Field`
 - Players start with `Scythe` in inventory and `Wheat Field` assigned to internal slot `2` (player-facing slot `1`)
 - Inventory is stack-based
 - Equipped item is stored as custom state, not a Roblox `Tool`
@@ -129,7 +129,7 @@ Current behavior:
 Current cone values:
 
 - Range: `8` studs
-- Half-angle: `30` degrees
+- Half-angle: `60` degrees
 - Vertical tolerance: `6` studs
 - Swing lock / server cooldown: `0.5` seconds
 

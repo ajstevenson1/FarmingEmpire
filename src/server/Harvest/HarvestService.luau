@@ -10,7 +10,7 @@ local ProductionService = require(script.Parent.Parent.Production.ProductionServ
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local SCYTHE_SWING_COOLDOWN_SECONDS = 0.5
-local SCYTHE_SWING_HALF_ANGLE_DEGREES = 30
+local SCYTHE_SWING_HALF_ANGLE_DEGREES = 60
 local SCYTHE_SWING_RANGE = 8
 local SCYTHE_SWING_VERTICAL_TOLERANCE = 6
 
