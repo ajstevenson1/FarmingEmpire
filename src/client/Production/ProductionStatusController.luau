@@ -7,9 +7,14 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local AppleCounterBillboardView = require(script.Parent.AppleCounterBillboardView)
+local CiderCounterBillboardView = require(script.Parent.CiderCounterBillboardView)
 local ProductionBillboardView = require(script.Parent.ProductionBillboardView)
 
+type AppleCounterBillboardViewInstance = AppleCounterBillboardView.AppleCounterBillboardView
+type CiderCounterBillboardViewInstance = CiderCounterBillboardView.CiderCounterBillboardView
 type ProductionBillboardViewInstance = ProductionBillboardView.ProductionBillboardView
+type ProductionViewInstance = AppleCounterBillboardViewInstance | CiderCounterBillboardViewInstance | ProductionBillboardViewInstance
 
 type TrackedConnections = {
 	refreshConnections: { RBXScriptConnection },
@@ -17,8 +22,14 @@ type TrackedConnections = {
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
+local TREE_BUILDING_IDS: { [string]: boolean } = {
+	BasicTree = true,
+}
+local CIDER_MILL_BUILDING_IDS: { [string]: boolean } = {
+	CiderMill = true,
+}
 
-local trackedViewsByPart: { [BasePart]: ProductionBillboardViewInstance } = {}
+local trackedViewsByPart: { [BasePart]: ProductionViewInstance } = {}
 local trackedConnectionsByPart: { [BasePart]: TrackedConnections } = {}
 local hasStarted = false
 
@@ -45,6 +56,28 @@ local function shouldTrackPart(part: BasePart): boolean
 	return type(buildingId) == "string"
 end
 
+local function shouldUseAppleCounter(part: BasePart): boolean
+	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
+	return type(buildingId) == "string" and TREE_BUILDING_IDS[buildingId] == true
+end
+
+local function shouldUseCiderCounter(part: BasePart): boolean
+	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
+	return type(buildingId) == "string" and CIDER_MILL_BUILDING_IDS[buildingId] == true
+end
+
+local function createView(part: BasePart): ProductionViewInstance
+	if shouldUseAppleCounter(part) then
+		return AppleCounterBillboardView.new(part)
+	end
+
+	if shouldUseCiderCounter(part) then
+		return CiderCounterBillboardView.new(part)
+	end
+
+	return ProductionBillboardView.new(part)
+end
+
 local function trackPart(part: BasePart)
 	if trackedViewsByPart[part] ~= nil then
 		return
@@ -54,10 +87,16 @@ local function trackPart(part: BasePart)
 		return
 	end
 
-	local view = ProductionBillboardView.new(part)
+	local view = createView(part)
 	trackedViewsByPart[part] = view
 
 	local refreshConnections = {
+		part:GetAttributeChangedSignal(BuildingAttributeNames.productionStoredAmount):Connect(function()
+			view:refresh()
+		end),
+		part:GetAttributeChangedSignal(BuildingAttributeNames.productionStorageCap):Connect(function()
+			view:refresh()
+		end),
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionProgress):Connect(function()
 			view:refresh()
 		end),

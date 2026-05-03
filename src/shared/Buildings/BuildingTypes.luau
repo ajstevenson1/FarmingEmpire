@@ -48,6 +48,7 @@ export type InputProcessorProductionConfig = {
 	inputAmount: number,
 	outputResourceId: ResourceId,
 	outputAmount: number,
+	outputStorageMode: "Unlimited",
 	idleStatusText: string,
 	blockedStatusText: string,
 }

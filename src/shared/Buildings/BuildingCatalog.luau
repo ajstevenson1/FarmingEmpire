@@ -51,6 +51,7 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 			inputAmount = 3,
 			outputResourceId = "Cider",
 			outputAmount = 1,
+			outputStorageMode = "Unlimited",
 			idleStatusText = "Idle",
 			blockedStatusText = "Need apples",
 		}),

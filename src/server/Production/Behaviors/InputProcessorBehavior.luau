@@ -8,6 +8,7 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 
 type InputProcessorProductionConfig = BuildingTypes.InputProcessorProductionConfig
+type HarvestOutput = BuildingTypes.HarvestOutput
 type ProductionConfig = BuildingTypes.ProductionConfig
 type ProductionState = BuildingTypes.ProductionState
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
@@ -17,47 +18,93 @@ local InputProcessorBehavior = {}
 
 local function getTypedConfig(config: ProductionConfig): InputProcessorProductionConfig
 	assert(config.behaviorId == "InputProcessor", "InputProcessorBehavior requires InputProcessor config")
+	assert(config.outputStorageMode == "Unlimited", "InputProcessorBehavior currently supports unlimited output storage")
 	return config
 end
 
-local function createIdleState(currentTime: number, statusText: string, state: ProductionState): ProductionRuntimeState
+local function getSafeOutputAmount(config: InputProcessorProductionConfig): number
+	return math.max(0, math.floor(config.outputAmount))
+end
+
+local function getStoredStatusText(config: InputProcessorProductionConfig, storedAmount: number): string
+	return string.format("%d %s", storedAmount, config.outputResourceId)
+end
+
+local function createWaitingState(
+	config: InputProcessorProductionConfig,
+	currentTime: number,
+	storedAmount: number,
+	fallbackStatusText: string,
+	fallbackState: ProductionState
+): ProductionRuntimeState
+	local safeStoredAmount = math.max(0, math.floor(storedAmount))
+	local hasStoredOutput = safeStoredAmount > 0
+
 	return {
-		state = state,
+		state = if hasStoredOutput then "Ready" else fallbackState,
 		cycleStartedAt = currentTime,
 		cycleFinishesAt = currentTime,
-		progress = 0,
+		progress = if hasStoredOutput then 1 else 0,
 		timeLeft = 0,
-		statusText = statusText,
-		storedAmount = 0,
-		isReadyToHarvest = false,
+		statusText = if hasStoredOutput then getStoredStatusText(config, safeStoredAmount) else fallbackStatusText,
+		storedAmount = safeStoredAmount,
+		isReadyToHarvest = hasStoredOutput,
 	}
 end
 
-local function createProcessingState(config: InputProcessorProductionConfig, currentTime: number): ProductionRuntimeState
+local function createProcessingState(
+	config: InputProcessorProductionConfig,
+	currentTime: number,
+	storedAmount: number
+): ProductionRuntimeState
+	local safeStoredAmount = math.max(0, math.floor(storedAmount))
+
 	return {
 		state = "Processing",
 		cycleStartedAt = currentTime,
 		cycleFinishesAt = currentTime + config.cycleDurationSeconds,
 		progress = 0,
 		timeLeft = config.cycleDurationSeconds,
-		statusText = string.format("%ds", config.cycleDurationSeconds),
-		storedAmount = 0,
-		isReadyToHarvest = false,
+		statusText = if safeStoredAmount > 0
+			then string.format("%s | %ds", getStoredStatusText(config, safeStoredAmount), config.cycleDurationSeconds)
+			else string.format("%ds", config.cycleDurationSeconds),
+		storedAmount = safeStoredAmount,
+		isReadyToHarvest = safeStoredAmount > 0,
 	}
 end
 
-local function tryBeginProcessing(config: InputProcessorProductionConfig, context: ProductionBehaviorContext): ProductionRuntimeState
+local function updateProcessingDisplay(runtimeState: ProductionRuntimeState, config: InputProcessorProductionConfig, currentTime: number)
+	local elapsedTime = currentTime - runtimeState.cycleStartedAt
+	local progress = math.clamp(elapsedTime / config.cycleDurationSeconds, 0, 1)
+	local timeLeft = math.max(0, math.ceil(runtimeState.cycleFinishesAt - currentTime))
+	local storedAmount = math.max(0, math.floor(runtimeState.storedAmount))
+
+	runtimeState.progress = progress
+	runtimeState.timeLeft = timeLeft
+	runtimeState.statusText = if storedAmount > 0
+		then string.format("%s | %ds", getStoredStatusText(config, storedAmount), timeLeft)
+		else string.format("%ds", timeLeft)
+	runtimeState.state = "Processing"
+	runtimeState.storedAmount = storedAmount
+	runtimeState.isReadyToHarvest = storedAmount > 0
+end
+
+local function tryBeginProcessing(
+	config: InputProcessorProductionConfig,
+	context: ProductionBehaviorContext,
+	storedAmount: number
+): ProductionRuntimeState
 	local ownerPlayer = context.ownerPlayer
 	if ownerPlayer ~= nil and context.tryConsumeResource(ownerPlayer, config.inputResourceId, config.inputAmount) then
-		return createProcessingState(config, context.currentTime)
+		return createProcessingState(config, context.currentTime, storedAmount)
 	end
 
-	return createIdleState(context.currentTime, config.blockedStatusText, "Blocked")
+	return createWaitingState(config, context.currentTime, storedAmount, config.blockedStatusText, "Blocked")
 end
 
 function InputProcessorBehavior.createRuntimeState(config: ProductionConfig, currentTime: number): ProductionRuntimeState
 	local typedConfig = getTypedConfig(config)
-	return createIdleState(currentTime, typedConfig.idleStatusText, "Idle")
+	return createWaitingState(typedConfig, currentTime, 0, typedConfig.idleStatusText, "Idle")
 end
 
 function InputProcessorBehavior.updateRuntimeState(
@@ -69,10 +116,7 @@ function InputProcessorBehavior.updateRuntimeState(
 
 	if runtimeState.state == "Processing" then
 		if context.currentTime >= runtimeState.cycleFinishesAt then
-			local ownerPlayer = context.ownerPlayer
-			if ownerPlayer ~= nil then
-				context.addResource(ownerPlayer, typedConfig.outputResourceId, typedConfig.outputAmount)
-			end
+			local nextStoredAmount = math.max(0, math.floor(runtimeState.storedAmount)) + getSafeOutputAmount(typedConfig)
 
 			return tryBeginProcessing(typedConfig, {
 				currentTime = context.currentTime,
@@ -80,20 +124,40 @@ function InputProcessorBehavior.updateRuntimeState(
 				getResourceAmount = context.getResourceAmount,
 				tryConsumeResource = context.tryConsumeResource,
 				addResource = context.addResource,
-			})
+			}, nextStoredAmount)
 		end
 
-		local elapsedTime = context.currentTime - runtimeState.cycleStartedAt
-		local progress = math.clamp(elapsedTime / typedConfig.cycleDurationSeconds, 0, 1)
-		local timeLeft = math.max(0, math.ceil(runtimeState.cycleFinishesAt - context.currentTime))
-		runtimeState.progress = progress
-		runtimeState.timeLeft = timeLeft
-		runtimeState.statusText = string.format("%ds", timeLeft)
-		runtimeState.state = "Processing"
+		updateProcessingDisplay(runtimeState, typedConfig, context.currentTime)
 		return runtimeState
 	end
 
-	return tryBeginProcessing(typedConfig, context)
+	return tryBeginProcessing(typedConfig, context, runtimeState.storedAmount)
+end
+
+function InputProcessorBehavior.harvest(
+	runtimeState: ProductionRuntimeState,
+	config: ProductionConfig,
+	currentTime: number
+): (ProductionRuntimeState, HarvestOutput?)
+	local typedConfig = getTypedConfig(config)
+	local storedAmount = math.max(0, math.floor(runtimeState.storedAmount))
+	if storedAmount <= 0 then
+		return runtimeState, nil
+	end
+
+	runtimeState.storedAmount = 0
+	runtimeState.isReadyToHarvest = false
+
+	if runtimeState.state == "Processing" then
+		updateProcessingDisplay(runtimeState, typedConfig, currentTime)
+	else
+		runtimeState = createWaitingState(typedConfig, currentTime, 0, typedConfig.idleStatusText, "Idle")
+	end
+
+	return runtimeState, {
+		resourceId = typedConfig.outputResourceId,
+		amount = storedAmount,
+	}
 end
 
 return table.freeze(InputProcessorBehavior)

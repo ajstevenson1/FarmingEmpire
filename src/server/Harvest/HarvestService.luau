@@ -2,7 +2,12 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+
+local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
@@ -17,6 +22,11 @@ local SCYTHE_SWING_VERTICAL_TOLERANCE = 6
 
 local hasStarted = false
 local nextAllowedSwingByPlayer: { [Player]: number } = {}
+
+local TOOL_HARVEST_PRODUCTION_BEHAVIORS: { [string]: boolean } = {
+	GrowAndHarvest = true,
+	TimedStorageProducer = true,
+}
 
 local function getPlacedObjectsFolder(): Folder?
 	local existingFolder = Workspace:FindFirstChild(PLACED_OBJECTS_FOLDER_NAME)
@@ -68,6 +78,11 @@ local function isPartInsideScytheCone(originPart: BasePart, targetPart: BasePart
 	return lookVector.Unit:Dot(direction) >= minimumDot
 end
 
+local function canHarvestWithTool(part: BasePart): boolean
+	local productionBehaviorId = part:GetAttribute(BuildingAttributeNames.productionBehaviorId)
+	return type(productionBehaviorId) == "string" and TOOL_HARVEST_PRODUCTION_BEHAVIORS[productionBehaviorId] == true
+end
+
 local function handleScytheSwingRequest(player: Player)
 	local now = Workspace:GetServerTimeNow()
 	local nextAllowedSwingTime = nextAllowedSwingByPlayer[player] or 0
@@ -90,6 +105,7 @@ local function handleScytheSwingRequest(player: Player)
 	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
 		if child:IsA("BasePart")
 			and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
+			and canHarvestWithTool(child)
 			and isPartInsideScytheCone(rootPart, child)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(child)
