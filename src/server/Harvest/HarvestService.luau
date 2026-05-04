@@ -6,8 +6,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local toolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local ScytheConfig = require(toolsFolder:WaitForChild("ScytheConfig") :: ModuleScript)
+local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
@@ -15,10 +18,6 @@ local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
-local SCYTHE_SWING_COOLDOWN_SECONDS = 0.5
-local SCYTHE_SWING_HALF_ANGLE_DEGREES = 60
-local SCYTHE_SWING_RANGE = 8
-local SCYTHE_SWING_VERTICAL_TOLERANCE = 6
 
 local hasStarted = false
 local nextAllowedSwingByPlayer: { [Player]: number } = {}
@@ -52,35 +51,34 @@ local function getHumanoidRootPart(player: Player): BasePart?
 	return candidate
 end
 
-local function isPartInsideScytheCone(originPart: BasePart, targetPart: BasePart): boolean
-	local offset = targetPart.Position - originPart.Position
-	local planarOffset = Vector3.new(offset.X, 0, offset.Z)
-	local planarDistance = planarOffset.Magnitude
-	if planarDistance > SCYTHE_SWING_RANGE then
-		return false
-	end
-
-	if math.abs(offset.Y) > SCYTHE_SWING_VERTICAL_TOLERANCE then
-		return false
-	end
-
-	if planarDistance <= 0.001 then
-		return true
-	end
-
-	local direction = planarOffset.Unit
-	local lookVector = Vector3.new(originPart.CFrame.LookVector.X, 0, originPart.CFrame.LookVector.Z)
-	if lookVector.Magnitude <= 0.001 then
-		return false
-	end
-
-	local minimumDot = math.cos(math.rad(SCYTHE_SWING_HALF_ANGLE_DEGREES))
-	return lookVector.Unit:Dot(direction) >= minimumDot
-end
-
 local function canHarvestWithTool(part: BasePart): boolean
 	local productionBehaviorId = part:GetAttribute(BuildingAttributeNames.productionBehaviorId)
 	return type(productionBehaviorId) == "string" and TOOL_HARVEST_PRODUCTION_BEHAVIORS[productionBehaviorId] == true
+end
+
+local function getSwingOverlapParts(originCFrame: CFrame, placedObjectsFolder: Folder): { BasePart }
+	local slices = ScytheSwingVolume.getSwingHitboxSlices(originCFrame)
+	if #slices == 0 then
+		return {}
+	end
+
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = { placedObjectsFolder }
+
+	local overlappingParts: { BasePart } = {}
+	local seenParts: { [BasePart]: boolean } = {}
+
+	for _, slice in ipairs(slices) do
+		for _, part in ipairs(Workspace:GetPartBoundsInBox(slice.cframe, slice.size, overlapParams)) do
+			if not seenParts[part] then
+				seenParts[part] = true
+				table.insert(overlappingParts, part)
+			end
+		end
+	end
+
+	return overlappingParts
 end
 
 local function handleScytheSwingRequest(player: Player)
@@ -90,7 +88,7 @@ local function handleScytheSwingRequest(player: Player)
 		return
 	end
 
-	nextAllowedSwingByPlayer[player] = now + SCYTHE_SWING_COOLDOWN_SECONDS
+	nextAllowedSwingByPlayer[player] = now + ScytheConfig.cooldownSeconds
 
 	if InventoryService.getEquippedItemId(player) ~= "Scythe" then
 		return
@@ -102,13 +100,11 @@ local function handleScytheSwingRequest(player: Player)
 		return
 	end
 
-	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
-		if child:IsA("BasePart")
-			and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
-			and canHarvestWithTool(child)
-			and isPartInsideScytheCone(rootPart, child)
+	for _, part in ipairs(getSwingOverlapParts(rootPart.CFrame, placedObjectsFolder)) do
+		if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
+			and canHarvestWithTool(part)
 		then
-			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(child)
+			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then
 				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
 			end

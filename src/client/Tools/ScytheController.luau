@@ -8,13 +8,14 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before starting ScytheControl
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local sharedToolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local ScytheConfig = require(sharedToolsFolder:WaitForChild("ScytheConfig") :: ModuleScript)
 
 local SYSTEM_TOOL_ITEM_ID_ATTRIBUTE = "SystemToolItemId"
 local SCYTHE_ITEM_ID = "Scythe"
 local SWING_ANIMATION_NAME = "Swing"
-local SWING_LOCK_DURATION_SECONDS = 0.5
 
 type ToolConnections = {
 	activated: RBXScriptConnection,
@@ -90,7 +91,7 @@ local function playSwing(tool: Tool): boolean
 		return false
 	end
 
-	nextAllowedSwingTime = now + SWING_LOCK_DURATION_SECONDS
+	nextAllowedSwingTime = now + ScytheConfig.cooldownSeconds
 
 	swingTrack:Stop(0)
 	swingTrack:Play(0.05, 1, 1)
