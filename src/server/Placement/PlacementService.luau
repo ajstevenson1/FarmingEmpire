@@ -20,9 +20,18 @@ local InventoryService = require(script.Parent.Parent.Inventory.InventoryService
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
+local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type BuildingId = BuildingTypes.BuildingId
 type ItemId = InventoryTypes.ItemId
+type SavedProductionState = BuildingTypes.SavedProductionState
+
+type PlacedBuildingData = {
+	buildingId: BuildingId,
+	gridX: number,
+	gridZ: number,
+	production: SavedProductionState?,
+}
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
@@ -30,9 +39,11 @@ local PLOT_NAME_ATTRIBUTE = "PlotName"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
+local MAX_PICKUP_DISTANCE_STUDS = 40
 
 local hasStarted = false
 local loadedPlayers: { [Player]: boolean } = {}
+local canSnapshotPlacedBuildingsByPlayer: { [Player]: boolean } = {}
 
 local function getPlacedObjectsFolder(): Folder
 	local existingFolder = Workspace:FindFirstChild(PLACED_OBJECTS_FOLDER_NAME)
@@ -50,6 +61,85 @@ end
 
 local function isWholeNumber(value: number): boolean
 	return value == math.floor(value)
+end
+
+local function getPlacedBuildingDataFromPart(player: Player, part: BasePart): PlacedBuildingData?
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
+		return nil
+	end
+
+	local rawBuildingId = part:GetAttribute(ITEM_ID_ATTRIBUTE)
+	local rawGridX = part:GetAttribute(GRID_X_ATTRIBUTE)
+	local rawGridZ = part:GetAttribute(GRID_Z_ATTRIBUTE)
+
+	if type(rawBuildingId) ~= "string"
+		or not BuildingCatalog.hasBuildingDefinition(rawBuildingId)
+		or type(rawGridX) ~= "number"
+		or type(rawGridZ) ~= "number"
+		or not isWholeNumber(rawGridX)
+		or not isWholeNumber(rawGridZ)
+	then
+		return nil
+	end
+
+	return {
+		buildingId = rawBuildingId :: BuildingId,
+		gridX = rawGridX,
+		gridZ = rawGridZ,
+		production = ProductionService.getSavedProductionState(part),
+	}
+end
+
+local function getPlacedPartFromInstance(instance: Instance): BasePart?
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	local current: Instance? = instance
+
+	while current ~= nil and current ~= placedObjectsFolder do
+		if current:IsA("BasePart") and current.Parent == placedObjectsFolder then
+			return current
+		end
+
+		current = current.Parent
+	end
+
+	return nil
+end
+
+local function isPlayerCloseEnoughToPickup(player: Player, placedPart: BasePart): boolean
+	local character = player.Character
+	if character == nil then
+		return false
+	end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if rootPart == nil or not rootPart:IsA("BasePart") then
+		return false
+	end
+
+	return (rootPart.Position - placedPart.Position).Magnitude <= MAX_PICKUP_DISTANCE_STUDS
+end
+
+local function serializePlayerPlacedBuildings(player: Player): { PlacedBuildingData }
+	local placedBuildings: { PlacedBuildingData } = {}
+
+	for _, child in ipairs(getPlacedObjectsFolder():GetChildren()) do
+		if child:IsA("BasePart") then
+			local placedBuildingData = getPlacedBuildingDataFromPart(player, child)
+			if placedBuildingData ~= nil then
+				table.insert(placedBuildings, placedBuildingData)
+			end
+		end
+	end
+
+	return placedBuildings
+end
+
+local function savePlayerPlacedBuildings(player: Player)
+	if canSnapshotPlacedBuildingsByPlayer[player] ~= true then
+		return
+	end
+
+	PlayerDataService.setPlacedBuildings(player, serializePlayerPlacedBuildings(player))
 end
 
 local function isPlacementOverlapping(plotName: string, footprint: Vector3, gridX: number, gridZ: number): boolean
@@ -124,22 +214,33 @@ local function loadPlayerPlacedBuildings(player: Player)
 
 	local plot = PlotService.waitForAssignedPlot(player, 10)
 	if plot == nil then
+		loadedPlayers[player] = nil
 		return
 	end
 
-	for _, placedBuilding in ipairs(PlayerDataService.getPlacedBuildings(player)) do
+	local savedPlacedBuildings = PlayerDataService.getPlacedBuildings(player)
+	local loadedCount = 0
+	for _, placedBuilding in ipairs(savedPlacedBuildings) do
 		local buildingId = placedBuilding.buildingId
 		if canPlaceBuildingOnPlot(plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ) then
 			local placedPart = createPlacedPart(player, plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
 			if placedPart ~= nil then
-				ProductionService.registerPlacedBuilding(placedPart, buildingId)
+				ProductionService.registerPlacedBuilding(placedPart, buildingId, placedBuilding.production)
+				loadedCount += 1
 			end
 		end
+	end
+
+	if #savedPlacedBuildings == 0 or loadedCount > 0 then
+		canSnapshotPlacedBuildingsByPlayer[player] = true
+	else
+		warn(string.format("Skipped building save snapshots for %s because saved buildings could not be loaded.", player.Name))
 	end
 end
 
 local function cleanupPlayerPlacedBuildings(player: Player)
 	loadedPlayers[player] = nil
+	canSnapshotPlacedBuildingsByPlayer[player] = nil
 
 	for _, child in ipairs(getPlacedObjectsFolder():GetChildren()) do
 		if child:IsA("BasePart") and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId then
@@ -188,8 +289,43 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	ProductionService.registerPlacedBuilding(placedPart, buildingId)
+	ProductionService.registerPlacedBuilding(placedPart, buildingId, nil)
 	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ)
+end
+
+local function handlePickupRequest(player: Player, requestedTarget: unknown)
+	if typeof(requestedTarget) ~= "Instance" then
+		return
+	end
+
+	local placedPart = getPlacedPartFromInstance(requestedTarget :: Instance)
+	if placedPart == nil then
+		return
+	end
+
+	if placedPart:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
+		return
+	end
+
+	if not isPlayerCloseEnoughToPickup(player, placedPart) then
+		return
+	end
+
+	local rawBuildingId = placedPart:GetAttribute(ITEM_ID_ATTRIBUTE)
+	if type(rawBuildingId) ~= "string" or not BuildingCatalog.hasBuildingDefinition(rawBuildingId) then
+		return
+	end
+
+	local buildingId = rawBuildingId :: BuildingId
+	local storedOutput = ProductionService.getStoredOutput(placedPart)
+	if storedOutput ~= nil then
+		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
+	end
+
+	InventoryService.addItem(player, buildingId :: ItemId, 1)
+	ProductionService.unregisterPlacedBuilding(placedPart)
+	placedPart:Destroy()
+	savePlayerPlacedBuildings(player)
 end
 
 local PlacementService = {}
@@ -201,12 +337,14 @@ function PlacementService.start()
 
 	hasStarted = true
 
-	local placementRemote = Remotes.getPlacementRemote()
-	placementRemote.OnServerEvent:Connect(handlePlacementRequest)
+	local placementRemotes = Remotes.getPlacementRemotes()
+	placementRemotes.requestPlacement.OnServerEvent:Connect(handlePlacementRequest)
+	placementRemotes.requestPickup.OnServerEvent:Connect(handlePickupRequest)
 	getPlacedObjectsFolder()
+	PlayerDataService.observeBeforeSave(savePlayerPlacedBuildings)
+	PlayerDataService.observeAfterRemove(cleanupPlayerPlacedBuildings)
 
 	Players.PlayerAdded:Connect(loadPlayerPlacedBuildings)
-	Players.PlayerRemoving:Connect(cleanupPlayerPlacedBuildings)
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		loadPlayerPlacedBuildings(player)

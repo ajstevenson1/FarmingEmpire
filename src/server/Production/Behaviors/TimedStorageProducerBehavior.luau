@@ -11,6 +11,7 @@ type HarvestOutput = BuildingTypes.HarvestOutput
 type ProductionConfig = BuildingTypes.ProductionConfig
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
 type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
+type SavedProductionState = BuildingTypes.SavedProductionState
 type TimedStorageProducerProductionConfig = BuildingTypes.TimedStorageProducerProductionConfig
 
 local TimedStorageProducerBehavior = {}
@@ -69,6 +70,58 @@ function TimedStorageProducerBehavior.createRuntimeState(config: ProductionConfi
 
 	syncDerivedFields(runtimeState, typedConfig, currentTime)
 	return runtimeState
+end
+
+function TimedStorageProducerBehavior.createRuntimeStateFromSavedState(
+	config: ProductionConfig,
+	savedState: SavedProductionState,
+	currentTime: number
+): ProductionRuntimeState?
+	local typedConfig = getTypedConfig(config)
+	if savedState.behaviorId ~= "TimedStorageProducer" then
+		return nil
+	end
+
+	local produceIntervalSeconds = getSafeProduceInterval(typedConfig)
+	local storageCap = getSafeStorageCap(typedConfig)
+	local storedAmount = math.clamp(math.floor(savedState.storedAmount), 0, storageCap)
+	local secondsUntilNextProduce = math.clamp(savedState.secondsUntilNextProduce, 0, produceIntervalSeconds)
+
+	local runtimeState: ProductionRuntimeState = {
+		state = savedState.state,
+		cycleStartedAt = currentTime + secondsUntilNextProduce - produceIntervalSeconds,
+		cycleFinishesAt = currentTime + secondsUntilNextProduce,
+		progress = 0,
+		timeLeft = math.ceil(secondsUntilNextProduce),
+		statusText = string.format("%ds", math.ceil(secondsUntilNextProduce)),
+		storedAmount = storedAmount,
+		isReadyToHarvest = storedAmount > 0,
+	}
+
+	if storedAmount >= storageCap then
+		runtimeState.cycleStartedAt = currentTime
+		runtimeState.cycleFinishesAt = currentTime
+	end
+
+	syncDerivedFields(runtimeState, typedConfig, currentTime)
+	return runtimeState
+end
+
+function TimedStorageProducerBehavior.createSavedState(
+	runtimeState: ProductionRuntimeState,
+	config: ProductionConfig,
+	currentTime: number
+): SavedProductionState?
+	local typedConfig = getTypedConfig(config)
+	local storageCap = getSafeStorageCap(typedConfig)
+	local storedAmount = math.clamp(math.floor(runtimeState.storedAmount), 0, storageCap)
+
+	return {
+		behaviorId = "TimedStorageProducer",
+		state = runtimeState.state,
+		storedAmount = storedAmount,
+		secondsUntilNextProduce = if storedAmount >= storageCap then 0 else math.max(0, runtimeState.cycleFinishesAt - currentTime),
+	}
 end
 
 function TimedStorageProducerBehavior.updateRuntimeState(

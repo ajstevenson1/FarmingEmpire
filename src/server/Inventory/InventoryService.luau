@@ -12,6 +12,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local StartingHotbarConfig = require(inventoryFolder:WaitForChild("StartingHotbarConfig") :: ModuleScript)
 local StartingInventoryConfig = require(inventoryFolder:WaitForChild("StartingInventoryConfig") :: ModuleScript)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
 type HotbarSlots = InventoryTypes.HotbarSlots
@@ -23,6 +24,17 @@ type ItemId = InventoryTypes.ItemId
 type PlayerInventoryState = {
 	quantitiesByItemId: { [ItemId]: number },
 	hotbarSlots: HotbarSlots,
+	selectedSlotIndex: number?,
+}
+
+type HotbarSlotData = {
+	slotIndex: number,
+	itemId: ItemId,
+}
+
+type PlayerInventoryData = {
+	entries: { InventoryEntry },
+	hotbarSlots: { HotbarSlotData },
 	selectedSlotIndex: number?,
 }
 
@@ -153,6 +165,24 @@ local function applyStartingHotbar(state: PlayerInventoryState)
 	sanitizeState(state)
 end
 
+local function applySavedInventory(state: PlayerInventoryState, inventoryData: PlayerInventoryData)
+	for _, entry in ipairs(inventoryData.entries) do
+		addItem(state, entry.itemId, entry.quantity)
+	end
+
+	for _, hotbarSlot in ipairs(inventoryData.hotbarSlots) do
+		if HotbarConfig.isAssignableSlotIndex(hotbarSlot.slotIndex)
+			and hotbarSlot.itemId ~= "Scythe"
+			and playerHasItem(state, hotbarSlot.itemId)
+		then
+			state.hotbarSlots[hotbarSlot.slotIndex] = hotbarSlot.itemId
+		end
+	end
+
+	state.selectedSlotIndex = inventoryData.selectedSlotIndex
+	sanitizeState(state)
+end
+
 local function getSortedEntries(state: PlayerInventoryState): { InventoryEntry }
 	local entries: { InventoryEntry } = {}
 
@@ -179,6 +209,27 @@ local function getSortedEntries(state: PlayerInventoryState): { InventoryEntry }
 	return entries
 end
 
+local function buildInventoryData(state: PlayerInventoryState): PlayerInventoryData
+	sanitizeState(state)
+
+	local hotbarSlots: { HotbarSlotData } = {}
+	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+		local itemId = state.hotbarSlots[slotIndex]
+		if itemId ~= nil then
+			table.insert(hotbarSlots, {
+				slotIndex = slotIndex,
+				itemId = itemId,
+			})
+		end
+	end
+
+	return {
+		entries = getSortedEntries(state),
+		hotbarSlots = hotbarSlots,
+		selectedSlotIndex = state.selectedSlotIndex,
+	}
+end
+
 local function buildSnapshot(state: PlayerInventoryState): InventorySnapshot
 	sanitizeState(state)
 
@@ -189,16 +240,33 @@ local function buildSnapshot(state: PlayerInventoryState): InventorySnapshot
 	}
 end
 
+local function syncInventoryStateToPlayerData(player: Player, state: PlayerInventoryState)
+	PlayerDataService.setInventory(player, buildInventoryData(state))
+end
+
+local function createInventoryStateForPlayer(player: Player): PlayerInventoryState
+	local newState = createInventoryState()
+	local savedInventory = PlayerDataService.getInventory(player)
+
+	if savedInventory ~= nil then
+		applySavedInventory(newState, savedInventory)
+	else
+		applyStartingInventory(newState)
+		applyStartingHotbar(newState)
+	end
+
+	return newState
+end
+
 local function getPlayerInventoryState(player: Player): PlayerInventoryState
 	local existingState = playerInventories[player]
 	if existingState ~= nil then
 		return existingState
 	end
 
-	local newState = createInventoryState()
-	applyStartingInventory(newState)
-	applyStartingHotbar(newState)
+	local newState = createInventoryStateForPlayer(player)
 	playerInventories[player] = newState
+	syncInventoryStateToPlayerData(player, newState)
 
 	return newState
 end
@@ -227,6 +295,7 @@ local function setSelectedSlot(player: Player, requestedSlotIndex: number?)
 	if requestedSlotIndex == nil then
 		inventoryState.selectedSlotIndex = nil
 		notifySelectedItemChanged(player, previousItemId, nil)
+		syncInventoryStateToPlayerData(player, inventoryState)
 		pushInventoryUpdate(player)
 		return
 	end
@@ -248,6 +317,7 @@ local function setSelectedSlot(player: Player, requestedSlotIndex: number?)
 	end
 
 	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
+	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end
 
@@ -280,6 +350,7 @@ local function assignItemToHotbarSlot(player: Player, requestedSlotIndex: number
 	end
 
 	sanitizeState(inventoryState)
+	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end
 
@@ -298,14 +369,14 @@ local function clearHotbarSlot(player: Player, requestedSlotIndex: number)
 
 	sanitizeState(inventoryState)
 	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
+	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end
 
 local function initializePlayer(player: Player)
-	local inventoryState = createInventoryState()
-	applyStartingInventory(inventoryState)
-	applyStartingHotbar(inventoryState)
+	local inventoryState = createInventoryStateForPlayer(player)
 	playerInventories[player] = inventoryState
+	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end
 
@@ -387,6 +458,7 @@ function InventoryService.tryConsumeItem(player: Player, itemId: ItemId, quantit
 	local previousItemId = InventoryService.getEquippedItemId(player)
 	local didConsume = removeItem(inventoryState, itemId, quantity)
 	if didConsume then
+		syncInventoryStateToPlayerData(player, inventoryState)
 		notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 		pushInventoryUpdate(player)
 	end
@@ -398,6 +470,7 @@ function InventoryService.addItem(player: Player, itemId: ItemId, quantity: numb
 	local inventoryState = getPlayerInventoryState(player)
 	addItem(inventoryState, itemId, quantity)
 	sanitizeState(inventoryState)
+	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end
 

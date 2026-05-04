@@ -12,6 +12,7 @@ type HarvestOutput = BuildingTypes.HarvestOutput
 type ProductionConfig = BuildingTypes.ProductionConfig
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
 type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
+type SavedProductionState = BuildingTypes.SavedProductionState
 
 local GrowAndHarvestBehavior = {}
 
@@ -24,18 +25,88 @@ local function clampProgress(progress: number): number
 	return math.clamp(progress, 0, 1)
 end
 
+local function getSafeCycleDuration(config: GrowAndHarvestProductionConfig): number
+	return math.max(0.001, config.cycleDurationSeconds)
+end
+
 function GrowAndHarvestBehavior.createRuntimeState(config: ProductionConfig, currentTime: number): ProductionRuntimeState
 	local typedConfig = getTypedConfig(config)
+	local cycleDurationSeconds = getSafeCycleDuration(typedConfig)
 
 	return {
 		state = "Growing",
 		cycleStartedAt = currentTime,
-		cycleFinishesAt = currentTime + typedConfig.cycleDurationSeconds,
+		cycleFinishesAt = currentTime + cycleDurationSeconds,
 		progress = 0,
-		timeLeft = typedConfig.cycleDurationSeconds,
-		statusText = string.format("%ds", typedConfig.cycleDurationSeconds),
+		timeLeft = cycleDurationSeconds,
+		statusText = string.format("%ds", math.ceil(cycleDurationSeconds)),
 		storedAmount = 0,
 		isReadyToHarvest = false,
+	}
+end
+
+function GrowAndHarvestBehavior.createRuntimeStateFromSavedState(
+	config: ProductionConfig,
+	savedState: SavedProductionState,
+	currentTime: number
+): ProductionRuntimeState?
+	local typedConfig = getTypedConfig(config)
+	if savedState.behaviorId ~= "GrowAndHarvest" then
+		return nil
+	end
+
+	local cycleDurationSeconds = getSafeCycleDuration(typedConfig)
+	if savedState.state == "Ready" then
+		return {
+			state = "Ready",
+			cycleStartedAt = currentTime - cycleDurationSeconds,
+			cycleFinishesAt = currentTime,
+			progress = 1,
+			timeLeft = 0,
+			statusText = "Harvest",
+			storedAmount = math.min(typedConfig.storageCap, typedConfig.outputAmount),
+			isReadyToHarvest = true,
+		}
+	end
+
+	local secondsUntilReady = math.clamp(savedState.secondsUntilReady, 0, cycleDurationSeconds)
+	if secondsUntilReady <= 0 then
+		return {
+			state = "Ready",
+			cycleStartedAt = currentTime - cycleDurationSeconds,
+			cycleFinishesAt = currentTime,
+			progress = 1,
+			timeLeft = 0,
+			statusText = "Harvest",
+			storedAmount = math.min(typedConfig.storageCap, typedConfig.outputAmount),
+			isReadyToHarvest = true,
+		}
+	end
+
+	return {
+		state = "Growing",
+		cycleStartedAt = currentTime + secondsUntilReady - cycleDurationSeconds,
+		cycleFinishesAt = currentTime + secondsUntilReady,
+		progress = clampProgress((cycleDurationSeconds - secondsUntilReady) / cycleDurationSeconds),
+		timeLeft = math.ceil(secondsUntilReady),
+		statusText = string.format("%ds", math.ceil(secondsUntilReady)),
+		storedAmount = math.max(0, math.floor(savedState.storedAmount)),
+		isReadyToHarvest = false,
+	}
+end
+
+function GrowAndHarvestBehavior.createSavedState(
+	runtimeState: ProductionRuntimeState,
+	config: ProductionConfig,
+	currentTime: number
+): SavedProductionState?
+	local typedConfig = getTypedConfig(config)
+
+	return {
+		behaviorId = "GrowAndHarvest",
+		state = runtimeState.state,
+		storedAmount = math.clamp(math.floor(runtimeState.storedAmount), 0, typedConfig.storageCap),
+		secondsUntilReady = math.max(0, runtimeState.cycleFinishesAt - currentTime),
 	}
 end
 

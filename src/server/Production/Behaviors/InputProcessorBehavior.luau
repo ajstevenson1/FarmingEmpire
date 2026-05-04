@@ -13,6 +13,7 @@ type ProductionConfig = BuildingTypes.ProductionConfig
 type ProductionState = BuildingTypes.ProductionState
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
 type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
+type SavedProductionState = BuildingTypes.SavedProductionState
 
 local InputProcessorBehavior = {}
 
@@ -24,6 +25,10 @@ end
 
 local function getSafeOutputAmount(config: InputProcessorProductionConfig): number
 	return math.max(0, math.floor(config.outputAmount))
+end
+
+local function getSafeCycleDuration(config: InputProcessorProductionConfig): number
+	return math.max(0.001, config.cycleDurationSeconds)
 end
 
 local function getStoredStatusText(config: InputProcessorProductionConfig, storedAmount: number): string
@@ -105,6 +110,62 @@ end
 function InputProcessorBehavior.createRuntimeState(config: ProductionConfig, currentTime: number): ProductionRuntimeState
 	local typedConfig = getTypedConfig(config)
 	return createWaitingState(typedConfig, currentTime, 0, typedConfig.idleStatusText, "Idle")
+end
+
+function InputProcessorBehavior.createRuntimeStateFromSavedState(
+	config: ProductionConfig,
+	savedState: SavedProductionState,
+	currentTime: number
+): ProductionRuntimeState?
+	local typedConfig = getTypedConfig(config)
+	if savedState.behaviorId ~= "InputProcessor" then
+		return nil
+	end
+
+	local storedAmount = math.max(0, math.floor(savedState.storedAmount))
+	if savedState.state == "Processing" then
+		local cycleDurationSeconds = getSafeCycleDuration(typedConfig)
+		local secondsUntilCycleFinishes = if savedState.secondsUntilCycleFinishes == nil
+			then cycleDurationSeconds
+			else math.clamp(savedState.secondsUntilCycleFinishes, 0, cycleDurationSeconds)
+
+		local runtimeState: ProductionRuntimeState = {
+			state = "Processing",
+			cycleStartedAt = currentTime + secondsUntilCycleFinishes - cycleDurationSeconds,
+			cycleFinishesAt = currentTime + secondsUntilCycleFinishes,
+			progress = 0,
+			timeLeft = math.ceil(secondsUntilCycleFinishes),
+			statusText = "",
+			storedAmount = storedAmount,
+			isReadyToHarvest = storedAmount > 0,
+		}
+
+		updateProcessingDisplay(runtimeState, typedConfig, currentTime)
+		return runtimeState
+	end
+
+	if savedState.state == "Blocked" then
+		return createWaitingState(typedConfig, currentTime, storedAmount, typedConfig.blockedStatusText, "Blocked")
+	end
+
+	return createWaitingState(typedConfig, currentTime, storedAmount, typedConfig.idleStatusText, "Idle")
+end
+
+function InputProcessorBehavior.createSavedState(
+	runtimeState: ProductionRuntimeState,
+	config: ProductionConfig,
+	currentTime: number
+): SavedProductionState?
+	getTypedConfig(config)
+
+	return {
+		behaviorId = "InputProcessor",
+		state = runtimeState.state,
+		storedAmount = math.max(0, math.floor(runtimeState.storedAmount)),
+		secondsUntilCycleFinishes = if runtimeState.state == "Processing"
+			then math.max(0, runtimeState.cycleFinishesAt - currentTime)
+			else nil,
+	}
 end
 
 function InputProcessorBehavior.updateRuntimeState(

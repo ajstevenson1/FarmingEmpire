@@ -6,10 +6,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local BuildingVisualService = require(script.Parent.Parent.Buildings.BuildingVisualService)
 local ProductionBehaviorRegistry = require(script.Parent.ProductionBehaviorRegistry)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
@@ -21,6 +23,8 @@ type HarvestOutput = BuildingTypes.HarvestOutput
 type ProductionBehavior = BuildingTypes.ProductionBehavior
 type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
+type ResourceId = ResourceTypes.ResourceId
+type SavedProductionState = BuildingTypes.SavedProductionState
 
 type TrackedBuilding = {
 	part: BasePart,
@@ -94,6 +98,15 @@ local function getOutputResourceName(buildingDefinition: BuildingDefinition): st
 	return productionConfig.outputResourceId
 end
 
+local function getOutputResourceId(buildingDefinition: BuildingDefinition): ResourceId
+	local productionConfig = buildingDefinition.productionConfig
+	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
+		return productionConfig.outputResourceId
+	end
+
+	return productionConfig.outputResourceId
+end
+
 local function getProductionDuration(buildingDefinition: BuildingDefinition): number
 	local productionConfig = buildingDefinition.productionConfig
 	if productionConfig.behaviorId == "TimedStorageProducer" then
@@ -129,9 +142,24 @@ local function getCurrentGrowthStage(buildingDefinition: BuildingDefinition, run
 	return BuildingCatalog.getGrowthStageForProgress(buildingDefinition, runtimeState.progress)
 end
 
-local function createTrackedBuilding(part: BasePart, buildingDefinition: BuildingDefinition): TrackedBuilding
+local function createTrackedBuilding(
+	part: BasePart,
+	buildingDefinition: BuildingDefinition,
+	savedProductionState: SavedProductionState?
+): TrackedBuilding
 	local behavior = getProductionBehavior(buildingDefinition)
-	local runtimeState = behavior.createRuntimeState(buildingDefinition.productionConfig, getCurrentTime())
+	local currentTime = getCurrentTime()
+	local hydratedRuntimeState: ProductionRuntimeState? = nil
+
+	if savedProductionState ~= nil and savedProductionState.behaviorId == buildingDefinition.productionConfig.behaviorId then
+		hydratedRuntimeState = behavior.createRuntimeStateFromSavedState(
+			buildingDefinition.productionConfig,
+			savedProductionState,
+			currentTime
+		)
+	end
+
+	local runtimeState = hydratedRuntimeState or behavior.createRuntimeState(buildingDefinition.productionConfig, currentTime)
 	local initialGrowthStage = getCurrentGrowthStage(buildingDefinition, runtimeState)
 	local trackedBuilding: TrackedBuilding = {
 		part = part,
@@ -191,7 +219,7 @@ local function registerExistingPlacedBuildings()
 			if type(itemId) == "string" and BuildingCatalog.hasBuildingDefinition(itemId) then
 				local buildingId = itemId :: BuildingId
 				if trackedBuildingsByPart[child] == nil then
-					trackedBuildingsByPart[child] = createTrackedBuilding(child, BuildingCatalog.getBuildingDefinition(buildingId))
+					trackedBuildingsByPart[child] = createTrackedBuilding(child, BuildingCatalog.getBuildingDefinition(buildingId), nil)
 				end
 			end
 		end
@@ -211,9 +239,44 @@ function ProductionService.start()
 	startUpdateLoop()
 end
 
-function ProductionService.registerPlacedBuilding(part: BasePart, buildingId: BuildingId)
+function ProductionService.registerPlacedBuilding(part: BasePart, buildingId: BuildingId, savedProductionState: SavedProductionState?)
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
-	trackedBuildingsByPart[part] = createTrackedBuilding(part, buildingDefinition)
+	trackedBuildingsByPart[part] = createTrackedBuilding(part, buildingDefinition, savedProductionState)
+end
+
+function ProductionService.getSavedProductionState(part: BasePart): SavedProductionState?
+	local trackedBuilding = trackedBuildingsByPart[part]
+	if trackedBuilding == nil then
+		return nil
+	end
+
+	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
+	return behavior.createSavedState(
+		trackedBuilding.runtimeState,
+		trackedBuilding.buildingDefinition.productionConfig,
+		getCurrentTime()
+	)
+end
+
+function ProductionService.getStoredOutput(part: BasePart): HarvestOutput?
+	local trackedBuilding = trackedBuildingsByPart[part]
+	if trackedBuilding == nil then
+		return nil
+	end
+
+	local storedAmount = math.floor(trackedBuilding.runtimeState.storedAmount)
+	if storedAmount <= 0 then
+		return nil
+	end
+
+	return {
+		resourceId = getOutputResourceId(trackedBuilding.buildingDefinition),
+		amount = storedAmount,
+	}
+end
+
+function ProductionService.unregisterPlacedBuilding(part: BasePart)
+	trackedBuildingsByPart[part] = nil
 end
 
 function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, HarvestOutput?)

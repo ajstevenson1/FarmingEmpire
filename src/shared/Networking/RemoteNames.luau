@@ -14,6 +14,7 @@ local RemoteNames = {
 	assignHotbarSlotEventName = "AssignHotbarSlot",
 	clearHotbarSlotEventName = "ClearHotbarSlot",
 	requestPlacementEventName = "RequestPlacement",
+	requestPickupEventName = "RequestPickup",
 	requestScytheSwingEventName = "RequestScytheSwing",
 	resourceUpdatedEventName = "ResourceUpdated",
 	getResourceSnapshotFunctionName = "GetResourceSnapshot",

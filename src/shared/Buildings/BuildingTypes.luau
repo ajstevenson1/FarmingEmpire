@@ -66,6 +66,30 @@ export type ProductionRuntimeState = {
 	isReadyToHarvest: boolean,
 }
 
+export type GrowAndHarvestSavedProductionState = {
+	behaviorId: "GrowAndHarvest",
+	state: ProductionState,
+	storedAmount: number,
+	secondsUntilReady: number,
+}
+
+export type TimedStorageProducerSavedProductionState = {
+	behaviorId: "TimedStorageProducer",
+	state: ProductionState,
+	storedAmount: number,
+	secondsUntilNextProduce: number,
+}
+
+export type InputProcessorSavedProductionState = {
+	behaviorId: "InputProcessor",
+	state: ProductionState,
+	storedAmount: number,
+	secondsUntilCycleFinishes: number?,
+}
+
+export type SavedProductionState =
+	GrowAndHarvestSavedProductionState | TimedStorageProducerSavedProductionState | InputProcessorSavedProductionState
+
 export type HarvestOutput = {
 	resourceId: ResourceId,
 	amount: number,
@@ -81,6 +105,16 @@ export type ProductionBehaviorContext = {
 
 export type ProductionBehavior = {
 	createRuntimeState: (config: ProductionConfig, currentTime: number) -> ProductionRuntimeState,
+	createRuntimeStateFromSavedState: (
+		config: ProductionConfig,
+		savedState: SavedProductionState,
+		currentTime: number
+	) -> ProductionRuntimeState?,
+	createSavedState: (
+		runtimeState: ProductionRuntimeState,
+		config: ProductionConfig,
+		currentTime: number
+	) -> SavedProductionState?,
 	updateRuntimeState: (
 		runtimeState: ProductionRuntimeState,
 		config: ProductionConfig,

@@ -24,6 +24,11 @@ type EconomyRemotes = {
 	getEconomySnapshot: RemoteFunction,
 }
 
+type PlacementRemotes = {
+	requestPlacement: RemoteEvent,
+	requestPickup: RemoteEvent,
+}
+
 type MarketRemotes = {
 	marketUpdated: RemoteEvent,
 	getMarketSnapshot: RemoteFunction,
@@ -31,7 +36,7 @@ type MarketRemotes = {
 }
 
 local cachedInventoryRemotes: InventoryRemotes? = nil
-local cachedPlacementRemote: RemoteEvent? = nil
+local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
 local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
@@ -103,15 +108,18 @@ function Remotes.getInventoryRemotes(): InventoryRemotes
 	return cachedInventoryRemotes
 end
 
-function Remotes.getPlacementRemote(): RemoteEvent
-	if cachedPlacementRemote ~= nil then
-		return cachedPlacementRemote
+function Remotes.getPlacementRemotes(): PlacementRemotes
+	if cachedPlacementRemotes ~= nil then
+		return cachedPlacementRemotes
 	end
 
 	local placementFolder = getOrCreateFolder(getRootFolder(), RemoteNames.placementFolderName)
-	cachedPlacementRemote = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPlacementEventName)
+	cachedPlacementRemotes = {
+		requestPlacement = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPlacementEventName),
+		requestPickup = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPickupEventName),
+	}
 
-	return cachedPlacementRemote
+	return cachedPlacementRemotes
 end
 
 function Remotes.getHarvestRemote(): RemoteEvent

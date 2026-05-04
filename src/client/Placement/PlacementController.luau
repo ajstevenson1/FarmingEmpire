@@ -23,6 +23,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
+local PickupController = require(script.Parent.PickupController)
 local PlacementPreviewView = require(script.Parent.PlacementPreviewView)
 
 type ItemDefinition = InventoryTypes.ItemDefinition
@@ -44,10 +45,19 @@ local GRID_Z_ATTRIBUTE = "GridZ"
 
 local hasStarted = false
 
-local function getRequestPlacementRemote(): RemoteEvent
+type PlacementRemotes = {
+	requestPlacement: RemoteEvent,
+	requestPickup: RemoteEvent,
+}
+
+local function getPlacementRemotes(): PlacementRemotes
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local placementRemotesFolder = rootFolder:WaitForChild(RemoteNames.placementFolderName) :: Folder
-	return placementRemotesFolder:WaitForChild(RemoteNames.requestPlacementEventName) :: RemoteEvent
+
+	return {
+		requestPlacement = placementRemotesFolder:WaitForChild(RemoteNames.requestPlacementEventName) :: RemoteEvent,
+		requestPickup = placementRemotesFolder:WaitForChild(RemoteNames.requestPickupEventName) :: RemoteEvent,
+	}
 end
 
 local function getAssignedPlot(): BasePart?
@@ -131,7 +141,7 @@ function PlacementController.start()
 	hasStarted = true
 
 	local previewView = PlacementPreviewView.new()
-	local requestPlacementRemote = getRequestPlacementRemote()
+	local placementRemotes = getPlacementRemotes()
 	local latestSnapshot = InventoryController.getLatestSnapshot()
 	local currentPreviewState: PreviewState? = nil
 
@@ -140,6 +150,12 @@ function PlacementController.start()
 	end)
 
 	RunService.RenderStepped:Connect(function()
+		if PickupController.isPickupModeEnabled() then
+			previewView:hide()
+			currentPreviewState = nil
+			return
+		end
+
 		local snapshot = latestSnapshot
 		if snapshot == nil then
 			previewView:hide()
@@ -198,6 +214,10 @@ function PlacementController.start()
 			return
 		end
 
+		if PickupController.isPickupModeEnabled() then
+			return
+		end
+
 		if UserInputService:GetFocusedTextBox() ~= nil then
 			return
 		end
@@ -229,7 +249,7 @@ function PlacementController.start()
 			return
 		end
 
-		requestPlacementRemote:FireServer(previewState.gridX, previewState.gridZ)
+		placementRemotes.requestPlacement:FireServer(previewState.gridX, previewState.gridZ)
 	end)
 end
 
