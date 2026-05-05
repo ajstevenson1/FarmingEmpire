@@ -144,6 +144,26 @@ local function sanitizeState(state: PlayerInventoryState)
 	applyAssignedHotbarItems(state, getAssignedHotbarItems(state), selectedItemId)
 end
 
+local function tryAutoAssignItemToHotbar(state: PlayerInventoryState, itemId: ItemId)
+	if itemId == "Scythe" or not playerHasItem(state, itemId) then
+		return
+	end
+
+	local assignedItems = getAssignedHotbarItems(state)
+	for _, assignedItemId in ipairs(assignedItems) do
+		if assignedItemId == itemId then
+			return
+		end
+	end
+
+	if #assignedItems >= MAX_ASSIGNABLE_SLOTS then
+		return
+	end
+
+	table.insert(assignedItems, itemId)
+	applyAssignedHotbarItems(state, assignedItems, getSelectedItemIdFromState(state))
+end
+
 local function removeItem(state: PlayerInventoryState, itemId: ItemId, quantity: number): boolean
 	if itemId == "Scythe" then
 		return false
@@ -521,6 +541,7 @@ function InventoryService.addItem(player: Player, itemId: ItemId, quantity: numb
 	local inventoryState = getPlayerInventoryState(player)
 	addItem(inventoryState, itemId, quantity)
 	sanitizeState(inventoryState)
+	tryAutoAssignItemToHotbar(inventoryState, itemId)
 	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
 end

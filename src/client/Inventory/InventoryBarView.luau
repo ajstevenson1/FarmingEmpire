@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
@@ -44,6 +45,7 @@ export type InventoryBarView = {
 	_inventoryMenu: Frame,
 	_inventoryWindow: GuiObject,
 	_hotbarFrame: Frame,
+	_hotbarGrid: UIGridLayout?,
 	_openButton: GuiButtonLike,
 	_inventoryContentFrame: GuiObject,
 	_searchBox: TextBox,
@@ -54,6 +56,7 @@ export type InventoryBarView = {
 	_currentSnapshot: InventorySnapshot?,
 	_dragState: DragState?,
 	_searchText: string,
+	_renderedHotbarSlotCount: number,
 	_connections: { RBXScriptConnection },
 	_slotConnections: { RBXScriptConnection },
 	_itemConnections: { RBXScriptConnection },
@@ -78,6 +81,17 @@ local DEFAULT_STROKE_COLOR = Color3.fromRGB(220, 199, 158)
 local SELECTED_STROKE_COLOR = Color3.fromRGB(255, 240, 201)
 local PANEL_COLOR = Color3.fromRGB(26, 23, 18)
 local DETAIL_TEXT_COLOR = Color3.fromRGB(219, 205, 180)
+local SCYTHE_ICON_IMAGE = "rbxassetid://86007084151897"
+local MOBILE_VISIBLE_HOTBAR_SLOTS = 4
+local DESKTOP_VISIBLE_HOTBAR_SLOTS = 10
+local MOBILE_MIN_HOTBAR_SLOT_SIZE = 52
+local MOBILE_MAX_HOTBAR_SLOT_SIZE = 64
+local DESKTOP_MIN_HOTBAR_SLOT_SIZE = 68
+local DESKTOP_MAX_HOTBAR_SLOT_SIZE = 92
+local MOBILE_HOTBAR_BOTTOM_MARGIN = 20
+local DESKTOP_HOTBAR_BOTTOM_MARGIN = 28
+local MOBILE_HOTBAR_HORIZONTAL_FRACTION = 0.9
+local DESKTOP_HOTBAR_HORIZONTAL_FRACTION = 0.82
 
 local toolButtonTemplateInstance = templatesFolder:WaitForChild("ToolButton")
 assert(
@@ -111,17 +125,12 @@ local function getDisplayLabelForSlot(slotIndex: number): string
 	return tostring(slotIndex - 1)
 end
 
-local function getInventoryToggleButtonText(isOpen: boolean): string
-	return if isOpen then "Close Inventory" else "Open Inventory"
+local function isMobileHotbarLayout(): boolean
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
 end
 
-local function getOpenButtonInfoLabel(button: GuiButtonLike): TextLabel?
-	local infoInstance = button:FindFirstChild("info")
-	if infoInstance ~= nil and infoInstance:IsA("TextLabel") then
-		return infoInstance
-	end
-
-	return nil
+local function getHotbarVisibleCapacity(): number
+	return if isMobileHotbarLayout() then MOBILE_VISIBLE_HOTBAR_SLOTS else DESKTOP_VISIBLE_HOTBAR_SLOTS
 end
 
 local function findRequiredChild(parent: Instance, childName: string, className: string): Instance
@@ -189,7 +198,13 @@ local function createSlot(slotIndex: number, itemId: ItemId?, entry: InventoryEn
 		local itemDefinition = ItemCatalog.getItemDefinition(itemId)
 		itemNameLabel.Text = itemDefinition.displayName
 		itemNameLabel.TextWrapped = true
-		countLabel.Text = string.format("x%d", entry.quantity)
+		if slotIndex == HotbarConfig.lockedSlotIndex and itemId == "Scythe" then
+			countLabel.Text = ""
+			iconLabel.Image = SCYTHE_ICON_IMAGE
+			iconLabel.Visible = true
+		else
+			countLabel.Text = string.format("x%d", entry.quantity)
+		end
 	else
 		itemNameLabel.Text = ""
 		countLabel.Text = ""
@@ -273,6 +288,51 @@ local function isDroppedOnInventoryWindow(playerGui: PlayerGui, inventoryWindow:
 	return false
 end
 
+local function getViewportSize(rootGui: ScreenGui, hotbarFrame: Frame): Vector2
+	local currentCamera = Workspace.CurrentCamera
+	if currentCamera ~= nil then
+		local viewportSize = currentCamera.ViewportSize
+		if viewportSize.X > 0 and viewportSize.Y > 0 then
+			return viewportSize
+		end
+	end
+
+	local absoluteSize = rootGui.AbsoluteSize
+	if absoluteSize.X > 0 and absoluteSize.Y > 0 then
+		return absoluteSize
+	end
+
+	return hotbarFrame.AbsoluteSize
+end
+
+local function updateHotbarLayout(rootGui: ScreenGui, hotbarFrame: Frame, hotbarGrid: UIGridLayout?, renderedSlotCount: number)
+	if hotbarGrid == nil then
+		return
+	end
+
+	local visibleCapacity = getHotbarVisibleCapacity()
+	local isMobile = isMobileHotbarLayout()
+	local viewportSize = getViewportSize(rootGui, hotbarFrame)
+	local padding = if isMobile then 6 else 10
+	local targetVisibleSlots = math.max(math.min(renderedSlotCount, visibleCapacity), 1)
+	local horizontalFraction = if isMobile then MOBILE_HOTBAR_HORIZONTAL_FRACTION else DESKTOP_HOTBAR_HORIZONTAL_FRACTION
+	local widthLimitedSlotSize = math.floor(
+		(viewportSize.X * horizontalFraction - padding * math.max(visibleCapacity - 1, 0)) / visibleCapacity
+	)
+	local heightLimitedSlotSize = math.floor(viewportSize.Y * (if isMobile then 0.09 else 0.1))
+	local minSlotSize = if isMobile then MOBILE_MIN_HOTBAR_SLOT_SIZE else DESKTOP_MIN_HOTBAR_SLOT_SIZE
+	local maxSlotSize = if isMobile then MOBILE_MAX_HOTBAR_SLOT_SIZE else DESKTOP_MAX_HOTBAR_SLOT_SIZE
+	local slotSize = math.clamp(math.min(widthLimitedSlotSize, heightLimitedSlotSize), minSlotSize, maxSlotSize)
+	local frameWidth = slotSize * targetVisibleSlots + padding * math.max(targetVisibleSlots - 1, 0)
+	local bottomMargin = if isMobile then MOBILE_HOTBAR_BOTTOM_MARGIN else DESKTOP_HOTBAR_BOTTOM_MARGIN
+
+	hotbarGrid.CellPadding = UDim2.fromOffset(padding, padding)
+	hotbarGrid.CellSize = UDim2.fromOffset(slotSize, slotSize)
+	hotbarFrame.AnchorPoint = Vector2.new(0.5, 1)
+	hotbarFrame.Position = UDim2.new(0.5, 0, 1, -bottomMargin)
+	hotbarFrame.Size = UDim2.fromOffset(frameWidth, slotSize)
+end
+
 local function getRootGui(playerGui: PlayerGui): ScreenGui
 	local rootGui = playerGui:WaitForChild("GUI")
 	assert(rootGui:IsA("ScreenGui"), "PlayerGui.GUI must be a ScreenGui")
@@ -287,21 +347,27 @@ function InventoryBarView.new(): InventoryBarView
 
 	local hud = rootGui:WaitForChild("HUD")
 	assert(hud:IsA("Frame"), "GUI.HUD must be a Frame")
+
+	local topLeft = hud:WaitForChild("TopLeft")
+	assert(topLeft:IsA("Frame"), "GUI.HUD.TopLeft must be a Frame")
+	local openButtonInstance = topLeft:WaitForChild("Inventory")
+	assert(
+		openButtonInstance:IsA("TextButton") or openButtonInstance:IsA("ImageButton"),
+		"GUI.HUD.TopLeft.Inventory must be a TextButton or ImageButton"
+	)
+	local openButton = openButtonInstance :: GuiButtonLike
+
 	local inventoryHud = hud:WaitForChild("Inventory")
 	assert(inventoryHud:IsA("Frame"), "GUI.HUD.Inventory must be a Frame")
 	local hotbarFrame = inventoryHud:WaitForChild("hotBar")
 	assert(hotbarFrame:IsA("Frame"), "GUI.HUD.Inventory.hotBar must be a Frame")
-	local hotbarGrid = hotbarFrame:FindFirstChild("Grid")
-	if hotbarGrid ~= nil and hotbarGrid:IsA("UIGridStyleLayout") then
+	local hotbarGridInstance = hotbarFrame:FindFirstChild("Grid")
+	local hotbarGrid: UIGridLayout? = nil
+	if hotbarGridInstance ~= nil then
+		assert(hotbarGridInstance:IsA("UIGridLayout"), "GUI.HUD.Inventory.hotBar.Grid must be a UIGridLayout")
+		hotbarGrid = hotbarGridInstance
 		hotbarGrid.SortOrder = Enum.SortOrder.LayoutOrder
 	end
-
-	local openButtonInstance = inventoryHud:WaitForChild("openButton")
-	assert(
-		openButtonInstance:IsA("TextButton") or openButtonInstance:IsA("ImageButton"),
-		"GUI.HUD.Inventory.openButton must be a TextButton or ImageButton"
-	)
-	local openButton = openButtonInstance :: GuiButtonLike
 
 	local frames = rootGui:WaitForChild("Frames")
 	assert(frames:IsA("Frame"), "GUI.Frames must be a Frame")
@@ -311,9 +377,10 @@ function InventoryBarView.new(): InventoryBarView
 	assert(window:IsA("GuiObject"), "GUI.Frames.InventoryMenu.Window must be a GuiObject")
 	local inventoryContentFrame = window:WaitForChild("Frame")
 	assert(inventoryContentFrame:IsA("GuiObject"), "GUI.Frames.InventoryMenu.Window.Frame must be a GuiObject")
-	local inventoryGrid = inventoryContentFrame:FindFirstChild("Grid")
-	if inventoryGrid ~= nil and inventoryGrid:IsA("UIGridStyleLayout") then
-		inventoryGrid.SortOrder = Enum.SortOrder.LayoutOrder
+	local inventoryGridInstance = inventoryContentFrame:FindFirstChild("Grid")
+	if inventoryGridInstance ~= nil then
+		assert(inventoryGridInstance:IsA("UIGridLayout"), "GUI.Frames.InventoryMenu.Window.Frame.Grid must be a UIGridLayout")
+		inventoryGridInstance.SortOrder = Enum.SortOrder.LayoutOrder
 	end
 
 	local searchBox = window:WaitForChild("SearchBox")
@@ -346,6 +413,7 @@ function InventoryBarView.new(): InventoryBarView
 		_inventoryMenu = inventoryMenu,
 		_inventoryWindow = window,
 		_hotbarFrame = hotbarFrame,
+		_hotbarGrid = hotbarGrid,
 		_openButton = openButton,
 		_inventoryContentFrame = inventoryContentFrame,
 		_searchBox = searchBox,
@@ -356,6 +424,7 @@ function InventoryBarView.new(): InventoryBarView
 		_currentSnapshot = nil,
 		_dragState = nil,
 		_searchText = searchBox.Text,
+		_renderedHotbarSlotCount = 1,
 		_connections = {},
 		_slotConnections = {},
 		_itemConnections = {},
@@ -387,6 +456,13 @@ function InventoryBarView.new(): InventoryBarView
 
 		self._dragGhostLabel.Position = UDim2.fromOffset(inputObject.Position.X, inputObject.Position.Y)
 	end))
+
+	local currentCamera = Workspace.CurrentCamera
+	if currentCamera ~= nil then
+		table.insert(self._connections, currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
+		end))
+	end
 
 	table.insert(self._connections, UserInputService.InputEnded:Connect(function(inputObject: InputObject)
 		if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
@@ -427,6 +503,8 @@ function InventoryBarView.new(): InventoryBarView
 		end
 	end))
 
+	updateHotbarLayout(rootGui, hotbarFrame, hotbarGrid, 1)
+
 	return self
 end
 
@@ -453,15 +531,6 @@ end
 function InventoryBarView:setInventoryPanelOpen(isOpen: boolean)
 	self._isInventoryPanelOpen = isOpen
 
-	if self._openButton:IsA("TextButton") then
-		self._openButton.Text = getInventoryToggleButtonText(isOpen)
-	end
-
-	local infoLabel = getOpenButtonInfoLabel(self._openButton)
-	if infoLabel ~= nil then
-		infoLabel.Text = getInventoryToggleButtonText(isOpen)
-	end
-
 	self:render(self._currentSnapshot)
 end
 
@@ -487,6 +556,8 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 	self._inventoryItems = {}
 
 	if snapshot == nil then
+		self._renderedHotbarSlotCount = 1
+		updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
 		return
 	end
 
@@ -502,7 +573,6 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
 		local itemId = snapshot.hotbarSlots[slotIndex]
 		if itemId ~= nil then
-			assignedItemIds[itemId] = true
 			table.insert(visibleHotbarSlotIndices, slotIndex)
 		elseif nextEmptyAssignableSlotIndex == nil then
 			nextEmptyAssignableSlotIndex = slotIndex
@@ -512,6 +582,21 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 	if self._isInventoryPanelOpen and nextEmptyAssignableSlotIndex ~= nil then
 		table.insert(visibleHotbarSlotIndices, nextEmptyAssignableSlotIndex)
 	end
+
+	local visibleCapacity = getHotbarVisibleCapacity()
+	while #visibleHotbarSlotIndices > visibleCapacity do
+		table.remove(visibleHotbarSlotIndices)
+	end
+
+	for _, slotIndex in ipairs(visibleHotbarSlotIndices) do
+		local visibleItemId = snapshot.hotbarSlots[slotIndex]
+		if visibleItemId ~= nil then
+			assignedItemIds[visibleItemId] = true
+		end
+	end
+
+	self._renderedHotbarSlotCount = #visibleHotbarSlotIndices
+	updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
 
 	for _, slotIndex in ipairs(visibleHotbarSlotIndices) do
 		local itemId = snapshot.hotbarSlots[slotIndex]
