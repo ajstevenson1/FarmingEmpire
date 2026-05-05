@@ -8,10 +8,12 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local UPDATE_INTERVAL_SECONDS = 0.15
 local COLLECTION_MARGIN_STUDS = 1.5
@@ -103,10 +105,19 @@ local function canAttemptCollection(player: Player, part: BasePart, currentTime:
 	return true
 end
 
+local function isOwnedPartOnAssignedPlot(player: Player, part: BasePart): boolean
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
+		return false
+	end
+
+	local assignedPlotName = PlotService.getAssignedPlotName(player)
+	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
+
 local function collectForPlayer(player: Player, rootPart: BasePart, currentTime: number)
 	for part in pairs(collectableParts) do
 		if part.Parent ~= nil
-			and part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
+			and isOwnedPartOnAssignedPlot(player, part)
 			and isRootOverPart(rootPart, part)
 			and canAttemptCollection(player, part, currentTime)
 		then

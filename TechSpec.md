@@ -21,6 +21,7 @@ Current source folders:
 - `src/shared/Inventory`
 - `src/shared/Networking`
 - `src/shared/Placement`
+- `src/shared/Plots`
 - `src/shared/Resources`
 - `src/server/Buildings`
 - `src/server/Data`
@@ -53,7 +54,7 @@ The project currently includes:
 - Server-authoritative equipped item state
 - Locked `Scythe` tool slot
 - Server-synced Roblox `Tool` presentation for `Scythe`
-- Server-authoritative plot assignment
+- Server-authoritative six-slot plot assignment
 - Grid-based placement using plot-relative coordinates
 - Asset-driven placement previews
 - Hidden building root pattern under `Workspace.PlacedObjects`
@@ -87,7 +88,10 @@ The project does not yet include:
 Only code files are visible in this repository. The current code assumes the following Studio objects exist:
 
 - `Workspace.Plots` as a `Folder`
-- One or more plot `BasePart` children under `Workspace.Plots`
+- Six assignable plot children under `Workspace.Plots`
+- Each plot may be a `BasePart` or a `Model`
+- Model plots should contain a placement base part named `Base`, `PlotBase`, `PlacementBase`, or `Ground`
+- Each plot should contain a spawn part named `SpawnPoint`, `SpawnPart`, or `SpawnLocation`
 - `ReplicatedStorage.Buildings` as a `Folder`
 - `ReplicatedStorage.Buildings.BasicTree` as a `Folder`
 - `ReplicatedStorage.Buildings.BasicTree.Stage0` through `Stage3` as `Model` instances
@@ -159,6 +163,7 @@ Current inventory remotes:
 Current placement remotes:
 
 - `RequestPlacement`
+- `RequestPickup`
 
 Current harvest remotes:
 
@@ -291,20 +296,31 @@ Plots are assigned on the server from `Workspace.Plots`.
 
 Important files:
 
+- `src/shared/Plots/PlotLocator.luau`
 - `src/server/Plots/PlotService.luau`
 
 Current behavior:
 
-- First unclaimed plot is assigned to a joining player.
-- Plots are considered in sorted name order.
+- First unclaimed supported plot slot is assigned to a joining player.
+- The server supports six assignable plot slots.
+- Plots are considered by `Slot` attribute, falling back to plot-name order.
+- Missing or duplicate plot slots are normalized by the server at startup.
 - Plot ownership is stored on plot attributes.
+- Player assignment is mirrored to player attributes for client lookup.
+- The player is teleported to the assigned plot spawn on assignment and respawn.
 - Plot ownership is released when the player leaves.
-- Client placement finds the local player's assigned plot by attribute.
+- Client placement finds the local player's assigned plot through `PlotLocator`.
 
 Current plot attributes:
 
 - `OwnerUserId`
 - `OwnerPlayerName`
+- `Slot`
+
+Current player plot attributes:
+
+- `PlotSlot`
+- `AssignedPlotName`
 
 ## Placement
 Placement is server-authoritative and grid-snapped.
@@ -337,6 +353,7 @@ Current placement/root attributes:
 
 - `OwnerUserId`
 - `PlotName`
+- `PlotSlot`
 - `ItemId`
 - `GridX`
 - `GridZ`
@@ -672,6 +689,7 @@ Current placement/root attributes:
 
 - `OwnerUserId`
 - `PlotName`
+- `PlotSlot`
 - `ItemId`
 - `GridX`
 - `GridZ`

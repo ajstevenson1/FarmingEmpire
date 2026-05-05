@@ -14,6 +14,7 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
+local plotsCodeFolder = sharedFolder:WaitForChild("Plots") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
@@ -22,6 +23,7 @@ local InventoryUtils = require(inventoryFolder:WaitForChild("InventoryUtils") ::
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
+local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
 local PickupController = require(script.Parent.PickupController)
 local PlacementPreviewView = require(script.Parent.PlacementPreviewView)
@@ -38,7 +40,6 @@ type PreviewState = {
 
 local PLOTS_FOLDER_NAME = "Plots"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
-local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
@@ -60,22 +61,13 @@ local function getPlacementRemotes(): PlacementRemotes
 	}
 end
 
-local function getAssignedPlot(): BasePart?
+local function getAssignedPlot(): Instance?
 	local plotsFolder = Workspace:FindFirstChild(PLOTS_FOLDER_NAME)
 	if plotsFolder == nil or not plotsFolder:IsA("Folder") then
 		return nil
 	end
 
-	for _, child in ipairs(plotsFolder:GetChildren()) do
-		if child:IsA("BasePart") then
-			local ownerUserId = child:GetAttribute(OWNER_USER_ID_ATTRIBUTE)
-			if ownerUserId == localPlayer.UserId then
-				return child
-			end
-		end
-	end
-
-	return nil
+	return PlotLocator.getAssignedPlot(plotsFolder, localPlayer)
 end
 
 local function getEquippedPlaceableItem(snapshot: InventorySnapshot): (ItemId?, ItemDefinition?)
@@ -174,27 +166,28 @@ function PlacementController.start()
 		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 
 		local plot = getAssignedPlot()
-		if plot == nil then
+		local plotBase = if plot == nil then nil else PlotLocator.getPlacementBase(plot)
+		if plot == nil or plotBase == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local raycastResult = getPlotRaycastResult(plot)
+		local raycastResult = getPlotRaycastResult(plotBase)
 		if raycastResult == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local grid = PlotMath.worldPositionToGrid(plot.CFrame, plot.Size, placementFootprint, raycastResult.Position)
+		local grid = PlotMath.worldPositionToGrid(plotBase.CFrame, plotBase.Size, placementFootprint, raycastResult.Position)
 		if grid == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, placementFootprint, grid.x, grid.z)
+		local placementCFrame = PlotMath.gridToWorldCFrame(plotBase.CFrame, plotBase.Size, placementFootprint, grid.x, grid.z)
 		if placementCFrame == nil then
 			previewView:hide()
 			currentPreviewState = nil

@@ -13,10 +13,12 @@ local ScytheConfig = require(toolsFolder:WaitForChild("ScytheConfig") :: ModuleS
 local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 
 local hasStarted = false
@@ -81,6 +83,15 @@ local function getSwingOverlapParts(originCFrame: CFrame, placedObjectsFolder: F
 	return overlappingParts
 end
 
+local function isOwnedPartOnAssignedPlot(player: Player, part: BasePart): boolean
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
+		return false
+	end
+
+	local assignedPlotName = PlotService.getAssignedPlotName(player)
+	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
+
 local function handleScytheSwingRequest(player: Player)
 	local now = Workspace:GetServerTimeNow()
 	local nextAllowedSwingTime = nextAllowedSwingByPlayer[player] or 0
@@ -101,7 +112,7 @@ local function handleScytheSwingRequest(player: Player)
 	end
 
 	for _, part in ipairs(getSwingOverlapParts(rootPart.CFrame, placedObjectsFolder)) do
-		if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == player.UserId
+		if isOwnedPartOnAssignedPlot(player, part)
 			and canHarvestWithTool(part)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)

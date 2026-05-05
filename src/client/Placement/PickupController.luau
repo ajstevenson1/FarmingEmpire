@@ -11,8 +11,10 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before starting pickup")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local plotsCodeFolder = sharedFolder:WaitForChild("Plots") :: Folder
 
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local PickupSelectionViewModule = require(script.Parent.PickupSelectionView)
 
 type PickupSelectionView = PickupSelectionViewModule.PickupSelectionView
@@ -24,6 +26,7 @@ type Widgets = {
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 local MAX_PICKUP_DISTANCE_STUDS = 40
 
 local hasStarted = false
@@ -45,6 +48,20 @@ local function getPlacedObjectsFolder(): Folder?
 	end
 
 	return placedObjectsFolder
+end
+
+local function getAssignedPlotName(): string?
+	local plotsFolder = Workspace:FindFirstChild(PlotLocator.PLOTS_FOLDER_NAME)
+	if plotsFolder == nil or not plotsFolder:IsA("Folder") then
+		return nil
+	end
+
+	local assignedPlot = PlotLocator.getAssignedPlot(plotsFolder, localPlayer)
+	if assignedPlot == nil then
+		return nil
+	end
+
+	return assignedPlot.Name
 end
 
 local function getPickupRaycastResult(): RaycastResult?
@@ -118,6 +135,11 @@ local function getCurrentPickupTarget(): BasePart?
 	end
 
 	if placedPart:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= localPlayer.UserId then
+		return nil
+	end
+
+	local assignedPlotName = getAssignedPlotName()
+	if assignedPlotName == nil or placedPart:GetAttribute(PLOT_NAME_ATTRIBUTE) ~= assignedPlotName then
 		return nil
 	end
 

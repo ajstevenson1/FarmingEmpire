@@ -13,6 +13,7 @@ local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") 
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local BuildingVisualService = require(script.Parent.Parent.Buildings.BuildingVisualService)
+local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionBehaviorRegistry = require(script.Parent.ProductionBehaviorRegistry)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
@@ -36,6 +37,7 @@ type TrackedBuilding = {
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 local UPDATE_INTERVAL_SECONDS = 0.25
 
 local trackedBuildingsByPart: { [BasePart]: TrackedBuilding } = {}
@@ -61,7 +63,17 @@ local function getOwnerPlayer(part: BasePart): Player?
 		return nil
 	end
 
-	return Players:GetPlayerByUserId(ownerUserId)
+	local ownerPlayer = Players:GetPlayerByUserId(ownerUserId)
+	if ownerPlayer == nil then
+		return nil
+	end
+
+	local assignedPlotName = PlotService.getAssignedPlotName(ownerPlayer)
+	if assignedPlotName == nil or part:GetAttribute(PLOT_NAME_ATTRIBUTE) ~= assignedPlotName then
+		return nil
+	end
+
+	return ownerPlayer
 end
 
 local function getProductionBehavior(buildingDefinition: BuildingDefinition): ProductionBehavior

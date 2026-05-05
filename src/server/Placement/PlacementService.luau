@@ -36,6 +36,7 @@ type PlacedBuildingData = {
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
+local PLOT_SLOT_ATTRIBUTE = "PlotSlot"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
@@ -121,10 +122,12 @@ end
 
 local function serializePlayerPlacedBuildings(player: Player): { PlacedBuildingData }
 	local placedBuildings: { PlacedBuildingData } = {}
+	local assignedPlotName = PlotService.getAssignedPlotName(player)
 
 	for _, child in ipairs(getPlacedObjectsFolder():GetChildren()) do
 		if child:IsA("BasePart") then
-			local placedBuildingData = getPlacedBuildingDataFromPart(player, child)
+			local isOnAssignedPlot = assignedPlotName == nil or child:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+			local placedBuildingData = if isOnAssignedPlot then getPlacedBuildingDataFromPart(player, child) else nil
 			if placedBuildingData ~= nil then
 				table.insert(placedBuildings, placedBuildingData)
 			end
@@ -159,10 +162,18 @@ local function isPlacementOverlapping(plotName: string, footprint: Vector3, grid
 	return false
 end
 
-local function createPlacedPart(player: Player, plot: BasePart, buildingId: BuildingId, gridX: number, gridZ: number): BasePart?
+local function createPlacedPart(
+	player: Player,
+	plotBase: BasePart,
+	plotName: string,
+	plotSlot: number?,
+	buildingId: BuildingId,
+	gridX: number,
+	gridZ: number
+): BasePart?
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
-	local placementCFrame = PlotMath.gridToWorldCFrame(plot.CFrame, plot.Size, placementFootprint, gridX, gridZ)
+	local placementCFrame = PlotMath.gridToWorldCFrame(plotBase.CFrame, plotBase.Size, placementFootprint, gridX, gridZ)
 	if placementCFrame == nil then
 		return nil
 	end
@@ -180,7 +191,10 @@ local function createPlacedPart(player: Player, plot: BasePart, buildingId: Buil
 	placedPart.TopSurface = Enum.SurfaceType.Smooth
 	placedPart.BottomSurface = Enum.SurfaceType.Smooth
 	placedPart:SetAttribute(OWNER_USER_ID_ATTRIBUTE, player.UserId)
-	placedPart:SetAttribute(PLOT_NAME_ATTRIBUTE, plot.Name)
+	placedPart:SetAttribute(PLOT_NAME_ATTRIBUTE, plotName)
+	if plotSlot ~= nil then
+		placedPart:SetAttribute(PLOT_SLOT_ATTRIBUTE, plotSlot)
+	end
 	placedPart:SetAttribute(ITEM_ID_ATTRIBUTE, buildingId)
 	placedPart:SetAttribute(GRID_X_ATTRIBUTE, gridX)
 	placedPart:SetAttribute(GRID_Z_ATTRIBUTE, gridZ)
@@ -189,15 +203,15 @@ local function createPlacedPart(player: Player, plot: BasePart, buildingId: Buil
 	return placedPart
 end
 
-local function canPlaceBuildingOnPlot(plot: BasePart, buildingId: BuildingId, gridX: number, gridZ: number): boolean
+local function canPlaceBuildingOnPlot(plotBase: BasePart, plotName: string, buildingId: BuildingId, gridX: number, gridZ: number): boolean
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 
-	if not PlotMath.isGridWithinPlot(plot.Size, placementFootprint, gridX, gridZ) then
+	if not PlotMath.isGridWithinPlot(plotBase.Size, placementFootprint, gridX, gridZ) then
 		return false
 	end
 
-	if isPlacementOverlapping(plot.Name, placementFootprint, gridX, gridZ) then
+	if isPlacementOverlapping(plotName, placementFootprint, gridX, gridZ) then
 		return false
 	end
 
@@ -212,18 +226,20 @@ local function loadPlayerPlacedBuildings(player: Player)
 	loadedPlayers[player] = true
 	PlayerDataService.waitForData(player)
 
-	local plot = PlotService.waitForAssignedPlot(player, 10)
-	if plot == nil then
+	local plotBase = PlotService.waitForAssignedPlotBase(player, 10)
+	local plotName = PlotService.getAssignedPlotName(player)
+	if plotBase == nil or plotName == nil then
 		loadedPlayers[player] = nil
 		return
 	end
+	local plotSlot = PlotService.getAssignedSlot(player)
 
 	local savedPlacedBuildings = PlayerDataService.getPlacedBuildings(player)
 	local loadedCount = 0
 	for _, placedBuilding in ipairs(savedPlacedBuildings) do
 		local buildingId = placedBuilding.buildingId
-		if canPlaceBuildingOnPlot(plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ) then
-			local placedPart = createPlacedPart(player, plot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
+		if canPlaceBuildingOnPlot(plotBase, plotName, buildingId, placedBuilding.gridX, placedBuilding.gridZ) then
+			local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
 			if placedPart ~= nil then
 				ProductionService.registerPlacedBuilding(placedPart, buildingId, placedBuilding.production)
 				loadedCount += 1
@@ -260,10 +276,12 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 
 	local gridX = requestedGridX
 	local gridZ = requestedGridZ
-	local plot = PlotService.getAssignedPlot(player)
-	if plot == nil then
+	local plotBase = PlotService.getAssignedPlotBase(player)
+	local plotName = PlotService.getAssignedPlotName(player)
+	if plotBase == nil or plotName == nil then
 		return
 	end
+	local plotSlot = PlotService.getAssignedSlot(player)
 
 	local itemId = InventoryService.getEquippedItemId(player)
 	if itemId == nil then
@@ -276,7 +294,7 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 	end
 
 	local buildingId = itemId :: BuildingId
-	if not canPlaceBuildingOnPlot(plot, buildingId, gridX, gridZ) then
+	if not canPlaceBuildingOnPlot(plotBase, plotName, buildingId, gridX, gridZ) then
 		return
 	end
 
@@ -284,7 +302,7 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	local placedPart = createPlacedPart(player, plot, buildingId, gridX, gridZ)
+	local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, gridX, gridZ)
 	if placedPart == nil then
 		return
 	end
@@ -304,6 +322,11 @@ local function handlePickupRequest(player: Player, requestedTarget: unknown)
 	end
 
 	if placedPart:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
+		return
+	end
+
+	local assignedPlotName = PlotService.getAssignedPlotName(player)
+	if assignedPlotName == nil or placedPart:GetAttribute(PLOT_NAME_ATTRIBUTE) ~= assignedPlotName then
 		return
 	end
 
