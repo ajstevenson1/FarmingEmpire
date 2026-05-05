@@ -11,7 +11,7 @@ type InventoryRemotes = {
 	getInventorySnapshot: RemoteFunction,
 	setSelectedSlot: RemoteEvent,
 	assignHotbarSlot: RemoteEvent,
-	clearHotbarSlot: RemoteEvent,
+	unassignHotbarItem: RemoteEvent,
 }
 
 type ResourceRemotes = {
@@ -102,7 +102,7 @@ function Remotes.getInventoryRemotes(): InventoryRemotes
 		getInventorySnapshot = getOrCreateRemoteFunction(inventoryFolder, RemoteNames.getInventorySnapshotFunctionName),
 		setSelectedSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.setSelectedSlotEventName),
 		assignHotbarSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.assignHotbarSlotEventName),
-		clearHotbarSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.clearHotbarSlotEventName),
+		unassignHotbarItem = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.unassignHotbarItemEventName),
 	}
 
 	return cachedInventoryRemotes

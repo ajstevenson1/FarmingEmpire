@@ -12,6 +12,7 @@ local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") ::
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local InventoryBarView = require(script.Parent.InventoryBarView)
+local FrameManager = require(script.Parent.Parent.UI.FrameManager)
 
 type InventorySnapshot = InventoryTypes.InventorySnapshot
 type ItemId = InventoryTypes.ItemId
@@ -20,6 +21,9 @@ type InventoryBarViewInstance = InventoryBarView.InventoryBarView
 local hasStarted = false
 local latestSnapshot: InventorySnapshot? = nil
 local snapshotChangedListeners: { (InventorySnapshot) -> () } = {}
+local INVENTORY_FRAME_ID = "InventoryMenu"
+local MENU_FRAME_GROUP = "Menu"
+local INVENTORY_TOGGLE_KEYCODE = Enum.KeyCode.Backquote
 
 local HOTBAR_KEYCODES: { [Enum.KeyCode]: number } = {
 	[Enum.KeyCode.One] = 2,
@@ -47,9 +51,9 @@ local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent,
 	local getInventorySnapshot = remotesFolder:WaitForChild(RemoteNames.getInventorySnapshotFunctionName) :: RemoteFunction
 	local setSelectedSlot = remotesFolder:WaitForChild(RemoteNames.setSelectedSlotEventName) :: RemoteEvent
 	local assignHotbarSlot = remotesFolder:WaitForChild(RemoteNames.assignHotbarSlotEventName) :: RemoteEvent
-	local clearHotbarSlot = remotesFolder:WaitForChild(RemoteNames.clearHotbarSlotEventName) :: RemoteEvent
+	local unassignHotbarItem = remotesFolder:WaitForChild(RemoteNames.unassignHotbarItemEventName) :: RemoteEvent
 
-	return inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, clearHotbarSlot
+	return inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem
 end
 
 local function publishSnapshot(snapshot: InventorySnapshot, view: InventoryBarViewInstance)
@@ -78,6 +82,18 @@ local function requestSlotSelection(snapshot: InventorySnapshot, slotIndex: numb
 	setSelectedSlot:FireServer(nextSelectedSlotIndex)
 end
 
+local function getClosedInventoryPanelPosition(panel: Frame): UDim2
+	local openPosition = panel.Position
+	local panelHeight = math.max(panel.AbsoluteSize.Y, panel.Size.Y.Offset, 64)
+	local verticalPadding = 48
+	return UDim2.new(
+		openPosition.X.Scale,
+		openPosition.X.Offset,
+		1,
+		panelHeight + verticalPadding
+	)
+end
+
 local InventoryController = {}
 
 function InventoryController.start()
@@ -90,10 +106,27 @@ function InventoryController.start()
 	disableDefaultBackpack()
 
 	local view = InventoryBarView.new()
-	local inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, clearHotbarSlot = getInventoryRemotes()
+	local inventoryPanel = view:getInventoryPanel()
+	FrameManager.registerFrame({
+		id = INVENTORY_FRAME_ID,
+		frame = inventoryPanel,
+		group = MENU_FRAME_GROUP,
+		defaultOpen = false,
+		closedPosition = getClosedInventoryPanelPosition(inventoryPanel),
+	})
+
+	local inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem = getInventoryRemotes()
 	local initialSnapshot = getInventorySnapshot:InvokeServer() :: InventorySnapshot
 
+	FrameManager.observeFrameState(INVENTORY_FRAME_ID, function(isOpen: boolean)
+		view:setInventoryPanelOpen(isOpen)
+	end)
+
 	publishSnapshot(initialSnapshot, view)
+
+	view:connectInventoryToggleRequested(function()
+		FrameManager.toggle(INVENTORY_FRAME_ID)
+	end)
 
 	view:connectSlotActivated(function(slotIndex: number)
 		local currentSnapshot = latestSnapshot
@@ -108,8 +141,8 @@ function InventoryController.start()
 		assignHotbarSlot:FireServer(slotIndex, itemId)
 	end)
 
-	view:connectHotbarClearRequested(function(slotIndex: number)
-		clearHotbarSlot:FireServer(slotIndex)
+	view:connectHotbarUnassignRequested(function(itemId: ItemId)
+		unassignHotbarItem:FireServer(itemId)
 	end)
 
 	inventoryUpdated.OnClientEvent:Connect(function(snapshot: InventorySnapshot)
@@ -122,6 +155,11 @@ function InventoryController.start()
 		end
 
 		if UserInputService:GetFocusedTextBox() ~= nil then
+			return
+		end
+
+		if inputObject.KeyCode == INVENTORY_TOGGLE_KEYCODE then
+			FrameManager.toggle(INVENTORY_FRAME_ID)
 			return
 		end
 

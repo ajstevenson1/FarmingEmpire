@@ -42,6 +42,7 @@ local InventoryService = {}
 local playerInventories: { [Player]: PlayerInventoryState } = {}
 local selectedItemChangedListeners: { (Player, ItemId?) -> () } = {}
 local hasStarted = false
+local MAX_ASSIGNABLE_SLOTS = HotbarConfig.lastSlotIndex - HotbarConfig.firstAssignableSlotIndex + 1
 
 local function createInventoryState(): PlayerInventoryState
 	return {
@@ -70,14 +71,68 @@ local function playerHasItem(state: PlayerInventoryState, itemId: ItemId): boole
 	return getItemQuantity(state, itemId) > 0
 end
 
-local function findAssignedSlotIndex(state: PlayerInventoryState, itemId: ItemId): number?
+local function getSelectedItemIdFromState(state: PlayerInventoryState): ItemId?
+	local selectedSlotIndex = state.selectedSlotIndex
+	if selectedSlotIndex == nil then
+		return nil
+	end
+
+	return state.hotbarSlots[selectedSlotIndex]
+end
+
+local function getAssignedHotbarItems(state: PlayerInventoryState): { ItemId }
+	local assignedItems: { ItemId } = {}
+	local seenAssignedItems: { [ItemId]: boolean } = {
+		Scythe = true,
+	}
+
 	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
-		if state.hotbarSlots[slotIndex] == itemId then
-			return slotIndex
+		local itemId = state.hotbarSlots[slotIndex]
+		if itemId == nil then
+			continue
+		end
+
+		if itemId == "Scythe" or not playerHasItem(state, itemId) or seenAssignedItems[itemId] == true then
+			continue
+		end
+
+		seenAssignedItems[itemId] = true
+		table.insert(assignedItems, itemId)
+	end
+
+	return assignedItems
+end
+
+local function applyAssignedHotbarItems(state: PlayerInventoryState, assignedItems: { ItemId }, selectedItemId: ItemId?)
+	state.hotbarSlots[HotbarConfig.lockedSlotIndex] = "Scythe"
+
+	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+		state.hotbarSlots[slotIndex] = nil
+	end
+
+	for index, itemId in ipairs(assignedItems) do
+		if index > MAX_ASSIGNABLE_SLOTS then
+			break
+		end
+
+		state.hotbarSlots[HotbarConfig.firstAssignableSlotIndex + index - 1] = itemId
+	end
+
+	if selectedItemId == "Scythe" then
+		state.selectedSlotIndex = HotbarConfig.lockedSlotIndex
+		return
+	end
+
+	if selectedItemId ~= nil then
+		for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+			if state.hotbarSlots[slotIndex] == selectedItemId then
+				state.selectedSlotIndex = slotIndex
+				return
+			end
 		end
 	end
 
-	return nil
+	state.selectedSlotIndex = nil
 end
 
 local function sanitizeState(state: PlayerInventoryState)
@@ -85,40 +140,8 @@ local function sanitizeState(state: PlayerInventoryState)
 		state.quantitiesByItemId.Scythe = 1
 	end
 
-	state.hotbarSlots[HotbarConfig.lockedSlotIndex] = "Scythe"
-
-	local seenAssignedItems: { [ItemId]: boolean } = {
-		Scythe = true,
-	}
-
-	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
-		local itemId = state.hotbarSlots[slotIndex]
-		if itemId ~= nil then
-			local isInvalidAssignment = itemId == "Scythe"
-				or not playerHasItem(state, itemId)
-				or seenAssignedItems[itemId] == true
-
-			if isInvalidAssignment then
-				state.hotbarSlots[slotIndex] = nil
-			else
-				seenAssignedItems[itemId] = true
-			end
-		end
-	end
-
-	local selectedSlotIndex = state.selectedSlotIndex
-	if selectedSlotIndex == nil then
-		return
-	end
-
-	if not HotbarConfig.isSlotIndexInRange(selectedSlotIndex) then
-		state.selectedSlotIndex = nil
-		return
-	end
-
-	if state.hotbarSlots[selectedSlotIndex] == nil then
-		state.selectedSlotIndex = nil
-	end
+	local selectedItemId = getSelectedItemIdFromState(state)
+	applyAssignedHotbarItems(state, getAssignedHotbarItems(state), selectedItemId)
 end
 
 local function removeItem(state: PlayerInventoryState, itemId: ItemId, quantity: number): boolean
@@ -324,6 +347,7 @@ end
 local function assignItemToHotbarSlot(player: Player, requestedSlotIndex: number, requestedItemId: ItemId)
 	local inventoryState = getPlayerInventoryState(player)
 	sanitizeState(inventoryState)
+	local previousItemId = InventoryService.getEquippedItemId(player)
 
 	if not HotbarConfig.isAssignableSlotIndex(requestedSlotIndex) then
 		pushInventoryUpdate(player)
@@ -335,39 +359,61 @@ local function assignItemToHotbarSlot(player: Player, requestedSlotIndex: number
 		return
 	end
 
-	local sourceSlotIndex = findAssignedSlotIndex(inventoryState, requestedItemId)
-	local targetItemId = inventoryState.hotbarSlots[requestedSlotIndex]
-
-	if sourceSlotIndex == requestedSlotIndex then
-		pushInventoryUpdate(player)
-		return
+	local assignedItems = getAssignedHotbarItems(inventoryState)
+	local existingIndex: number? = nil
+	for index, itemId in ipairs(assignedItems) do
+		if itemId == requestedItemId then
+			existingIndex = index
+			table.remove(assignedItems, index)
+			break
+		end
 	end
 
-	inventoryState.hotbarSlots[requestedSlotIndex] = requestedItemId
+	local insertIndex = requestedSlotIndex - HotbarConfig.firstAssignableSlotIndex + 1
+	insertIndex = math.clamp(insertIndex, 1, #assignedItems + 1)
 
-	if sourceSlotIndex ~= nil then
-		inventoryState.hotbarSlots[sourceSlotIndex] = targetItemId
+	if existingIndex == nil and #assignedItems >= MAX_ASSIGNABLE_SLOTS then
+		table.remove(assignedItems, math.min(insertIndex, #assignedItems))
 	end
 
-	sanitizeState(inventoryState)
+	table.insert(assignedItems, insertIndex, requestedItemId)
+	while #assignedItems > MAX_ASSIGNABLE_SLOTS do
+		table.remove(assignedItems)
+	end
+
+	applyAssignedHotbarItems(inventoryState, assignedItems, previousItemId)
 	syncInventoryStateToPlayerData(player, inventoryState)
+	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 	pushInventoryUpdate(player)
 end
 
-local function clearHotbarSlot(player: Player, requestedSlotIndex: number)
+local function unassignHotbarItem(player: Player, requestedItemId: ItemId)
 	local inventoryState = getPlayerInventoryState(player)
-	if not HotbarConfig.isAssignableSlotIndex(requestedSlotIndex) then
+	sanitizeState(inventoryState)
+	local previousItemId = InventoryService.getEquippedItemId(player)
+
+	if requestedItemId == "Scythe" then
 		pushInventoryUpdate(player)
 		return
 	end
 
-	local previousItemId = InventoryService.getEquippedItemId(player)
-	inventoryState.hotbarSlots[requestedSlotIndex] = nil
-	if inventoryState.selectedSlotIndex == requestedSlotIndex then
-		inventoryState.selectedSlotIndex = nil
+	local assignedItems = getAssignedHotbarItems(inventoryState)
+	local didRemove = false
+	for index, itemId in ipairs(assignedItems) do
+		if itemId == requestedItemId then
+			table.remove(assignedItems, index)
+			didRemove = true
+			break
+		end
 	end
 
-	sanitizeState(inventoryState)
+	if not didRemove then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	local nextSelectedItemId = if previousItemId == requestedItemId then nil else previousItemId
+	applyAssignedHotbarItems(inventoryState, assignedItems, nextSelectedItemId)
 	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
 	syncInventoryStateToPlayerData(player, inventoryState)
 	pushInventoryUpdate(player)
@@ -424,13 +470,18 @@ function InventoryService.start()
 		assignItemToHotbarSlot(player, requestedSlotIndex, requestedItemId :: ItemId)
 	end)
 
-	inventoryRemotes.clearHotbarSlot.OnServerEvent:Connect(function(player: Player, requestedSlotIndex: unknown)
-		if type(requestedSlotIndex) ~= "number" then
+	inventoryRemotes.unassignHotbarItem.OnServerEvent:Connect(function(player: Player, requestedItemId: unknown)
+		if type(requestedItemId) ~= "string" then
 			pushInventoryUpdate(player)
 			return
 		end
 
-		clearHotbarSlot(player, requestedSlotIndex)
+		if not ItemCatalog.hasItemDefinition(requestedItemId) then
+			pushInventoryUpdate(player)
+			return
+		end
+
+		unassignHotbarItem(player, requestedItemId :: ItemId)
 	end)
 
 	Players.PlayerAdded:Connect(initializePlayer)
