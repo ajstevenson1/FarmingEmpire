@@ -7,20 +7,23 @@ type GuiButtonLike = TextButton | ImageButton
 
 type VariantConfig = {
 	hoverSizeDelta: UDim2,
-	hoverStrokeColor: Color3,
+	hoverStrokeColor: Color3?,
+	hoverImageRotationRange: NumberRange?,
 	tweenInfo: TweenInfo,
 }
 
 type BoundButtonState = {
 	button: GuiButtonLike,
-	designFrame: GuiObject,
-	stroke: UIStroke,
+	stroke: UIStroke?,
+	imageLabel: ImageLabel?,
 	config: VariantConfig,
 	defaultAutoButtonColor: boolean,
 	defaultSize: UDim2,
-	defaultStrokeColor: Color3,
+	defaultStrokeColor: Color3?,
+	defaultImageRotation: number?,
 	activeSizeTween: Tween?,
 	activeStrokeTween: Tween?,
+	activeImageTween: Tween?,
 	connections: { RBXScriptConnection },
 }
 
@@ -38,11 +41,17 @@ local VARIANT_CONFIGS: { [string]: VariantConfig } = {
 		hoverStrokeColor = Color3.fromRGB(255, 255, 255),
 		tweenInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 	},
+	Side = {
+		hoverSizeDelta = UDim2.fromScale(0.05, 0.05),
+		hoverImageRotationRange = NumberRange.new(-30, 30),
+		tweenInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	},
 }
 
 local hasStarted = false
 local rootConnection: RBXScriptConnection? = nil
 local boundStatesByButton: { [GuiButtonLike]: BoundButtonState } = {}
+local randomGenerator = Random.new()
 
 local function isGuiButtonLike(instance: Instance): boolean
 	return instance:IsA("TextButton") or instance:IsA("ImageButton")
@@ -85,6 +94,20 @@ local function getStroke(designFrame: GuiObject): UIStroke?
 	return stroke
 end
 
+local function getImageLabel(button: GuiButtonLike): ImageLabel?
+	local imageLabel = button:FindFirstChild("Image", true)
+	if imageLabel == nil then
+		return nil
+	end
+
+	if not imageLabel:IsA("ImageLabel") then
+		warn(string.format("%s.Image must be an ImageLabel for hover styling", button:GetFullName()))
+		return nil
+	end
+
+	return imageLabel
+end
+
 local function addSizeDelta(size: UDim2, sizeDelta: UDim2): UDim2
 	return UDim2.new(
 		size.X.Scale + sizeDelta.X.Scale,
@@ -106,6 +129,12 @@ local function cancelTweens(boundState: BoundButtonState)
 		activeStrokeTween:Cancel()
 		boundState.activeStrokeTween = nil
 	end
+
+	local activeImageTween = boundState.activeImageTween
+	if activeImageTween ~= nil then
+		activeImageTween:Cancel()
+		boundState.activeImageTween = nil
+	end
 end
 
 local function tweenToState(boundState: BoundButtonState, isHovered: boolean)
@@ -114,20 +143,38 @@ local function tweenToState(boundState: BoundButtonState, isHovered: boolean)
 	local targetSize = if isHovered
 		then addSizeDelta(boundState.defaultSize, boundState.config.hoverSizeDelta)
 		else boundState.defaultSize
-	local targetStrokeColor = if isHovered then boundState.config.hoverStrokeColor else boundState.defaultStrokeColor
-
 	local sizeTween = TweenService:Create(boundState.button, boundState.config.tweenInfo, {
 		Size = targetSize,
 	})
-	local strokeTween = TweenService:Create(boundState.stroke, boundState.config.tweenInfo, {
-		Color = targetStrokeColor,
-	})
 
 	boundState.activeSizeTween = sizeTween
-	boundState.activeStrokeTween = strokeTween
-
 	sizeTween:Play()
-	strokeTween:Play()
+
+	local stroke = boundState.stroke
+	local defaultStrokeColor = boundState.defaultStrokeColor
+	local hoverStrokeColor = boundState.config.hoverStrokeColor
+	if stroke ~= nil and defaultStrokeColor ~= nil and hoverStrokeColor ~= nil then
+		local targetStrokeColor = if isHovered then hoverStrokeColor else defaultStrokeColor
+		local strokeTween = TweenService:Create(stroke, boundState.config.tweenInfo, {
+			Color = targetStrokeColor,
+		})
+		boundState.activeStrokeTween = strokeTween
+		strokeTween:Play()
+	end
+
+	local imageLabel = boundState.imageLabel
+	local defaultImageRotation = boundState.defaultImageRotation
+	local hoverImageRotationRange = boundState.config.hoverImageRotationRange
+	if imageLabel ~= nil and defaultImageRotation ~= nil and hoverImageRotationRange ~= nil then
+		local targetRotation = if isHovered
+			then randomGenerator:NextNumber(hoverImageRotationRange.Min, hoverImageRotationRange.Max)
+			else defaultImageRotation
+		local imageTween = TweenService:Create(imageLabel, boundState.config.tweenInfo, {
+			Rotation = targetRotation,
+		})
+		boundState.activeImageTween = imageTween
+		imageTween:Play()
+	end
 end
 
 local function unbindButton(button: GuiButtonLike)
@@ -138,8 +185,19 @@ local function unbindButton(button: GuiButtonLike)
 
 	cancelTweens(boundState)
 	boundState.button.Size = boundState.defaultSize
-	boundState.stroke.Color = boundState.defaultStrokeColor
 	boundState.button.AutoButtonColor = boundState.defaultAutoButtonColor
+
+	local stroke = boundState.stroke
+	local defaultStrokeColor = boundState.defaultStrokeColor
+	if stroke ~= nil and defaultStrokeColor ~= nil then
+		stroke.Color = defaultStrokeColor
+	end
+
+	local imageLabel = boundState.imageLabel
+	local defaultImageRotation = boundState.defaultImageRotation
+	if imageLabel ~= nil and defaultImageRotation ~= nil then
+		imageLabel.Rotation = defaultImageRotation
+	end
 
 	for _, connection in ipairs(boundState.connections) do
 		connection:Disconnect()
@@ -158,26 +216,47 @@ local function bindButton(button: GuiButtonLike)
 		return
 	end
 
-	local designFrame = getDesignFrame(button)
-	if designFrame == nil then
-		return
+	local stroke: UIStroke? = nil
+	local defaultStrokeColor: Color3? = nil
+	local hoverStrokeColor = variantConfig.hoverStrokeColor
+	if hoverStrokeColor ~= nil then
+		local designFrame = getDesignFrame(button)
+		if designFrame == nil then
+			return
+		end
+
+		stroke = getStroke(designFrame)
+		if stroke == nil then
+			return
+		end
+
+		defaultStrokeColor = stroke.Color
 	end
 
-	local stroke = getStroke(designFrame)
-	if stroke == nil then
-		return
+	local imageLabel: ImageLabel? = nil
+	local defaultImageRotation: number? = nil
+	local hoverImageRotationRange = variantConfig.hoverImageRotationRange
+	if hoverImageRotationRange ~= nil then
+		imageLabel = getImageLabel(button)
+		if imageLabel == nil then
+			return
+		end
+
+		defaultImageRotation = imageLabel.Rotation
 	end
 
 	local boundState: BoundButtonState = {
 		button = button,
-		designFrame = designFrame,
 		stroke = stroke,
+		imageLabel = imageLabel,
 		config = variantConfig,
 		defaultAutoButtonColor = button.AutoButtonColor,
 		defaultSize = button.Size,
-		defaultStrokeColor = stroke.Color,
+		defaultStrokeColor = defaultStrokeColor,
+		defaultImageRotation = defaultImageRotation,
 		activeSizeTween = nil,
 		activeStrokeTween = nil,
+		activeImageTween = nil,
 		connections = {},
 	}
 

@@ -6,7 +6,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local localPlayer = Players.LocalPlayer
-assert(localPlayer ~= nil, "LocalPlayer must exist before starting pickup")
+assert(localPlayer ~= nil, "LocalPlayer must exist before starting sell")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
@@ -23,24 +23,24 @@ type Widgets = {
 	stroke: UIStroke,
 }
 
-local PICKUP_MODE_ID = "Pickup"
-local PICKUP_SELECTION_BOX_COLOR = Color3.fromRGB(112, 212, 123)
-local PICKUP_SELECTION_BOX_NAME = "PickupSelectionBox"
+local SELL_MODE_ID = "Sell"
+local SELL_SELECTION_BOX_COLOR = Color3.fromRGB(214, 72, 72)
+local SELL_SELECTION_BOX_NAME = "SellSelectionBox"
 
 local hasStarted = false
 local widgets: Widgets? = nil
 local selectionView: StructureSelectionView? = nil
-local currentPickupTarget: BasePart? = nil
+local currentSellTarget: BasePart? = nil
 local connections: { RBXScriptConnection } = {}
 local disconnectModeObserver: (() -> ())? = nil
 
 local ACTIVE_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
 local INACTIVE_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
 
-local function getRequestPickupRemote(): RemoteEvent
+local function getRequestSellRemote(): RemoteEvent
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local placementRemotesFolder = rootFolder:WaitForChild(RemoteNames.placementFolderName) :: Folder
-	return placementRemotesFolder:WaitForChild(RemoteNames.requestPickupEventName) :: RemoteEvent
+	return placementRemotesFolder:WaitForChild(RemoteNames.requestSellEventName) :: RemoteEvent
 end
 
 local function getSetSelectedSlotRemote(): RemoteEvent
@@ -49,8 +49,8 @@ local function getSetSelectedSlotRemote(): RemoteEvent
 	return inventoryRemotesFolder:WaitForChild(RemoteNames.setSelectedSlotEventName) :: RemoteEvent
 end
 
-local function clearPickupTarget()
-	currentPickupTarget = nil
+local function clearSellTarget()
+	currentSellTarget = nil
 
 	local currentSelectionView = selectionView
 	if currentSelectionView ~= nil then
@@ -58,38 +58,38 @@ local function clearPickupTarget()
 	end
 end
 
-local function isPickupModeEnabled(): boolean
-	return StructureActionMode.isModeActive(PICKUP_MODE_ID)
+local function isSellModeEnabled(): boolean
+	return StructureActionMode.isModeActive(SELL_MODE_ID)
 end
 
-local function updatePickupSelection()
+local function updateSellSelection()
 	local currentSelectionView = selectionView
 	if currentSelectionView == nil then
 		return
 	end
 
-	if not isPickupModeEnabled() or UserInputService:GetFocusedTextBox() ~= nil then
-		clearPickupTarget()
+	if not isSellModeEnabled() or UserInputService:GetFocusedTextBox() ~= nil then
+		clearSellTarget()
 		return
 	end
 
-	local pickupTarget = PlacedBuildingTargeting.getCurrentTarget(localPlayer)
-	if pickupTarget == nil then
-		clearPickupTarget()
+	local sellTarget = PlacedBuildingTargeting.getCurrentTarget(localPlayer)
+	if sellTarget == nil then
+		clearSellTarget()
 		return
 	end
 
-	currentPickupTarget = pickupTarget
-	currentSelectionView:show(pickupTarget)
+	currentSellTarget = sellTarget
+	currentSelectionView:show(sellTarget)
 end
 
 local function renderButton(buttonWidgets: Widgets)
-	buttonWidgets.stroke.Color = if isPickupModeEnabled() then ACTIVE_STROKE_COLOR else INACTIVE_STROKE_COLOR
+	buttonWidgets.stroke.Color = if isSellModeEnabled() then ACTIVE_STROKE_COLOR else INACTIVE_STROKE_COLOR
 end
 
 local function handleModeChanged(_mode: StructureActionMode.StructureActionModeId)
-	if not isPickupModeEnabled() then
-		clearPickupTarget()
+	if not isSellModeEnabled() then
+		clearSellTarget()
 	end
 
 	local currentWidgets = widgets
@@ -106,16 +106,16 @@ end
 
 local function findStroke(button: TextButton): UIStroke
 	local designFrame = button:FindFirstChild("Design")
-	assert(designFrame ~= nil, "GUI.HUD.Right.Pickup must contain a Design child")
-	assert(designFrame:IsA("GuiObject"), "GUI.HUD.Right.Pickup.Design must be a GuiObject")
+	assert(designFrame ~= nil, "GUI.HUD.Right.Sell must contain a Design child")
+	assert(designFrame:IsA("GuiObject"), "GUI.HUD.Right.Sell.Design must be a GuiObject")
 
 	local stroke = designFrame:FindFirstChild("Stroke")
-	assert(stroke ~= nil, "GUI.HUD.Right.Pickup.Design must contain a Stroke child")
-	assert(stroke:IsA("UIStroke"), "GUI.HUD.Right.Pickup.Design.Stroke must be a UIStroke")
+	assert(stroke ~= nil, "GUI.HUD.Right.Sell.Design must contain a Stroke child")
+	assert(stroke:IsA("UIStroke"), "GUI.HUD.Right.Sell.Design.Stroke must be a UIStroke")
 	return stroke
 end
 
-local function getPickupButton(): Widgets
+local function getSellButton(): Widgets
 	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local rootGui = getGuiRoot(playerGui)
 
@@ -125,8 +125,8 @@ local function getPickupButton(): Widgets
 	local rightFrame = hud:WaitForChild("Right")
 	assert(rightFrame:IsA("Frame"), "GUI.HUD.Right must be a Frame")
 
-	local button = rightFrame:WaitForChild("Pickup")
-	assert(button:IsA("TextButton"), "GUI.HUD.Right.Pickup must be a TextButton")
+	local button = rightFrame:WaitForChild("Sell")
+	assert(button:IsA("TextButton"), "GUI.HUD.Right.Sell must be a TextButton")
 	local stroke = findStroke(button)
 
 	local buttonWidgets = {
@@ -136,44 +136,41 @@ local function getPickupButton(): Widgets
 
 	renderButton(buttonWidgets)
 
-	return {
-		button = button,
-		stroke = stroke,
-	}
+	return buttonWidgets
 end
 
-local PickupController = {}
+local SellController = {}
 
-function PickupController.start()
+function SellController.start()
 	if hasStarted then
 		return
 	end
 
 	hasStarted = true
 
-	local pickupWidgets = getPickupButton()
-	widgets = pickupWidgets
-	selectionView = StructureSelectionViewModule.new(PICKUP_SELECTION_BOX_NAME, PICKUP_SELECTION_BOX_COLOR)
-	local requestPickupRemote = getRequestPickupRemote()
+	local sellWidgets = getSellButton()
+	widgets = sellWidgets
+	selectionView = StructureSelectionViewModule.new(SELL_SELECTION_BOX_NAME, SELL_SELECTION_BOX_COLOR)
+	local requestSellRemote = getRequestSellRemote()
 	local setSelectedSlotRemote = getSetSelectedSlotRemote()
 	disconnectModeObserver = StructureActionMode.observeModeChanged(handleModeChanged)
 
-	table.insert(connections, pickupWidgets.button.Activated:Connect(function()
-		local nextIsEnabled = not isPickupModeEnabled()
-		StructureActionMode.setMode(if nextIsEnabled then PICKUP_MODE_ID else "None")
+	table.insert(connections, sellWidgets.button.Activated:Connect(function()
+		local nextIsEnabled = not isSellModeEnabled()
+		StructureActionMode.setMode(if nextIsEnabled then SELL_MODE_ID else "None")
 		if nextIsEnabled then
 			setSelectedSlotRemote:FireServer(nil)
 		end
 	end))
 
-	table.insert(connections, RunService.RenderStepped:Connect(updatePickupSelection))
+	table.insert(connections, RunService.RenderStepped:Connect(updateSellSelection))
 
 	table.insert(connections, UserInputService.InputBegan:Connect(function(inputObject: InputObject, gameProcessedEvent: boolean)
 		if gameProcessedEvent then
 			return
 		end
 
-		if not isPickupModeEnabled() then
+		if not isSellModeEnabled() then
 			return
 		end
 
@@ -185,29 +182,29 @@ function PickupController.start()
 			return
 		end
 
-		local pickupTarget = currentPickupTarget
-		if pickupTarget == nil then
+		local sellTarget = currentSellTarget
+		if sellTarget == nil then
 			return
 		end
 
-		requestPickupRemote:FireServer(pickupTarget)
-		clearPickupTarget()
+		requestSellRemote:FireServer(sellTarget)
+		clearSellTarget()
 	end))
 end
 
-function PickupController.isPickupModeEnabled(): boolean
-	return isPickupModeEnabled()
+function SellController.isSellModeEnabled(): boolean
+	return isSellModeEnabled()
 end
 
-function PickupController.disablePickupMode()
-	if isPickupModeEnabled() then
+function SellController.disableSellMode()
+	if isSellModeEnabled() then
 		StructureActionMode.clearMode()
 	end
 end
 
-function PickupController.destroy()
-	local pickupWidgets = widgets
-	if pickupWidgets == nil then
+function SellController.destroy()
+	local sellWidgets = widgets
+	if sellWidgets == nil then
 		return
 	end
 
@@ -221,7 +218,7 @@ function PickupController.destroy()
 		disconnectModeObserver = nil
 	end
 
-	PickupController.disablePickupMode()
+	SellController.disableSellMode()
 
 	local currentSelectionView = selectionView
 	if currentSelectionView ~= nil then
@@ -233,4 +230,4 @@ function PickupController.destroy()
 	hasStarted = false
 end
 
-return table.freeze(PickupController)
+return table.freeze(SellController)

@@ -16,6 +16,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
@@ -31,6 +32,11 @@ type PlacedBuildingData = {
 	gridX: number,
 	gridZ: number,
 	production: SavedProductionState?,
+}
+
+type ValidatedPlacedBuildingTarget = {
+	part: BasePart,
+	buildingId: BuildingId,
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
@@ -311,43 +317,72 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ)
 end
 
-local function handlePickupRequest(player: Player, requestedTarget: unknown)
+local function resolveValidatedPlacedBuildingTarget(player: Player, requestedTarget: unknown): ValidatedPlacedBuildingTarget?
 	if typeof(requestedTarget) ~= "Instance" then
-		return
+		return nil
 	end
 
 	local placedPart = getPlacedPartFromInstance(requestedTarget :: Instance)
 	if placedPart == nil then
-		return
+		return nil
 	end
 
 	if placedPart:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
-		return
+		return nil
 	end
 
 	local assignedPlotName = PlotService.getAssignedPlotName(player)
 	if assignedPlotName == nil or placedPart:GetAttribute(PLOT_NAME_ATTRIBUTE) ~= assignedPlotName then
-		return
+		return nil
 	end
 
 	if not isPlayerCloseEnoughToPickup(player, placedPart) then
-		return
+		return nil
 	end
 
 	local rawBuildingId = placedPart:GetAttribute(ITEM_ID_ATTRIBUTE)
 	if type(rawBuildingId) ~= "string" or not BuildingCatalog.hasBuildingDefinition(rawBuildingId) then
+		return nil
+	end
+
+	return {
+		part = placedPart,
+		buildingId = rawBuildingId :: BuildingId,
+	}
+end
+
+local function handlePickupRequest(player: Player, requestedTarget: unknown)
+	local validatedTarget = resolveValidatedPlacedBuildingTarget(player, requestedTarget)
+	if validatedTarget == nil then
 		return
 	end
 
-	local buildingId = rawBuildingId :: BuildingId
-	local storedOutput = ProductionService.getStoredOutput(placedPart)
+	local storedOutput = ProductionService.getStoredOutput(validatedTarget.part)
 	if storedOutput ~= nil then
 		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
 	end
 
-	InventoryService.addItem(player, buildingId :: ItemId, 1)
-	ProductionService.unregisterPlacedBuilding(placedPart)
-	placedPart:Destroy()
+	InventoryService.addItem(player, validatedTarget.buildingId :: ItemId, 1)
+	ProductionService.unregisterPlacedBuilding(validatedTarget.part)
+	validatedTarget.part:Destroy()
+	savePlayerPlacedBuildings(player)
+end
+
+local function handleSellRequest(player: Player, requestedTarget: unknown)
+	local validatedTarget = resolveValidatedPlacedBuildingTarget(player, requestedTarget)
+	if validatedTarget == nil then
+		return
+	end
+
+	local storedOutput = ProductionService.getStoredOutput(validatedTarget.part)
+	if storedOutput ~= nil then
+		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
+	end
+
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(validatedTarget.buildingId)
+	EconomyService.addCash(player, buildingDefinition.sellPrice)
+	ProductionService.unregisterPlacedBuilding(validatedTarget.part)
+	validatedTarget.part:Destroy()
 	savePlayerPlacedBuildings(player)
 end
 
@@ -363,6 +398,7 @@ function PlacementService.start()
 	local placementRemotes = Remotes.getPlacementRemotes()
 	placementRemotes.requestPlacement.OnServerEvent:Connect(handlePlacementRequest)
 	placementRemotes.requestPickup.OnServerEvent:Connect(handlePickupRequest)
+	placementRemotes.requestSell.OnServerEvent:Connect(handleSellRequest)
 	getPlacedObjectsFolder()
 	PlayerDataService.observeBeforeSave(savePlayerPlacedBuildings)
 	PlayerDataService.observeAfterRemove(cleanupPlayerPlacedBuildings)

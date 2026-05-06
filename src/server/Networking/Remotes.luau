@@ -27,6 +27,7 @@ type EconomyRemotes = {
 type PlacementRemotes = {
 	requestPlacement: RemoteEvent,
 	requestPickup: RemoteEvent,
+	requestSell: RemoteEvent,
 }
 
 type MarketRemotes = {
@@ -122,6 +123,7 @@ function Remotes.getPlacementRemotes(): PlacementRemotes
 	cachedPlacementRemotes = {
 		requestPlacement = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPlacementEventName),
 		requestPickup = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestPickupEventName),
+		requestSell = getOrCreateRemoteEvent(placementFolder, RemoteNames.requestSellEventName),
 	}
 
 	return cachedPlacementRemotes

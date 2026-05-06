@@ -25,7 +25,7 @@ local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: Modu
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
-local PickupController = require(script.Parent.PickupController)
+local StructureActionMode = require(script.Parent.StructureActionMode)
 local PlacementPreviewView = require(script.Parent.PlacementPreviewView)
 
 type ItemDefinition = InventoryTypes.ItemDefinition
@@ -142,7 +142,7 @@ function PlacementController.start()
 	end)
 
 	RunService.RenderStepped:Connect(function()
-		if PickupController.isPickupModeEnabled() then
+		if StructureActionMode.getMode() ~= "None" then
 			previewView:hide()
 			currentPreviewState = nil
 			return
@@ -207,7 +207,7 @@ function PlacementController.start()
 			return
 		end
 
-		if PickupController.isPickupModeEnabled() then
+		if StructureActionMode.getMode() ~= "None" then
 			return
 		end
 

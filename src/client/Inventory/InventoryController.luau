@@ -13,6 +13,7 @@ local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: Mod
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local InventoryBarView = require(script.Parent.InventoryBarView)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
+local StructureActionMode = require(script.Parent.Parent.Placement.StructureActionMode)
 
 type InventorySnapshot = InventoryTypes.InventorySnapshot
 type ItemId = InventoryTypes.ItemId
@@ -77,6 +78,10 @@ local function requestSlotSelection(snapshot: InventorySnapshot, slotIndex: numb
 	local nextSelectedSlotIndex: number? = slotIndex
 	if snapshot.selectedSlotIndex == slotIndex then
 		nextSelectedSlotIndex = nil
+	end
+
+	if nextSelectedSlotIndex ~= nil and StructureActionMode.getMode() ~= "None" then
+		StructureActionMode.clearMode()
 	end
 
 	setSelectedSlot:FireServer(nextSelectedSlotIndex)

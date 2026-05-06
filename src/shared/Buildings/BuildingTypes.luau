@@ -126,6 +126,7 @@ export type ProductionBehavior = {
 export type BuildingDefinition = {
 	id: BuildingId,
 	displayName: string,
+	sellPrice: number,
 	placementSize: Vector3,
 	productionConfig: ProductionConfig,
 	growthVisualConfig: GrowthVisualConfig,
