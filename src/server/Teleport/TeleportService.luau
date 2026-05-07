@@ -13,7 +13,7 @@ local PlotService = require(script.Parent.Parent.Plots.PlotService)
 
 type TeleportDestination = "Plot" | "Shop" | "Sell"
 
-local TELEPORT_COOLDOWN_SECONDS = 0.75
+local TELEPORT_COOLDOWN_SECONDS = 0.25
 local TELEPORT_OFFSET = CFrame.new(0, 3, 0)
 local SHOP_TELEPORT_PART_NAME = "ShopTeleport"
 local SELL_TELEPORT_PART_NAME = "SellTeleport"
