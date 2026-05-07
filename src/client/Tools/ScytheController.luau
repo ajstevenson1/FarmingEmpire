@@ -16,21 +16,35 @@ local ScytheConfig = require(sharedToolsFolder:WaitForChild("ScytheConfig") :: M
 local SYSTEM_TOOL_ITEM_ID_ATTRIBUTE = "SystemToolItemId"
 local SCYTHE_ITEM_ID = "Scythe"
 local SWING_ANIMATION_NAME = "Swing"
+local SWING_SOUND_NAME = "ScytheSwingSound"
+local HARVEST_SOUND_NAME = "ScytheHarvestSound"
 
 type ToolConnections = {
 	activated: RBXScriptConnection,
 	ancestryChanged: RBXScriptConnection,
 }
 
+type ToolSoundInstances = {
+	swing: Sound,
+	harvest: Sound,
+}
+
 local hasStarted = false
 local trackedTools: { [Tool]: ToolConnections } = {}
 local swingTracksByTool: { [Tool]: AnimationTrack } = {}
+local soundInstancesByTool: { [Tool]: ToolSoundInstances } = {}
 local nextAllowedSwingTime = 0
 
 local function getHarvestRemote(): RemoteEvent
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local harvestFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
 	return harvestFolder:WaitForChild(RemoteNames.requestScytheSwingEventName) :: RemoteEvent
+end
+
+local function getHarvestConfirmedRemote(): RemoteEvent
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local harvestFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
+	return harvestFolder:WaitForChild(RemoteNames.scytheHarvestConfirmedEventName) :: RemoteEvent
 end
 
 local function getHumanoid(): Humanoid?
@@ -70,6 +84,88 @@ local function getSwingTrack(tool: Tool, animator: Animator): AnimationTrack?
 	return loadedTrack
 end
 
+local function getToolSoundParent(tool: Tool): Instance?
+	local handle = tool:FindFirstChild("Handle")
+	if handle ~= nil and handle:IsA("BasePart") then
+		return handle
+	end
+
+	local fallbackPart = tool:FindFirstChildWhichIsA("BasePart", true)
+	if fallbackPart ~= nil then
+		return fallbackPart
+	end
+
+	warn(string.format("[ScytheController] Tool %s is missing a BasePart for sound playback", tool.Name))
+	return nil
+end
+
+local function configureSound(sound: Sound, soundConfig: typeof(ScytheConfig.sounds.swing))
+	sound.SoundId = soundConfig.soundId
+	sound.Volume = soundConfig.volume
+	sound.PlaybackSpeed = soundConfig.playbackSpeed
+end
+
+local function getOrCreateConfiguredSound(parent: Instance, soundName: string, soundConfig: typeof(ScytheConfig.sounds.swing)): Sound
+	local existing = parent:FindFirstChild(soundName)
+	if existing ~= nil then
+		assert(existing:IsA("Sound"), string.format("%s already exists and is not a Sound", soundName))
+		configureSound(existing, soundConfig)
+		return existing
+	end
+
+	local sound = Instance.new("Sound")
+	sound.Name = soundName
+	configureSound(sound, soundConfig)
+	sound.Parent = parent
+	return sound
+end
+
+local function getToolSounds(tool: Tool): ToolSoundInstances?
+	local cachedSounds = soundInstancesByTool[tool]
+	if cachedSounds ~= nil then
+		return cachedSounds
+	end
+
+	local soundParent = getToolSoundParent(tool)
+	if soundParent == nil then
+		return nil
+	end
+
+	local createdSounds: ToolSoundInstances = {
+		swing = getOrCreateConfiguredSound(soundParent, SWING_SOUND_NAME, ScytheConfig.sounds.swing),
+		harvest = getOrCreateConfiguredSound(soundParent, HARVEST_SOUND_NAME, ScytheConfig.sounds.harvestConfirm),
+	}
+	soundInstancesByTool[tool] = createdSounds
+	return createdSounds
+end
+
+local function playToolSound(tool: Tool, soundKind: "swing" | "harvest")
+	local toolSounds = getToolSounds(tool)
+	if toolSounds == nil then
+		return
+	end
+
+	local sound = toolSounds[soundKind]
+	sound:Stop()
+	sound.TimePosition = 0
+	sound:Play()
+end
+
+local function getEquippedScytheTool(): Tool?
+	local character = localPlayer.Character
+	if character == nil then
+		return nil
+	end
+
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") and child:GetAttribute(SYSTEM_TOOL_ITEM_ID_ATTRIBUTE) == SCYTHE_ITEM_ID then
+			return child
+		end
+	end
+
+	return nil
+end
+
 local function playSwing(tool: Tool): boolean
 	local now = os.clock()
 	if now < nextAllowedSwingTime then
@@ -95,6 +191,7 @@ local function playSwing(tool: Tool): boolean
 
 	swingTrack:Stop(0)
 	swingTrack:Play(0.05, 1, 1)
+	playToolSound(tool, "swing")
 	return true
 end
 
@@ -113,6 +210,8 @@ local function cleanupTool(tool: Tool)
 		swingTrack:Stop(0)
 		swingTracksByTool[tool] = nil
 	end
+
+	soundInstancesByTool[tool] = nil
 end
 
 local function bindTool(tool: Tool)
@@ -189,6 +288,15 @@ function ScytheController.start()
 			end
 		end)
 	end
+
+	getHarvestConfirmedRemote().OnClientEvent:Connect(function()
+		local equippedTool = getEquippedScytheTool()
+		if equippedTool == nil then
+			return
+		end
+
+		playToolSound(equippedTool, "harvest")
+	end)
 end
 
 return table.freeze(ScytheController)

@@ -74,12 +74,10 @@ export type InventoryBarView = {
 	destroy: (self: InventoryBarView) -> (),
 }
 
-local EMPTY_SLOT_COLOR = Color3.fromRGB(47, 47, 47)
-local FILLED_SLOT_COLOR = Color3.fromRGB(122, 92, 53)
-local SELECTED_SLOT_COLOR = Color3.fromRGB(163, 131, 78)
-local DEFAULT_STROKE_COLOR = Color3.fromRGB(220, 199, 158)
-local SELECTED_STROKE_COLOR = Color3.fromRGB(255, 240, 201)
-local PANEL_COLOR = Color3.fromRGB(26, 23, 18)
+local SLOT_BACKGROUND_COLOR = Color3.fromRGB(0, 0, 0)
+local DEFAULT_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
+local SELECTED_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
+local PANEL_COLOR = Color3.fromRGB(0, 0, 0)
 local DETAIL_TEXT_COLOR = Color3.fromRGB(219, 205, 180)
 local SCYTHE_ICON_IMAGE = "rbxassetid://86007084151897"
 local MOBILE_VISIBLE_HOTBAR_SLOTS = 4
@@ -149,7 +147,6 @@ local function ensureStroke(button: GuiButtonLike): UIStroke
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = DEFAULT_STROKE_COLOR
-	stroke.Thickness = 1
 	stroke.Transparency = 0.15
 	stroke.Parent = button
 	return stroke
@@ -175,14 +172,14 @@ end
 local function createSlot(slotIndex: number, itemId: ItemId?, entry: InventoryEntry?, isSelected: boolean, parent: Instance): SlotWidgets
 	local button = cloneToolButton(parent, string.format("Slot%d", slotIndex), slotIndex)
 	button.AutoButtonColor = false
-	button.BackgroundColor3 = if itemId == nil then EMPTY_SLOT_COLOR else (if isSelected then SELECTED_SLOT_COLOR else FILLED_SLOT_COLOR)
+	button.BackgroundColor3 = SLOT_BACKGROUND_COLOR
+	button.BackgroundTransparency = 0.5
 	if button:IsA("TextButton") then
 		button.Text = ""
 	end
 
 	local stroke = ensureStroke(button)
 	stroke.Color = if isSelected then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
-	stroke.Thickness = if isSelected then 2 else 1
 	stroke.Transparency = 0.15
 
 	local slotNumberLabel = findRequiredChild(button, "toolNumber", "TextLabel") :: TextLabel
@@ -226,13 +223,13 @@ local function createInventoryItemButton(itemDefinition: ItemDefinition, entry: 
 	local button = cloneToolButton(parent, string.format("Item_%s", entry.itemId), layoutOrder)
 	button.AutoButtonColor = false
 	button.BackgroundColor3 = PANEL_COLOR
+	button.BackgroundTransparency = 0.5
 	if button:IsA("TextButton") then
 		button.Text = ""
 	end
 
 	local stroke = ensureStroke(button)
 	stroke.Color = DEFAULT_STROKE_COLOR
-	stroke.Thickness = 1
 	stroke.Transparency = 0.55
 
 	local titleLabel = findRequiredChild(button, "toolName", "TextLabel") :: TextLabel

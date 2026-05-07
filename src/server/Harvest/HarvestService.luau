@@ -111,15 +111,22 @@ local function handleScytheSwingRequest(player: Player)
 		return
 	end
 
+	local harvestedAny = false
+
 	for _, part in ipairs(getSwingOverlapParts(rootPart.CFrame, placedObjectsFolder)) do
 		if isOwnedPartOnAssignedPlot(player, part)
 			and canHarvestWithTool(part)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then
+				harvestedAny = true
 				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
 			end
 		end
+	end
+
+	if harvestedAny then
+		Remotes.getScytheHarvestConfirmedRemote():FireClient(player)
 	end
 end
 
@@ -132,6 +139,7 @@ function HarvestService.start()
 
 	hasStarted = true
 
+	Remotes.getScytheHarvestConfirmedRemote()
 	Remotes.getHarvestRemote().OnServerEvent:Connect(handleScytheSwingRequest)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		nextAllowedSwingByPlayer[player] = nil

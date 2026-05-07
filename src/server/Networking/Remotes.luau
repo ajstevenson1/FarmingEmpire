@@ -48,6 +48,7 @@ type ShopRemotes = {
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
+local cachedHarvestConfirmedRemote: RemoteEvent? = nil
 local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
@@ -144,6 +145,17 @@ function Remotes.getHarvestRemote(): RemoteEvent
 	cachedHarvestRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName)
 
 	return cachedHarvestRemote
+end
+
+function Remotes.getScytheHarvestConfirmedRemote(): RemoteEvent
+	if cachedHarvestConfirmedRemote ~= nil then
+		return cachedHarvestConfirmedRemote
+	end
+
+	local harvestFolder = getOrCreateFolder(getRootFolder(), RemoteNames.harvestFolderName)
+	cachedHarvestConfirmedRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.scytheHarvestConfirmedEventName)
+
+	return cachedHarvestConfirmedRemote
 end
 
 function Remotes.getResourceRemotes(): ResourceRemotes

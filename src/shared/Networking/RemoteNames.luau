@@ -19,6 +19,7 @@ local RemoteNames = {
 	requestPickupEventName = "RequestPickup",
 	requestSellEventName = "RequestSell",
 	requestScytheSwingEventName = "RequestScytheSwing",
+	scytheHarvestConfirmedEventName = "ScytheHarvestConfirmed",
 	resourceUpdatedEventName = "ResourceUpdated",
 	getResourceSnapshotFunctionName = "GetResourceSnapshot",
 	economyUpdatedEventName = "EconomyUpdated",

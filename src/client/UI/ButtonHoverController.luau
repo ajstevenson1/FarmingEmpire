@@ -9,6 +9,10 @@ type VariantConfig = {
 	hoverSizeDelta: UDim2,
 	hoverStrokeColor: Color3?,
 	hoverImageRotationRange: NumberRange?,
+	idleImageRotationRange: NumberRange?,
+	idleSwingTweenInfo: TweenInfo?,
+	idleActiveDurationSeconds: number?,
+	idlePauseDurationSeconds: number?,
 	tweenInfo: TweenInfo,
 }
 
@@ -24,6 +28,9 @@ type BoundButtonState = {
 	activeSizeTween: Tween?,
 	activeStrokeTween: Tween?,
 	activeImageTween: Tween?,
+	activeIdleImageTween: Tween?,
+	idleAnimationToken: number,
+	isHovered: boolean,
 	connections: { RBXScriptConnection },
 }
 
@@ -46,12 +53,22 @@ local VARIANT_CONFIGS: { [string]: VariantConfig } = {
 		hoverImageRotationRange = NumberRange.new(-30, 30),
 		tweenInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 	},
+	Store = {
+		hoverSizeDelta = UDim2.fromScale(0.05, 0.05),
+		hoverImageRotationRange = NumberRange.new(-30, 30),
+		idleImageRotationRange = NumberRange.new(-30, 30),
+		idleSwingTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+		idleActiveDurationSeconds = 1,
+		idlePauseDurationSeconds = 2,
+		tweenInfo = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	},
 }
 
 local hasStarted = false
 local rootConnection: RBXScriptConnection? = nil
 local boundStatesByButton: { [GuiButtonLike]: BoundButtonState } = {}
 local randomGenerator = Random.new()
+local IDLE_WAIT_STEP_SECONDS = 0.1
 
 local function isGuiButtonLike(instance: Instance): boolean
 	return instance:IsA("TextButton") or instance:IsA("ImageButton")
@@ -137,7 +154,121 @@ local function cancelTweens(boundState: BoundButtonState)
 	end
 end
 
+local function cancelIdleTween(boundState: BoundButtonState)
+	local activeIdleImageTween = boundState.activeIdleImageTween
+	if activeIdleImageTween ~= nil then
+		activeIdleImageTween:Cancel()
+		boundState.activeIdleImageTween = nil
+	end
+end
+
+local function stopIdleAnimation(boundState: BoundButtonState)
+	boundState.idleAnimationToken += 1
+	cancelIdleTween(boundState)
+end
+
+local function waitForDurationWhileIdle(boundState: BoundButtonState, token: number, durationSeconds: number): boolean
+	local elapsedSeconds = 0
+	while elapsedSeconds < durationSeconds do
+		if boundStatesByButton[boundState.button] ~= boundState or boundState.idleAnimationToken ~= token or boundState.isHovered then
+			return false
+		end
+
+		local waitSeconds = math.min(IDLE_WAIT_STEP_SECONDS, durationSeconds - elapsedSeconds)
+		task.wait(waitSeconds)
+		elapsedSeconds += waitSeconds
+	end
+
+	return true
+end
+
+local function getIdleTargetRotation(rotationRange: NumberRange, directionSign: number): number
+	if directionSign >= 0 then
+		return randomGenerator:NextNumber(0, rotationRange.Max)
+	end
+
+	return randomGenerator:NextNumber(rotationRange.Min, 0)
+end
+
+local function startIdleAnimation(boundState: BoundButtonState, initialDelaySeconds: number)
+	local imageLabel = boundState.imageLabel
+	local defaultImageRotation = boundState.defaultImageRotation
+	local idleImageRotationRange = boundState.config.idleImageRotationRange
+	local idleSwingTweenInfo = boundState.config.idleSwingTweenInfo
+	local idleActiveDurationSeconds = boundState.config.idleActiveDurationSeconds
+	local idlePauseDurationSeconds = boundState.config.idlePauseDurationSeconds
+	if imageLabel == nil
+		or defaultImageRotation == nil
+		or idleImageRotationRange == nil
+		or idleSwingTweenInfo == nil
+		or idleActiveDurationSeconds == nil
+		or idlePauseDurationSeconds == nil
+	then
+		return
+	end
+
+	stopIdleAnimation(boundState)
+	local token = boundState.idleAnimationToken
+
+	task.spawn(function()
+		if initialDelaySeconds > 0 and not waitForDurationWhileIdle(boundState, token, initialDelaySeconds) then
+			return
+		end
+
+		local directionSign = if randomGenerator:NextInteger(0, 1) == 0 then -1 else 1
+		while boundStatesByButton[boundState.button] == boundState and boundState.idleAnimationToken == token do
+			if boundState.isHovered then
+				task.wait(IDLE_WAIT_STEP_SECONDS)
+				continue
+			end
+
+			local activeEndTime = os.clock() + idleActiveDurationSeconds
+			while os.clock() < activeEndTime do
+				if boundStatesByButton[boundState.button] ~= boundState or boundState.idleAnimationToken ~= token or boundState.isHovered then
+					return
+				end
+
+				local targetRotation = getIdleTargetRotation(idleImageRotationRange, directionSign)
+				directionSign *= -1
+
+				local idleTween = TweenService:Create(imageLabel, idleSwingTweenInfo, {
+					Rotation = targetRotation,
+				})
+				boundState.activeIdleImageTween = idleTween
+				idleTween:Play()
+				local playbackState = idleTween.Completed:Wait()
+				if playbackState ~= Enum.PlaybackState.Completed then
+					return
+				end
+			end
+
+			if boundStatesByButton[boundState.button] ~= boundState or boundState.idleAnimationToken ~= token or boundState.isHovered then
+				return
+			end
+
+			local resetTween = TweenService:Create(imageLabel, idleSwingTweenInfo, {
+				Rotation = defaultImageRotation,
+			})
+			boundState.activeIdleImageTween = resetTween
+			resetTween:Play()
+			local playbackState = resetTween.Completed:Wait()
+			if playbackState ~= Enum.PlaybackState.Completed then
+				return
+			end
+
+			if not waitForDurationWhileIdle(boundState, token, idlePauseDurationSeconds) then
+				return
+			end
+		end
+	end)
+end
+
 local function tweenToState(boundState: BoundButtonState, isHovered: boolean)
+	boundState.isHovered = isHovered
+	if isHovered then
+		stopIdleAnimation(boundState)
+	end
+
 	cancelTweens(boundState)
 
 	local targetSize = if isHovered
@@ -175,6 +306,10 @@ local function tweenToState(boundState: BoundButtonState, isHovered: boolean)
 		boundState.activeImageTween = imageTween
 		imageTween:Play()
 	end
+
+	if not isHovered then
+		startIdleAnimation(boundState, boundState.config.tweenInfo.Time)
+	end
 end
 
 local function unbindButton(button: GuiButtonLike)
@@ -183,6 +318,7 @@ local function unbindButton(button: GuiButtonLike)
 		return
 	end
 
+	stopIdleAnimation(boundState)
 	cancelTweens(boundState)
 	boundState.button.Size = boundState.defaultSize
 	boundState.button.AutoButtonColor = boundState.defaultAutoButtonColor
@@ -257,6 +393,9 @@ local function bindButton(button: GuiButtonLike)
 		activeSizeTween = nil,
 		activeStrokeTween = nil,
 		activeImageTween = nil,
+		activeIdleImageTween = nil,
+		idleAnimationToken = 0,
+		isHovered = false,
 		connections = {},
 	}
 
@@ -273,6 +412,7 @@ local function bindButton(button: GuiButtonLike)
 	end))
 
 	boundStatesByButton[button] = boundState
+	startIdleAnimation(boundState, 0)
 end
 
 local function bindDescendantTree(rootGui: ScreenGui)
