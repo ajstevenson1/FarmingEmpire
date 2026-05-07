@@ -9,6 +9,7 @@ local RemoteNames = {
 	economyFolderName = "Economy",
 	marketFolderName = "Market",
 	teleportFolderName = "Teleport",
+	shopFolderName = "Shop",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
 	setSelectedSlotEventName = "SetSelectedSlot",
@@ -26,6 +27,8 @@ local RemoteNames = {
 	getMarketSnapshotFunctionName = "GetMarketSnapshot",
 	sellAllCiderEventName = "SellAllCider",
 	requestTeleportEventName = "RequestTeleport",
+	shopOpenedEventName = "ShopOpened",
+	getShopSnapshotFunctionName = "GetShopSnapshot",
 }
 
 return table.freeze(RemoteNames)

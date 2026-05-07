@@ -40,6 +40,11 @@ type TeleportRemotes = {
 	requestTeleport: RemoteEvent,
 }
 
+type ShopRemotes = {
+	shopOpened: RemoteEvent,
+	getShopSnapshot: RemoteFunction,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -47,6 +52,7 @@ local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
+local cachedShopRemotes: ShopRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -194,6 +200,20 @@ function Remotes.getTeleportRemotes(): TeleportRemotes
 	}
 
 	return cachedTeleportRemotes
+end
+
+function Remotes.getShopRemotes(): ShopRemotes
+	if cachedShopRemotes ~= nil then
+		return cachedShopRemotes
+	end
+
+	local shopFolder = getOrCreateFolder(getRootFolder(), RemoteNames.shopFolderName)
+	cachedShopRemotes = {
+		shopOpened = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopOpenedEventName),
+		getShopSnapshot = getOrCreateRemoteFunction(shopFolder, RemoteNames.getShopSnapshotFunctionName),
+	}
+
+	return cachedShopRemotes
 end
 
 return table.freeze(Remotes)
