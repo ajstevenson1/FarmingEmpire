@@ -12,6 +12,7 @@ local ShopController = require(script.Parent.ShopController)
 
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
+type ShopProductId = ShopTypes.ShopProductId
 type ShopSnapshot = ShopTypes.ShopSnapshot
 
 type WorldShopWidgets = {
@@ -78,8 +79,24 @@ local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 		end
 
 		local definition = ShopCatalog.getShopDefinition(shopId)
+		local shouldResetStock = false
 		while state.nextRestockAt <= currentTime do
 			state.nextRestockAt += definition.restockIntervalSeconds
+			shouldResetStock = true
+		end
+
+		if shouldResetStock then
+			local validProductIds: { [ShopProductId]: boolean } = {}
+			for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
+				validProductIds[productDefinition.id] = true
+				state.stockRemainingByProductId[productDefinition.id] = productDefinition.stockPerRestock
+			end
+
+			for productId in pairs(state.stockRemainingByProductId) do
+				if validProductIds[productId] ~= true then
+					state.stockRemainingByProductId[productId] = nil
+				end
+			end
 		end
 	end
 end

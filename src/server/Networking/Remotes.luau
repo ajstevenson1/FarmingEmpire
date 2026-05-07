@@ -32,6 +32,7 @@ type PlacementRemotes = {
 
 type MarketRemotes = {
 	marketUpdated: RemoteEvent,
+	ciderMarketOpened: RemoteEvent,
 	getMarketSnapshot: RemoteFunction,
 	sellAllCider: RemoteEvent,
 }
@@ -43,6 +44,7 @@ type TeleportRemotes = {
 type ShopRemotes = {
 	shopOpened: RemoteEvent,
 	getShopSnapshot: RemoteFunction,
+	requestShopPurchase: RemoteFunction,
 }
 
 local cachedInventoryRemotes: InventoryRemotes? = nil
@@ -194,6 +196,7 @@ function Remotes.getMarketRemotes(): MarketRemotes
 	local marketFolder = getOrCreateFolder(getRootFolder(), RemoteNames.marketFolderName)
 	cachedMarketRemotes = {
 		marketUpdated = getOrCreateRemoteEvent(marketFolder, RemoteNames.marketUpdatedEventName),
+		ciderMarketOpened = getOrCreateRemoteEvent(marketFolder, RemoteNames.ciderMarketOpenedEventName),
 		getMarketSnapshot = getOrCreateRemoteFunction(marketFolder, RemoteNames.getMarketSnapshotFunctionName),
 		sellAllCider = getOrCreateRemoteEvent(marketFolder, RemoteNames.sellAllCiderEventName),
 	}
@@ -223,6 +226,7 @@ function Remotes.getShopRemotes(): ShopRemotes
 	cachedShopRemotes = {
 		shopOpened = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopOpenedEventName),
 		getShopSnapshot = getOrCreateRemoteFunction(shopFolder, RemoteNames.getShopSnapshotFunctionName),
+		requestShopPurchase = getOrCreateRemoteFunction(shopFolder, RemoteNames.requestShopPurchaseFunctionName),
 	}
 
 	return cachedShopRemotes

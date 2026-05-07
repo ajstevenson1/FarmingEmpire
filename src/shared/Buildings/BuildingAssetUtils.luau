@@ -9,6 +9,7 @@ local buildingAssetsFolder = ReplicatedStorage:WaitForChild("Buildings") :: Fold
 local BuildingTypes = require(buildingsCodeFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
+type VisualTintRule = BuildingTypes.VisualTintRule
 
 local PLACEMENT_BOX_NAME = "PlacementBox"
 local missingAssetWarnings: { [string]: boolean } = {}
@@ -89,6 +90,65 @@ end
 function BuildingAssetUtils.normalizeStageModel(model: Model)
 	local placementBox = BuildingAssetUtils.getPlacementBox(model)
 	model.PrimaryPart = placementBox
+end
+
+local function applyTintRule(basePart: BasePart, rule: VisualTintRule)
+	basePart.Color = rule.color
+	if rule.material ~= nil then
+		basePart.Material = rule.material
+	end
+end
+
+local function applyFallbackTint(basePart: BasePart, buildingDefinition: BuildingDefinition)
+	local visualVariantConfig = buildingDefinition.visualVariantConfig
+	if visualVariantConfig == nil then
+		return
+	end
+
+	local fallbackColor = visualVariantConfig.fallbackColor
+	if fallbackColor == nil then
+		return
+	end
+
+	basePart.Color = fallbackColor
+
+	local fallbackMaterial = visualVariantConfig.fallbackMaterial
+	if fallbackMaterial ~= nil then
+		basePart.Material = fallbackMaterial
+	end
+end
+
+function BuildingAssetUtils.applyVisualVariant(model: Model, buildingDefinition: BuildingDefinition)
+	local visualVariantConfig = buildingDefinition.visualVariantConfig
+	if visualVariantConfig == nil then
+		return
+	end
+
+	local matchedAnyRule = false
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if not descendant:IsA("BasePart") or descendant.Name == PLACEMENT_BOX_NAME then
+			continue
+		end
+
+		local lowerName = string.lower(descendant.Name)
+		for _, rule in ipairs(visualVariantConfig.tintRules) do
+			if string.find(lowerName, string.lower(rule.partNameContains), 1, true) ~= nil then
+				applyTintRule(descendant, rule)
+				matchedAnyRule = true
+				break
+			end
+		end
+	end
+
+	if matchedAnyRule then
+		return
+	end
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant.Name ~= PLACEMENT_BOX_NAME then
+			applyFallbackTint(descendant, buildingDefinition)
+		end
+	end
 end
 
 return table.freeze(BuildingAssetUtils)

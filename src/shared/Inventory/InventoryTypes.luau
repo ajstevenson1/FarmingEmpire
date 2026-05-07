@@ -1,6 +1,15 @@
 --!strict
 
-export type ItemId = "Scythe" | "BasicTree" | "CiderMill"
+export type ItemId =
+	"Scythe"
+	| "BasicTree"
+	| "RubyAppleTree"
+	| "GoldenAppleTree"
+	| "CrystalAppleTree"
+	| "CiderMill"
+	| "CopperCiderMill"
+	| "SteelCiderMill"
+	| "RoyalCiderMill"
 export type ItemKind = "Tool" | "Placeable"
 
 export type ItemDefinition = {

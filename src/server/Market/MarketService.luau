@@ -20,6 +20,10 @@ local hasStarted = false
 local currentCiderSellPrice = 0
 local nextPriceChangeAt = 0
 
+local CIDER_SELL_MODEL_NAME = "CiderSell"
+local TOUCH_PART_NAME = "Touch"
+local MAX_SELL_DISTANCE_STUDS = 40
+
 local function getCurrentTime(): number
 	return Workspace:GetServerTimeNow()
 end
@@ -52,7 +56,51 @@ local function setNextPrice()
 	pushMarketUpdate()
 end
 
+local function findCiderSellTouchPart(): BasePart?
+	local model = Workspace:FindFirstChild(CIDER_SELL_MODEL_NAME)
+	if model == nil then
+		warn(string.format("[MarketService] Missing Workspace.%s.", CIDER_SELL_MODEL_NAME))
+		return nil
+	end
+
+	local touchPart = model:FindFirstChild(TOUCH_PART_NAME)
+	if touchPart == nil then
+		warn(string.format("[MarketService] Missing %s.%s.", model:GetFullName(), TOUCH_PART_NAME))
+		return nil
+	end
+
+	if not touchPart:IsA("BasePart") then
+		warn(string.format("[MarketService] %s must be a BasePart.", touchPart:GetFullName()))
+		return nil
+	end
+
+	return touchPart
+end
+
+local function isPlayerCloseEnoughToSell(player: Player): boolean
+	local character = player.Character
+	if character == nil then
+		return false
+	end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if rootPart == nil or not rootPart:IsA("BasePart") then
+		return false
+	end
+
+	local touchPart = findCiderSellTouchPart()
+	if touchPart == nil then
+		return false
+	end
+
+	return (rootPart.Position - touchPart.Position).Magnitude <= MAX_SELL_DISTANCE_STUDS
+end
+
 local function handleSellAllCider(player: Player)
+	if not isPlayerCloseEnoughToSell(player) then
+		return
+	end
+
 	local ciderToSell = ResourceService.getResourceAmount(player, "Cider")
 	if ciderToSell <= 0 then
 		return

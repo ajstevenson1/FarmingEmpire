@@ -24,9 +24,15 @@ type TrackedConnections = {
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local TREE_BUILDING_IDS: { [string]: boolean } = {
 	BasicTree = true,
+	RubyAppleTree = true,
+	GoldenAppleTree = true,
+	CrystalAppleTree = true,
 }
 local CIDER_MILL_BUILDING_IDS: { [string]: boolean } = {
 	CiderMill = true,
+	CopperCiderMill = true,
+	SteelCiderMill = true,
+	RoyalCiderMill = true,
 }
 
 local trackedViewsByPart: { [BasePart]: ProductionViewInstance } = {}

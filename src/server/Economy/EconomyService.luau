@@ -60,6 +60,22 @@ function EconomyService.addCash(player: Player, amount: number)
 	pushEconomyUpdate(player)
 end
 
+function EconomyService.trySpendCash(player: Player, amount: number): boolean
+	if amount <= 0 then
+		return false
+	end
+
+	local currentCash = PlayerDataService.getCash(player)
+	if currentCash < amount then
+		pushEconomyUpdate(player)
+		return false
+	end
+
+	PlayerDataService.setCash(player, currentCash - amount)
+	pushEconomyUpdate(player)
+	return true
+end
+
 function EconomyService.getCash(player: Player): number
 	return PlayerDataService.getCash(player)
 end

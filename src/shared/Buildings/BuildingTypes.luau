@@ -9,7 +9,15 @@ local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: M
 
 type ResourceId = ResourceTypes.ResourceId
 
-export type BuildingId = "BasicTree" | "CiderMill"
+export type BuildingId =
+	"BasicTree"
+	| "RubyAppleTree"
+	| "GoldenAppleTree"
+	| "CrystalAppleTree"
+	| "CiderMill"
+	| "CopperCiderMill"
+	| "SteelCiderMill"
+	| "RoyalCiderMill"
 
 export type ProductionBehaviorId = "GrowAndHarvest" | "TimedStorageProducer" | "InputProcessor"
 
@@ -23,6 +31,18 @@ export type GrowthVisualStage = {
 export type GrowthVisualConfig = {
 	assetFolderName: string,
 	stages: { GrowthVisualStage },
+}
+
+export type VisualTintRule = {
+	partNameContains: string,
+	color: Color3,
+	material: Enum.Material?,
+}
+
+export type VisualVariantConfig = {
+	fallbackColor: Color3?,
+	fallbackMaterial: Enum.Material?,
+	tintRules: { VisualTintRule },
 }
 
 export type GrowAndHarvestProductionConfig = {
@@ -130,6 +150,7 @@ export type BuildingDefinition = {
 	placementSize: Vector3,
 	productionConfig: ProductionConfig,
 	growthVisualConfig: GrowthVisualConfig,
+	visualVariantConfig: VisualVariantConfig?,
 }
 
 return {}

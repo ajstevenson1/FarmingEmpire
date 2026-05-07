@@ -34,6 +34,7 @@ function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, building
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local stageModel = BuildingAssetUtils.getStageModel(buildingDefinition, stageModelName):Clone()
 	BuildingAssetUtils.normalizeStageModel(stageModel)
+	BuildingAssetUtils.applyVisualVariant(stageModel, buildingDefinition)
 	stageModel.Name = VISUAL_MODEL_NAME
 	stageModel:PivotTo(rootPart.CFrame)
 

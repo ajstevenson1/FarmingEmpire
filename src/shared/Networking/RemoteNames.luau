@@ -25,11 +25,13 @@ local RemoteNames = {
 	economyUpdatedEventName = "EconomyUpdated",
 	getEconomySnapshotFunctionName = "GetEconomySnapshot",
 	marketUpdatedEventName = "MarketUpdated",
+	ciderMarketOpenedEventName = "CiderMarketOpened",
 	getMarketSnapshotFunctionName = "GetMarketSnapshot",
 	sellAllCiderEventName = "SellAllCider",
 	requestTeleportEventName = "RequestTeleport",
 	shopOpenedEventName = "ShopOpened",
 	getShopSnapshotFunctionName = "GetShopSnapshot",
+	requestShopPurchaseFunctionName = "RequestShopPurchase",
 }
 
 return table.freeze(RemoteNames)

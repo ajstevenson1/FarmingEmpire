@@ -1,6 +1,7 @@
 --!strict
 
 local EconomyService = require(script.Economy.EconomyService)
+local CiderSellService = require(script.Market.CiderSellService)
 local WalkoverCollectionService = require(script.Collection.WalkoverCollectionService)
 local HarvestService = require(script.Harvest.HarvestService)
 local InventoryService = require(script.Inventory.InventoryService)
@@ -23,6 +24,7 @@ EconomyService.start()
 ShopService.start()
 ToolSyncService.start()
 MarketService.start()
+CiderSellService.start()
 ProductionService.start()
 HarvestService.start()
 PlacementService.start()

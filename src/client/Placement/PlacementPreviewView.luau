@@ -92,6 +92,7 @@ function PlacementPreviewView:show(buildingDefinition: BuildingDefinition, _item
 
 		self._previewModel = getStageZeroSourceModel(buildingDefinition):Clone()
 		BuildingAssetUtils.normalizeStageModel(self._previewModel)
+		BuildingAssetUtils.applyVisualVariant(self._previewModel, buildingDefinition)
 		self._previewModel.Name = PREVIEW_MODEL_NAME
 		self._previewModel.Parent = Workspace
 		self._previewHighlightTarget = getPreviewHighlightTarget(self._previewModel)

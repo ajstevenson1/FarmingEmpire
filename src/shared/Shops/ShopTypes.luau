@@ -1,6 +1,16 @@
 --!strict
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
+
+local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
+
+type ItemId = InventoryTypes.ItemId
+
 export type ShopId = "TreesShop" | "MillsShop"
+export type ShopProductId = ItemId
 
 export type ShopDefinition = {
 	id: ShopId,
@@ -13,8 +23,20 @@ export type ShopDefinition = {
 	restockIntervalSeconds: number,
 }
 
+export type ShopProductDefinition = {
+	id: ShopProductId,
+	shopId: ShopId,
+	itemId: ItemId,
+	price: number,
+	quantityPerPurchase: number,
+	stockPerRestock: number,
+	sortOrder: number,
+	description: string,
+}
+
 export type ShopRestockState = {
 	nextRestockAt: number,
+	stockRemainingByProductId: { [ShopProductId]: number },
 }
 
 export type ShopSnapshot = {
@@ -23,6 +45,28 @@ export type ShopSnapshot = {
 
 export type ShopOpenedPayload = {
 	shopId: ShopId,
+	snapshot: ShopSnapshot,
+}
+
+export type ShopPurchaseStatus =
+	"Purchased"
+	| "InvalidShop"
+	| "InvalidProduct"
+	| "OutOfStock"
+	| "InsufficientCash"
+	| "TooFar"
+	| "InvalidQuantity"
+
+export type ShopPurchaseRequest = {
+	shopId: ShopId,
+	productId: ShopProductId,
+}
+
+export type ShopPurchaseResult = {
+	success: boolean,
+	status: ShopPurchaseStatus,
+	shopId: ShopId?,
+	productId: ShopProductId?,
 	snapshot: ShopSnapshot,
 }
 
