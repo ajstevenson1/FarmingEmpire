@@ -1,6 +1,7 @@
 --!strict
 
 local ButtonHoverController = require(script.UI.ButtonHoverController)
+local AutoHarvestController = require(script.Harvest.AutoHarvestController)
 local CiderMarketController = require(script.Market.CiderMarketController)
 local InventoryController = require(script.Inventory.InventoryController)
 local PickupController = require(script.Placement.PickupController)
@@ -23,6 +24,7 @@ SellController.start()
 ProductionStatusController.start()
 ResourceStatusController.start()
 ScytheController.start()
+AutoHarvestController.start()
 TeleportController.start()
 ShopController.start()
 WorldCiderMarketController.start()

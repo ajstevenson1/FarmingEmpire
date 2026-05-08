@@ -47,10 +47,18 @@ type ShopRemotes = {
 	requestShopPurchase: RemoteFunction,
 }
 
+type HarvestRemotes = {
+	requestScytheSwing: RemoteEvent,
+	requestAutoHarvestState: RemoteEvent,
+	requestAutoHarvest: RemoteEvent,
+	scytheHarvestConfirmed: RemoteEvent,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
 local cachedHarvestConfirmedRemote: RemoteEvent? = nil
+local cachedHarvestRemotes: HarvestRemotes? = nil
 local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
@@ -158,6 +166,24 @@ function Remotes.getScytheHarvestConfirmedRemote(): RemoteEvent
 	cachedHarvestConfirmedRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.scytheHarvestConfirmedEventName)
 
 	return cachedHarvestConfirmedRemote
+end
+
+function Remotes.getHarvestRemotes(): HarvestRemotes
+	if cachedHarvestRemotes ~= nil then
+		return cachedHarvestRemotes
+	end
+
+	local harvestFolder = getOrCreateFolder(getRootFolder(), RemoteNames.harvestFolderName)
+	cachedHarvestRemotes = {
+		requestScytheSwing = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName),
+		requestAutoHarvestState = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestAutoHarvestStateEventName),
+		requestAutoHarvest = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestAutoHarvestEventName),
+		scytheHarvestConfirmed = getOrCreateRemoteEvent(harvestFolder, RemoteNames.scytheHarvestConfirmedEventName),
+	}
+	cachedHarvestRemote = cachedHarvestRemotes.requestScytheSwing
+	cachedHarvestConfirmedRemote = cachedHarvestRemotes.scytheHarvestConfirmed
+
+	return cachedHarvestRemotes
 end
 
 function Remotes.getResourceRemotes(): ResourceRemotes

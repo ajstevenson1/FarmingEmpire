@@ -251,6 +251,15 @@ end
 
 local ScytheController = {}
 
+function ScytheController.tryPlaySwing(): boolean
+	local equippedTool = getEquippedScytheTool()
+	if equippedTool == nil then
+		return false
+	end
+
+	return playSwing(equippedTool)
+end
+
 function ScytheController.start()
 	if hasStarted then
 		return
