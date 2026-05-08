@@ -58,12 +58,10 @@ local MOVEMENT_KEYCODES: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.DPadRight] = true,
 }
 
-local function getHarvestRemotes(): (RemoteEvent, RemoteEvent)
+local function getHarvestRemote(): RemoteEvent
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local harvestRemotesFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
-	local requestAutoHarvestState = harvestRemotesFolder:WaitForChild(RemoteNames.requestAutoHarvestStateEventName) :: RemoteEvent
-	local requestAutoHarvest = harvestRemotesFolder:WaitForChild(RemoteNames.requestAutoHarvestEventName) :: RemoteEvent
-	return requestAutoHarvestState, requestAutoHarvest
+	return harvestRemotesFolder:WaitForChild(RemoteNames.requestScytheSwingEventName) :: RemoteEvent
 end
 
 local function getPlacedObjectsFolder(): Folder?
@@ -290,13 +288,10 @@ local function setAutoHarvestEnabled(shouldEnable: boolean)
 	runToken += 1
 	setViewState()
 
-	local requestAutoHarvestState, _requestAutoHarvest = getHarvestRemotes()
-	requestAutoHarvestState:FireServer(shouldEnable)
-
 	if shouldEnable then
 		local currentToken = runToken
 		task.spawn(function()
-			local _, requestAutoHarvest = getHarvestRemotes()
+			local requestScytheSwing = getHarvestRemote()
 			while isAutoHarvestEnabled and currentToken == runToken do
 				local targetPart = findNextReadyAppleTarget()
 				if targetPart == nil then
@@ -312,7 +307,7 @@ local function setAutoHarvestEnabled(shouldEnable: boolean)
 				if didReachTarget and targetPart.Parent ~= nil and isOwnedAppleTarget(targetPart) then
 					ScytheController.tryPlaySwing()
 					markTargetVisited(targetPart)
-					requestAutoHarvest:FireServer(targetPart)
+					requestScytheSwing:FireServer()
 					task.wait(AutoHarvestConfig.harvestIntervalSeconds)
 				else
 					task.wait(AutoHarvestConfig.targetScanIntervalSeconds)

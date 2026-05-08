@@ -1,8 +1,8 @@
 --!strict
 
 export type AutoHarvestConfig = {
-	approachDistanceStuds: number,
-	serverHarvestDistanceStuds: number,
+	arrivalOverlapBoxSize: Vector3,
+	arrivalOverlapDepthStuds: number,
 	harvestIntervalSeconds: number,
 	targetScanIntervalSeconds: number,
 	moveTimeoutSeconds: number,
@@ -10,7 +10,6 @@ export type AutoHarvestConfig = {
 	recentlyVisitedSeconds: number,
 	minRouteTravelDistanceStuds: number,
 	recentClusterRadiusStuds: number,
-	maxAutoHarvestPartsPerSwing: number,
 	storedAmountScoreWeight: number,
 	storageCapScoreWeight: number,
 	distanceScorePenalty: number,
@@ -23,8 +22,8 @@ export type AutoHarvestConfig = {
 }
 
 local AutoHarvestConfig: AutoHarvestConfig = table.freeze({
-	approachDistanceStuds = 4.5,
-	serverHarvestDistanceStuds = 8,
+	arrivalOverlapBoxSize = Vector3.new(5, 6, 5),
+	arrivalOverlapDepthStuds = 1.75,
 	harvestIntervalSeconds = 1.15,
 	targetScanIntervalSeconds = 0.75,
 	moveTimeoutSeconds = 8,
@@ -32,7 +31,6 @@ local AutoHarvestConfig: AutoHarvestConfig = table.freeze({
 	recentlyVisitedSeconds = 4,
 	minRouteTravelDistanceStuds = 8,
 	recentClusterRadiusStuds = 9,
-	maxAutoHarvestPartsPerSwing = 3,
 	storedAmountScoreWeight = 12,
 	storageCapScoreWeight = 1.5,
 	distanceScorePenalty = 0.35,

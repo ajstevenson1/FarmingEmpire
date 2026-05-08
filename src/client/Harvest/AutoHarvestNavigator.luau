@@ -1,6 +1,7 @@
 --!strict
 
 local PathfindingService = game:GetService("PathfindingService")
+local Workspace = game:GetService("Workspace")
 local sharedFolder = game:GetService("ReplicatedStorage"):WaitForChild("Shared") :: Folder
 local harvestFolder = sharedFolder:WaitForChild("Harvest") :: Folder
 
@@ -41,15 +42,60 @@ local function getHumanoidAndRootPart(): (Humanoid?, BasePart?)
 	return humanoid, rootPart
 end
 
-local function isCloseEnough(rootPart: BasePart, targetPart: BasePart): boolean
-	return (rootPart.Position - targetPart.Position).Magnitude <= AutoHarvestConfig.approachDistanceStuds
+local function isArrivalOverlappingTarget(rootPart: BasePart, targetPart: BasePart): boolean
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = { targetPart }
+
+	for _, part in ipairs(Workspace:GetPartBoundsInBox(rootPart.CFrame, AutoHarvestConfig.arrivalOverlapBoxSize, overlapParams)) do
+		if part == targetPart then
+			return true
+		end
+	end
+
+	return false
 end
 
-local function getPathWaypoints(rootPart: BasePart, targetPart: BasePart): { NavigationWaypoint }
-	if (rootPart.Position - targetPart.Position).Magnitude <= DIRECT_MOVE_DISTANCE_STUDS then
+local function isCloseEnough(rootPart: BasePart, targetPart: BasePart): boolean
+	return isArrivalOverlappingTarget(rootPart, targetPart)
+end
+
+local function getOverlapArrivalPosition(rootPart: BasePart, targetPart: BasePart): Vector3
+	local targetLocalRootPosition = targetPart.CFrame:PointToObjectSpace(rootPart.Position)
+	local targetHalfSize = targetPart.Size * 0.5
+	local arrivalHalfSize = AutoHarvestConfig.arrivalOverlapBoxSize * 0.5
+	local overlapDepth = AutoHarvestConfig.arrivalOverlapDepthStuds
+	local expandedHalfX = math.max(targetHalfSize.X + arrivalHalfSize.X - overlapDepth, targetHalfSize.X)
+	local expandedHalfZ = math.max(targetHalfSize.Z + arrivalHalfSize.Z - overlapDepth, targetHalfSize.Z)
+	local localX = math.clamp(targetLocalRootPosition.X, -expandedHalfX, expandedHalfX)
+	local localZ = math.clamp(targetLocalRootPosition.Z, -expandedHalfZ, expandedHalfZ)
+
+	if math.abs(targetLocalRootPosition.X) <= expandedHalfX and math.abs(targetLocalRootPosition.Z) <= expandedHalfZ then
+		local distanceToMinX = math.abs(targetLocalRootPosition.X + expandedHalfX)
+		local distanceToMaxX = math.abs(expandedHalfX - targetLocalRootPosition.X)
+		local distanceToMinZ = math.abs(targetLocalRootPosition.Z + expandedHalfZ)
+		local distanceToMaxZ = math.abs(expandedHalfZ - targetLocalRootPosition.Z)
+		local nearestDistance = math.min(distanceToMinX, distanceToMaxX, distanceToMinZ, distanceToMaxZ)
+
+		if nearestDistance == distanceToMinX then
+			localX = -expandedHalfX
+		elseif nearestDistance == distanceToMaxX then
+			localX = expandedHalfX
+		elseif nearestDistance == distanceToMinZ then
+			localZ = -expandedHalfZ
+		else
+			localZ = expandedHalfZ
+		end
+	end
+
+	return targetPart.CFrame:PointToWorldSpace(Vector3.new(localX, targetLocalRootPosition.Y, localZ))
+end
+
+local function getPathWaypoints(rootPart: BasePart, targetPart: BasePart, arrivalPosition: Vector3): { NavigationWaypoint }
+	if (rootPart.Position - arrivalPosition).Magnitude <= DIRECT_MOVE_DISTANCE_STUDS then
 		return {
 			{
-				position = targetPart.Position,
+				position = arrivalPosition,
 				action = Enum.PathWaypointAction.Walk,
 			},
 		}
@@ -61,13 +107,13 @@ local function getPathWaypoints(rootPart: BasePart, targetPart: BasePart): { Nav
 	})
 
 	local computedSuccessfully = pcall(function()
-		path:ComputeAsync(rootPart.Position, targetPart.Position)
+		path:ComputeAsync(rootPart.Position, arrivalPosition)
 	end)
 
 	if not computedSuccessfully or path.Status ~= Enum.PathStatus.Success then
 		return {
 			{
-				position = targetPart.Position,
+				position = arrivalPosition,
 				action = Enum.PathWaypointAction.Walk,
 			},
 		}
@@ -84,7 +130,7 @@ local function getPathWaypoints(rootPart: BasePart, targetPart: BasePart): { Nav
 	if #waypoints == 0 then
 		return {
 			{
-				position = targetPart.Position,
+				position = arrivalPosition,
 				action = Enum.PathWaypointAction.Walk,
 			},
 		}
@@ -98,13 +144,14 @@ local function followWaypoints(
 	rootPart: BasePart,
 	targetPart: BasePart,
 	waypoints: { NavigationWaypoint },
+	arrivalPosition: Vector3,
 	cancelToken: number
 ): boolean
 	local waypointIndex = 1
 	local lastMoveToTime = 0
 	local estimatedTimeoutSeconds = math.max(
 		AutoHarvestConfig.moveTimeoutSeconds,
-		(rootPart.Position - targetPart.Position).Magnitude / math.max(humanoid.WalkSpeed, 1) + MOVE_TIMEOUT_PADDING_SECONDS
+		(rootPart.Position - arrivalPosition).Magnitude / math.max(humanoid.WalkSpeed, 1) + MOVE_TIMEOUT_PADDING_SECONDS
 	)
 	local finishesAt = os.clock() + estimatedTimeoutSeconds
 
@@ -161,7 +208,15 @@ function AutoHarvestNavigator.moveToTarget(targetPart: BasePart): boolean
 		return true
 	end
 
-	return followWaypoints(humanoid, rootPart, targetPart, getPathWaypoints(rootPart, targetPart), cancelToken)
+	local arrivalPosition = getOverlapArrivalPosition(rootPart, targetPart)
+	return followWaypoints(
+		humanoid,
+		rootPart,
+		targetPart,
+		getPathWaypoints(rootPart, targetPart, arrivalPosition),
+		arrivalPosition,
+		cancelToken
+	)
 end
 
 function AutoHarvestNavigator.stopMovement()
