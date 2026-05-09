@@ -13,8 +13,10 @@ local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
 type ResourceId = ResourceTypes.ResourceId
 type ResourceSnapshot = ResourceTypes.ResourceSnapshot
+type ResourceAddedListener = (Player, ResourceId, number) -> ()
 
 local hasStarted = false
+local resourceAddedListeners: { ResourceAddedListener } = {}
 
 local function cloneAmounts(amountsByResourceId: { [ResourceId]: number }): { [ResourceId]: number }
 	local cloned: { [ResourceId]: number } = {}
@@ -34,6 +36,18 @@ end
 local function pushResourceUpdate(player: Player)
 	local resourceRemotes = Remotes.getResourceRemotes()
 	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(player))
+end
+
+local function notifyResourceAdded(player: Player, resourceId: ResourceId, amount: number)
+	for _, listener in ipairs(resourceAddedListeners) do
+		local success, result = pcall(function()
+			listener(player, resourceId, amount)
+		end)
+
+		if not success then
+			warn(string.format("Resource-added listener failed for %s: %s", player.Name, tostring(result)))
+		end
+	end
 end
 
 local function initializePlayer(player: Player)
@@ -88,6 +102,11 @@ function ResourceService.addResource(player: Player, resourceId: ResourceId, amo
 
 	PlayerDataService.setResourceAmount(player, resourceId, PlayerDataService.getResourceAmount(player, resourceId) + amount)
 	pushResourceUpdate(player)
+	notifyResourceAdded(player, resourceId, amount)
+end
+
+function ResourceService.observeResourceAdded(listener: ResourceAddedListener)
+	table.insert(resourceAddedListeners, listener)
 end
 
 return table.freeze(ResourceService)

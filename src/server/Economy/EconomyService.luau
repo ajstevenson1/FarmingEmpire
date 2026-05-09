@@ -11,8 +11,10 @@ local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
 type EconomySnapshot = EconomyTypes.EconomySnapshot
+type CashChangedListener = (Player, number) -> ()
 
 local hasStarted = false
+local cashChangedListeners: { CashChangedListener } = {}
 
 local function buildSnapshot(player: Player): EconomySnapshot
 	return {
@@ -23,6 +25,18 @@ end
 local function pushEconomyUpdate(player: Player)
 	local economyRemotes = Remotes.getEconomyRemotes()
 	economyRemotes.economyUpdated:FireClient(player, buildSnapshot(player))
+end
+
+local function notifyCashChanged(player: Player, cash: number)
+	for _, listener in ipairs(cashChangedListeners) do
+		local success, result = pcall(function()
+			listener(player, cash)
+		end)
+
+		if not success then
+			warn(string.format("Cash-changed listener failed for %s: %s", player.Name, tostring(result)))
+		end
+	end
 end
 
 local function initializePlayer(player: Player)
@@ -56,8 +70,10 @@ function EconomyService.addCash(player: Player, amount: number)
 		return
 	end
 
-	PlayerDataService.setCash(player, PlayerDataService.getCash(player) + amount)
+	local newCash = PlayerDataService.getCash(player) + amount
+	PlayerDataService.setCash(player, newCash)
 	pushEconomyUpdate(player)
+	notifyCashChanged(player, newCash)
 end
 
 function EconomyService.trySpendCash(player: Player, amount: number): boolean
@@ -71,13 +87,19 @@ function EconomyService.trySpendCash(player: Player, amount: number): boolean
 		return false
 	end
 
-	PlayerDataService.setCash(player, currentCash - amount)
+	local newCash = currentCash - amount
+	PlayerDataService.setCash(player, newCash)
 	pushEconomyUpdate(player)
+	notifyCashChanged(player, newCash)
 	return true
 end
 
 function EconomyService.getCash(player: Player): number
 	return PlayerDataService.getCash(player)
+end
+
+function EconomyService.observeCashChanged(listener: CashChangedListener)
+	table.insert(cashChangedListeners, listener)
 end
 
 return table.freeze(EconomyService)
