@@ -1,7 +1,9 @@
 --!strict
 
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
@@ -33,6 +35,7 @@ local SAVE_DEBOUNCE_SECONDS = 0.25
 
 local hasStarted = false
 local slidersById: { [SettingId]: SliderInstance } = {}
+local slidersInDisplayOrder: { SliderInstance } = {}
 local valuesById: SettingsValues = SettingsConfig.getDefaultValues()
 local settingChangedRemote: RemoteEvent? = nil
 local nextSaveToken = 0
@@ -105,6 +108,32 @@ local function applySetting(definition: SettingDefinition, value: number)
 	AudioService.setBusVolume(definition.soundGroupName :: AudioBusId, value)
 end
 
+local function isConsoleSettingsInput(): boolean
+	return UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled and not UserInputService.TouchEnabled
+end
+
+local function focusFirstSliderForConsole()
+	if not isConsoleSettingsInput() then
+		return
+	end
+
+	local firstSlider = slidersInDisplayOrder[1]
+	if firstSlider == nil then
+		return
+	end
+
+	task.defer(function()
+		firstSlider:focus()
+	end)
+end
+
+local function clearSettingsFocus(settingsFrame: Frame)
+	local selectedObject = GuiService.SelectedObject
+	if selectedObject ~= nil and selectedObject:IsDescendantOf(settingsFrame) then
+		GuiService.SelectedObject = nil
+	end
+end
+
 local function getSettingsRemotes(): (RemoteFunction, RemoteEvent)
 	local remotesFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName)
 	local settingsRemoteFolder = remotesFolder:WaitForChild(RemoteNames.settingsFolderName)
@@ -164,6 +193,7 @@ local function bindSettingSlider(settingsFrame: Frame, definition: SettingDefini
 	end)
 
 	slidersById[definition.id] = slider
+	table.insert(slidersInDisplayOrder, slider)
 	slider:setValue(valuesById[definition.id], false)
 	applySetting(definition, valuesById[definition.id])
 end
@@ -198,6 +228,14 @@ function SettingsController.start()
 		bindSettingSlider(settingsFrame, definition)
 	end
 
+	FrameManager.observeFrameState(SETTINGS_FRAME_ID, function(isOpen: boolean)
+		if isOpen then
+			focusFirstSliderForConsole()
+		else
+			clearSettingsFocus(settingsFrame)
+		end
+	end)
+
 	openButton.Activated:Connect(function()
 		FrameManager.toggle(SETTINGS_FRAME_ID)
 	end)
@@ -207,6 +245,7 @@ function SettingsController.start()
 			slider:destroy()
 			slidersById[settingId] = nil
 		end
+		table.clear(slidersInDisplayOrder)
 	end)
 end
 

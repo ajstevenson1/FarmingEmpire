@@ -59,6 +59,7 @@ export type InventoryBarView = {
 	_isInventoryPanelOpen: boolean,
 	_currentSnapshot: InventorySnapshot?,
 	_dragState: DragState?,
+	_activeInventoryItemId: ItemId?,
 	_slotActivationSuppressUntil: number,
 	_searchText: string,
 	_renderedHotbarSlotCount: number,
@@ -100,7 +101,8 @@ local MOBILE_INVENTORY_GRID_CELL_SIZE = 45
 local DESKTOP_INVENTORY_GRID_CELL_SIZE = 83
 local MOBILE_INVENTORY_GRID_PADDING = 12
 local DESKTOP_INVENTORY_GRID_PADDING = 12
-local MOBILE_TOOLTIP_TEXT = "Hold and tap slot to assign"
+local MOBILE_TOOLTIP_TEXT = "Tap an item, then tap a hotbar slot"
+local MOBILE_ACTIVE_TOOLTIP_TEXT = "Tap a hotbar slot to assign"
 local DESKTOP_TOOLTIP_TEXT = "Click and drag to assign"
 
 local toolButtonTemplateInstance = templatesFolder:WaitForChild("ToolButton")
@@ -310,7 +312,7 @@ local function isDroppedOnInventoryWindow(playerGui: PlayerGui, inventoryWindow:
 	return false
 end
 
-local updateHeldItemHighlights: (InventoryBarView) -> ()
+local updateInventorySelectionFeedback: (InventoryBarView) -> ()
 
 local function beginDragState(self: InventoryBarView, itemId: ItemId, source: "Inventory" | "Hotbar", screenPosition: Vector2)
 	local itemDefinition = ItemCatalog.getItemDefinition(itemId)
@@ -321,13 +323,13 @@ local function beginDragState(self: InventoryBarView, itemId: ItemId, source: "I
 	self._dragGhostLabel.Text = itemDefinition.displayName
 	self._dragGhostLabel.Position = UDim2.fromOffset(screenPosition.X, screenPosition.Y)
 	self._dragGhostLabel.Visible = true
-	updateHeldItemHighlights(self)
+	updateInventorySelectionFeedback(self)
 end
 
 local function clearDragState(self: InventoryBarView)
 	self._dragState = nil
 	self._dragGhostLabel.Visible = false
-	updateHeldItemHighlights(self)
+	updateInventorySelectionFeedback(self)
 end
 
 local function fireHotbarAssignRequested(self: InventoryBarView, itemId: ItemId, slotIndex: number)
@@ -342,30 +344,39 @@ local function fireHotbarUnassignRequested(self: InventoryBarView, itemId: ItemI
 	end
 end
 
-updateHeldItemHighlights = function(self: InventoryBarView)
-	local dragState = self._dragState
-	for _, slot in ipairs(self._hotbarSlots) do
-		local isHeldSlot = dragState ~= nil and dragState.source == "Hotbar" and slot.itemId == dragState.itemId
-		local isAssignableTarget = dragState ~= nil
-			and dragState.source == "Inventory"
-			and HotbarConfig.isAssignableSlotIndex(slot.slotIndex)
-		slot.stroke.Color = if isHeldSlot or isAssignableTarget or slot.isSelected then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
-		slot.stroke.Transparency = if isHeldSlot or isAssignableTarget then 0 else 0.15
-	end
-
-	for _, item in ipairs(self._inventoryItems) do
-		local isHeldItem = dragState ~= nil and dragState.source == "Inventory" and item.itemId == dragState.itemId
-		item.stroke.Color = if isHeldItem then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
-		item.stroke.Transparency = if isHeldItem then 0 else 0.55
-	end
-end
-
-local function updateTooltipText(tooltipLabel: TextLabel?)
+local function updateTooltipText(tooltipLabel: TextLabel?, activeInventoryItemId: ItemId?)
 	if tooltipLabel == nil then
 		return
 	end
 
-	tooltipLabel.Text = if isMobileHotbarLayout() then MOBILE_TOOLTIP_TEXT else DESKTOP_TOOLTIP_TEXT
+	if isMobileHotbarLayout() then
+		tooltipLabel.Text = if activeInventoryItemId ~= nil then MOBILE_ACTIVE_TOOLTIP_TEXT else MOBILE_TOOLTIP_TEXT
+	else
+		tooltipLabel.Text = DESKTOP_TOOLTIP_TEXT
+	end
+end
+
+updateInventorySelectionFeedback = function(self: InventoryBarView)
+	local dragState = self._dragState
+	for _, slot in ipairs(self._hotbarSlots) do
+		local isHeldSlot = dragState ~= nil and dragState.source == "Hotbar" and slot.itemId == dragState.itemId
+		slot.stroke.Color = if isHeldSlot or slot.isSelected then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
+		slot.stroke.Transparency = if isHeldSlot then 0 else 0.15
+	end
+
+	for _, item in ipairs(self._inventoryItems) do
+		local isDraggedItem = dragState ~= nil and dragState.source == "Inventory" and item.itemId == dragState.itemId
+		local isActiveItem = self._activeInventoryItemId == item.itemId
+		item.stroke.Color = if isDraggedItem or isActiveItem then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
+		item.stroke.Transparency = if isDraggedItem or isActiveItem then 0 else 0.55
+	end
+
+	updateTooltipText(self._tooltipLabel, self._activeInventoryItemId)
+end
+
+local function setActiveInventoryItem(self: InventoryBarView, itemId: ItemId?)
+	self._activeInventoryItemId = itemId
+	updateInventorySelectionFeedback(self)
 end
 
 local function getViewportSize(rootGui: ScreenGui, fallbackGui: GuiObject): Vector2
@@ -530,6 +541,7 @@ function InventoryBarView.new(): InventoryBarView
 		_isInventoryPanelOpen = false,
 		_currentSnapshot = nil,
 		_dragState = nil,
+		_activeInventoryItemId = nil,
 		_slotActivationSuppressUntil = 0,
 		_searchText = searchBox.Text,
 		_renderedHotbarSlotCount = 1,
@@ -570,7 +582,7 @@ function InventoryBarView.new(): InventoryBarView
 		table.insert(self._connections, currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
 			updateInventoryGridLayout(self._rootGui, self._inventoryContentFrame, self._inventoryGrid)
-			updateTooltipText(self._tooltipLabel)
+			updateTooltipText(self._tooltipLabel, self._activeInventoryItemId)
 		end))
 	end
 
@@ -614,7 +626,7 @@ function InventoryBarView.new(): InventoryBarView
 
 	updateHotbarLayout(rootGui, hotbarFrame, hotbarGrid, 1)
 	updateInventoryGridLayout(rootGui, inventoryContentFrame, inventoryGrid)
-	updateTooltipText(tooltipLabel)
+	updateTooltipText(tooltipLabel, nil)
 
 	return self
 end
@@ -644,6 +656,7 @@ function InventoryBarView:setInventoryPanelOpen(isOpen: boolean)
 
 	if not isOpen then
 		clearDragState(self)
+		setActiveInventoryItem(self, nil)
 		self._slotActivationSuppressUntil = 0
 	end
 
@@ -729,15 +742,21 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 					return
 				end
 
+				if self._isInventoryPanelOpen and isMobileHotbarLayout() then
+					local activeInventoryItemId = self._activeInventoryItemId
+					if activeInventoryItemId == nil then
+						return
+					end
+
+					setActiveInventoryItem(self, nil)
+					fireHotbarAssignRequested(self, activeInventoryItemId, slotIndex)
+					return
+				end
+
 				local dragState = self._dragState
 				if self._isInventoryPanelOpen and dragState ~= nil then
 					clearDragState(self)
 					fireHotbarAssignRequested(self, dragState.itemId, slotIndex)
-					return
-				end
-
-				if self._isInventoryPanelOpen and isMobileHotbarLayout() and itemId ~= nil then
-					fireHotbarUnassignRequested(self, itemId)
 					return
 				end
 
@@ -792,8 +811,8 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 					return
 				end
 
-				local center = itemButton.AbsolutePosition + itemButton.AbsoluteSize * 0.5
-				beginDragState(self, entry.itemId, "Inventory", center)
+				local activeInventoryItemId = if self._activeInventoryItemId == entry.itemId then nil else entry.itemId
+				setActiveInventoryItem(self, activeInventoryItemId)
 			end))
 
 			table.insert(self._itemConnections, itemButton.InputBegan:Connect(function(inputObject: InputObject)
@@ -806,7 +825,7 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 		end
 	end
 
-	updateHeldItemHighlights(self)
+	updateInventorySelectionFeedback(self)
 end
 
 function InventoryBarView:destroy()

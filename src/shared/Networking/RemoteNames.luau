@@ -18,6 +18,7 @@ local RemoteNames = {
 	unassignHotbarItemEventName = "UnassignHotbarItem",
 	requestPlacementEventName = "RequestPlacement",
 	requestPickupEventName = "RequestPickup",
+	requestPickupAllEventName = "RequestPickupAll",
 	requestSellEventName = "RequestSell",
 	requestScytheSwingEventName = "RequestScytheSwing",
 	scytheHarvestConfirmedEventName = "ScytheHarvestConfirmed",

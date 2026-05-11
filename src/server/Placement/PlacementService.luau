@@ -317,26 +317,13 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ)
 end
 
-local function resolveValidatedPlacedBuildingTarget(player: Player, requestedTarget: unknown): ValidatedPlacedBuildingTarget?
-	if typeof(requestedTarget) ~= "Instance" then
-		return nil
-	end
-
-	local placedPart = getPlacedPartFromInstance(requestedTarget :: Instance)
-	if placedPart == nil then
-		return nil
-	end
-
+local function resolveOwnedPlacedBuildingOnAssignedPlot(player: Player, placedPart: BasePart): ValidatedPlacedBuildingTarget?
 	if placedPart:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
 		return nil
 	end
 
 	local assignedPlotName = PlotService.getAssignedPlotName(player)
 	if assignedPlotName == nil or placedPart:GetAttribute(PLOT_NAME_ATTRIBUTE) ~= assignedPlotName then
-		return nil
-	end
-
-	if not isPlayerCloseEnoughToPickup(player, placedPart) then
 		return nil
 	end
 
@@ -351,10 +338,31 @@ local function resolveValidatedPlacedBuildingTarget(player: Player, requestedTar
 	}
 end
 
-local function handlePickupRequest(player: Player, requestedTarget: unknown)
-	local validatedTarget = resolveValidatedPlacedBuildingTarget(player, requestedTarget)
+local function resolveValidatedPlacedBuildingTarget(player: Player, requestedTarget: unknown): ValidatedPlacedBuildingTarget?
+	if typeof(requestedTarget) ~= "Instance" then
+		return nil
+	end
+
+	local placedPart = getPlacedPartFromInstance(requestedTarget :: Instance)
+	if placedPart == nil then
+		return nil
+	end
+
+	local validatedTarget = resolveOwnedPlacedBuildingOnAssignedPlot(player, placedPart)
 	if validatedTarget == nil then
-		return
+		return nil
+	end
+
+	if not isPlayerCloseEnoughToPickup(player, placedPart) then
+		return nil
+	end
+
+	return validatedTarget
+end
+
+local function pickupValidatedTarget(player: Player, validatedTarget: ValidatedPlacedBuildingTarget): boolean
+	if validatedTarget.part.Parent == nil then
+		return false
 	end
 
 	local storedOutput = ProductionService.getStoredOutput(validatedTarget.part)
@@ -365,7 +373,47 @@ local function handlePickupRequest(player: Player, requestedTarget: unknown)
 	InventoryService.addItem(player, validatedTarget.buildingId :: ItemId, 1)
 	ProductionService.unregisterPlacedBuilding(validatedTarget.part)
 	validatedTarget.part:Destroy()
-	savePlayerPlacedBuildings(player)
+	return true
+end
+
+local function handlePickupRequest(player: Player, requestedTarget: unknown)
+	local validatedTarget = resolveValidatedPlacedBuildingTarget(player, requestedTarget)
+	if validatedTarget == nil then
+		return
+	end
+
+	if pickupValidatedTarget(player, validatedTarget) then
+		savePlayerPlacedBuildings(player)
+	end
+end
+
+local function handlePickupAllRequest(player: Player)
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	local targetsToPickup: { ValidatedPlacedBuildingTarget } = {}
+
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") then
+			local validatedTarget = resolveOwnedPlacedBuildingOnAssignedPlot(player, child)
+			if validatedTarget ~= nil then
+				table.insert(targetsToPickup, validatedTarget)
+			end
+		end
+	end
+
+	if #targetsToPickup == 0 then
+		return
+	end
+
+	local didPickupAny = false
+	for _, validatedTarget in ipairs(targetsToPickup) do
+		if pickupValidatedTarget(player, validatedTarget) then
+			didPickupAny = true
+		end
+	end
+
+	if didPickupAny then
+		savePlayerPlacedBuildings(player)
+	end
 end
 
 local function handleSellRequest(player: Player, requestedTarget: unknown)
@@ -398,6 +446,7 @@ function PlacementService.start()
 	local placementRemotes = Remotes.getPlacementRemotes()
 	placementRemotes.requestPlacement.OnServerEvent:Connect(handlePlacementRequest)
 	placementRemotes.requestPickup.OnServerEvent:Connect(handlePickupRequest)
+	placementRemotes.requestPickupAll.OnServerEvent:Connect(handlePickupAllRequest)
 	placementRemotes.requestSell.OnServerEvent:Connect(handleSellRequest)
 	getPlacedObjectsFolder()
 	PlayerDataService.observeBeforeSave(savePlayerPlacedBuildings)

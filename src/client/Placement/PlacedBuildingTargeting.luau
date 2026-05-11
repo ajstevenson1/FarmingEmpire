@@ -39,15 +39,15 @@ local function getAssignedPlotName(player: Player): string?
 	return assignedPlot.Name
 end
 
-local function getRaycastResult(): RaycastResult?
+local function getRaycastResult(screenPosition: Vector2?): RaycastResult?
 	local camera = Workspace.CurrentCamera
 	local placedObjectsFolder = getPlacedObjectsFolder()
 	if camera == nil or placedObjectsFolder == nil then
 		return nil
 	end
 
-	local mouseLocation = UserInputService:GetMouseLocation()
-	local screenRay = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+	local pointerPosition = screenPosition or UserInputService:GetMouseLocation()
+	local screenRay = camera:ViewportPointToRay(pointerPosition.X, pointerPosition.Y)
 
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
@@ -98,8 +98,8 @@ local function isCloseEnough(player: Player, placedPart: BasePart): boolean
 	return (rootPart.Position - placedPart.Position).Magnitude <= MAX_INTERACTION_DISTANCE_STUDS
 end
 
-function PlacedBuildingTargeting.getCurrentTarget(player: Player): BasePart?
-	local raycastResult = getRaycastResult()
+function PlacedBuildingTargeting.getCurrentTarget(player: Player, screenPosition: Vector2?): BasePart?
+	local raycastResult = getRaycastResult(screenPosition)
 	if raycastResult == nil then
 		return nil
 	end

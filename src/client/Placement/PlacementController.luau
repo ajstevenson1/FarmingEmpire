@@ -25,6 +25,7 @@ local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: Modu
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
+local HudTooltip = require(script.Parent.Parent.UI.HudTooltip)
 local StructureActionMode = require(script.Parent.StructureActionMode)
 local PlacementPreviewView = require(script.Parent.PlacementPreviewView)
 
@@ -43,6 +44,12 @@ local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
+local PLACEMENT_TOOLTIP_OWNER_ID = "Placement"
+local DESKTOP_PLACEMENT_TOOLTIP_TEXT = "Click to place"
+local MOBILE_PLACEMENT_TOOLTIP_TEXT = "Move and drag to position, tap to place"
+local GAMEPAD_PLACEMENT_TOOLTIP_TEXT = "Press right trigger to place"
+local MOBILE_MAX_PLACEMENT_DISTANCE_STUDS = 18
+local MOBILE_MIN_PLACEMENT_DISTANCE_STUDS = 4
 
 local hasStarted = false
 
@@ -84,14 +91,34 @@ local function getEquippedPlaceableItem(snapshot: InventorySnapshot): (ItemId?, 
 	return equippedItemId, itemDefinition
 end
 
+local function isMobilePlacementInput(): boolean
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
+end
+
+local function isGamepadPlacementInput(): boolean
+	return UserInputService.GamepadEnabled and not isMobilePlacementInput()
+end
+
+local function getPlacementTooltipText(): string
+	if isMobilePlacementInput() then
+		return MOBILE_PLACEMENT_TOOLTIP_TEXT
+	end
+
+	if isGamepadPlacementInput() then
+		return GAMEPAD_PLACEMENT_TOOLTIP_TEXT
+	end
+
+	return DESKTOP_PLACEMENT_TOOLTIP_TEXT
+end
+
 local function getPlotRaycastResult(plot: BasePart): RaycastResult?
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return nil
 	end
 
-	local mouseLocation = UserInputService:GetMouseLocation()
-	local screenRay = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+	local pointerPosition = UserInputService:GetMouseLocation()
+	local screenRay = camera:ViewportPointToRay(pointerPosition.X, pointerPosition.Y)
 
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Include
@@ -99,6 +126,44 @@ local function getPlotRaycastResult(plot: BasePart): RaycastResult?
 	raycastParams.IgnoreWater = true
 
 	return Workspace:Raycast(screenRay.Origin, screenRay.Direction * 1000, raycastParams)
+end
+
+local function getCharacterRootPart(): BasePart?
+	local character = localPlayer.Character
+	if character == nil then
+		return nil
+	end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if rootPart == nil or not rootPart:IsA("BasePart") then
+		return nil
+	end
+
+	return rootPart
+end
+
+local function getMobilePlacementWorldPosition(): Vector3?
+	local rootPart = getCharacterRootPart()
+	if rootPart == nil then
+		return nil
+	end
+
+	local currentCamera = Workspace.CurrentCamera
+	local lookVector = if currentCamera == nil then rootPart.CFrame.LookVector else currentCamera.CFrame.LookVector
+	local planarLookVector = Vector3.new(lookVector.X, 0, lookVector.Z)
+	if planarLookVector.Magnitude <= 0.001 then
+		local rootLookVector = rootPart.CFrame.LookVector
+		planarLookVector = Vector3.new(rootLookVector.X, 0, rootLookVector.Z)
+	end
+
+	if planarLookVector.Magnitude <= 0.001 then
+		return nil
+	end
+
+	local downwardAmount = math.clamp(-lookVector.Y, 0, 1)
+	local placementDistance = MOBILE_MAX_PLACEMENT_DISTANCE_STUDS
+		+ (MOBILE_MIN_PLACEMENT_DISTANCE_STUDS - MOBILE_MAX_PLACEMENT_DISTANCE_STUDS) * downwardAmount
+	return rootPart.Position + planarLookVector.Unit * placementDistance
 end
 
 local function isGridOccupied(plotName: string, footprint: Vector3, grid: GridCoordinate): boolean
@@ -134,17 +199,61 @@ function PlacementController.start()
 
 	local previewView = PlacementPreviewView.new()
 	local placementRemotes = getPlacementRemotes()
+	local hudTooltip = HudTooltip.get()
 	local latestSnapshot = InventoryController.getLatestSnapshot()
 	local currentPreviewState: PreviewState? = nil
+
+	hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 
 	InventoryController.observeSnapshotChanged(function(snapshot: InventorySnapshot)
 		latestSnapshot = snapshot
 	end)
 
+	local function requestCurrentPlacement(): boolean
+		if StructureActionMode.getMode() ~= "None" then
+			return false
+		end
+
+		if UserInputService:GetFocusedTextBox() ~= nil then
+			return false
+		end
+
+		local snapshot = latestSnapshot
+		if snapshot == nil then
+			return false
+		end
+
+		local _, itemDefinition = getEquippedPlaceableItem(snapshot)
+		local plot = getAssignedPlot()
+		if itemDefinition == nil or plot == nil then
+			return false
+		end
+
+		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
+		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+		local previewState = currentPreviewState
+		if previewState == nil then
+			return false
+		end
+
+		local placementGrid = {
+			x = previewState.gridX,
+			z = previewState.gridZ,
+		}
+
+		if isGridOccupied(plot.Name, placementFootprint, placementGrid) then
+			return false
+		end
+
+		placementRemotes.requestPlacement:FireServer(placementGrid.x, placementGrid.z)
+		return true
+	end
+
 	RunService.RenderStepped:Connect(function()
 		if StructureActionMode.getMode() ~= "None" then
 			previewView:hide()
 			currentPreviewState = nil
+			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
 
@@ -152,6 +261,7 @@ function PlacementController.start()
 		if snapshot == nil then
 			previewView:hide()
 			currentPreviewState = nil
+			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
 
@@ -159,8 +269,10 @@ function PlacementController.start()
 		if itemDefinition == nil then
 			previewView:hide()
 			currentPreviewState = nil
+			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
+		hudTooltip:show(getPlacementTooltipText(), false, PLACEMENT_TOOLTIP_OWNER_ID)
 
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
 		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
@@ -173,14 +285,27 @@ function PlacementController.start()
 			return
 		end
 
-		local raycastResult = getPlotRaycastResult(plotBase)
-		if raycastResult == nil then
+		local placementWorldPosition: Vector3?
+		if isMobilePlacementInput() then
+			placementWorldPosition = getMobilePlacementWorldPosition()
+		else
+			local raycastResult = getPlotRaycastResult(plotBase)
+			if raycastResult == nil then
+				previewView:hide()
+				currentPreviewState = nil
+				return
+			end
+
+			placementWorldPosition = raycastResult.Position
+		end
+
+		if placementWorldPosition == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
 		end
 
-		local grid = PlotMath.worldPositionToGrid(plotBase.CFrame, plotBase.Size, placementFootprint, raycastResult.Position)
+		local grid = PlotMath.worldPositionToGrid(plotBase.CFrame, plotBase.Size, placementFootprint, placementWorldPosition)
 		if grid == nil then
 			previewView:hide()
 			currentPreviewState = nil
@@ -215,34 +340,24 @@ function PlacementController.start()
 			return
 		end
 
-		if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1
+			and inputObject.KeyCode ~= Enum.KeyCode.ButtonR2 then
 			return
 		end
 
-		local snapshot = latestSnapshot
-		local previewState = currentPreviewState
-		if snapshot == nil or previewState == nil then
+		requestCurrentPlacement()
+	end)
+
+	UserInputService.TouchTap:Connect(function(_touchPositions: { Vector2 }, gameProcessedEvent: boolean)
+		if gameProcessedEvent then
 			return
 		end
 
-		local _, itemDefinition = getEquippedPlaceableItem(snapshot)
-		local plot = getAssignedPlot()
-		if itemDefinition == nil or plot == nil then
+		if not isMobilePlacementInput() then
 			return
 		end
 
-		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
-		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
-
-		local currentGrid = {
-			x = previewState.gridX,
-			z = previewState.gridZ,
-		}
-		if isGridOccupied(plot.Name, placementFootprint, currentGrid) then
-			return
-		end
-
-		placementRemotes.requestPlacement:FireServer(previewState.gridX, previewState.gridZ)
+		requestCurrentPlacement()
 	end)
 end
 

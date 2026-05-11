@@ -25,6 +25,9 @@ local snapshotChangedListeners: { (InventorySnapshot) -> () } = {}
 local INVENTORY_FRAME_ID = "InventoryMenu"
 local MENU_FRAME_GROUP = "Menu"
 local INVENTORY_TOGGLE_KEYCODE = Enum.KeyCode.Backquote
+local PREVIOUS_HOTBAR_SLOT_KEYCODE = Enum.KeyCode.ButtonL1
+local NEXT_HOTBAR_SLOT_KEYCODE = Enum.KeyCode.ButtonR1
+local DESELECT_HOTBAR_SLOT_KEYCODE = Enum.KeyCode.ButtonB
 
 local HOTBAR_KEYCODES: { [Enum.KeyCode]: number } = {
 	[Enum.KeyCode.One] = 2,
@@ -85,6 +88,49 @@ local function requestSlotSelection(snapshot: InventorySnapshot, slotIndex: numb
 	end
 
 	setSelectedSlot:FireServer(nextSelectedSlotIndex)
+end
+
+local function buildOccupiedHotbarSlotIndices(snapshot: InventorySnapshot): { number }
+	local occupiedSlotIndices: { number } = {}
+	for slotIndex = HotbarConfig.lockedSlotIndex, HotbarConfig.lastSlotIndex do
+		if snapshot.hotbarSlots[slotIndex] ~= nil then
+			table.insert(occupiedSlotIndices, slotIndex)
+		end
+	end
+
+	return occupiedSlotIndices
+end
+
+local function requestHotbarCycleSelection(snapshot: InventorySnapshot, direction: number, setSelectedSlot: RemoteEvent)
+	local occupiedSlotIndices = buildOccupiedHotbarSlotIndices(snapshot)
+	local occupiedSlotCount = #occupiedSlotIndices
+	if occupiedSlotCount <= 0 then
+		return
+	end
+
+	local currentSelectedSlotIndex = snapshot.selectedSlotIndex
+	local currentPosition: number? = nil
+	if currentSelectedSlotIndex ~= nil then
+		for index, slotIndex in ipairs(occupiedSlotIndices) do
+			if slotIndex == currentSelectedSlotIndex then
+				currentPosition = index
+				break
+			end
+		end
+	end
+
+	local nextPosition: number
+	if currentPosition == nil then
+		nextPosition = if direction > 0 then 1 else occupiedSlotCount
+	else
+		nextPosition = ((currentPosition - 1 + direction) % occupiedSlotCount) + 1
+	end
+
+	if StructureActionMode.getMode() ~= "None" then
+		StructureActionMode.clearMode()
+	end
+
+	setSelectedSlot:FireServer(occupiedSlotIndices[nextPosition])
 end
 
 local function getClosedInventoryPanelPosition(panel: Frame): UDim2
@@ -168,13 +214,34 @@ function InventoryController.start()
 			return
 		end
 
-		local slotIndex = HOTBAR_KEYCODES[inputObject.KeyCode]
-		if slotIndex == nil then
+		local currentSnapshot = latestSnapshot
+		if currentSnapshot == nil then
 			return
 		end
 
-		local currentSnapshot = latestSnapshot
-		if currentSnapshot == nil then
+		if inputObject.KeyCode == PREVIOUS_HOTBAR_SLOT_KEYCODE then
+			requestHotbarCycleSelection(currentSnapshot, -1, setSelectedSlot)
+			return
+		end
+
+		if inputObject.KeyCode == NEXT_HOTBAR_SLOT_KEYCODE then
+			requestHotbarCycleSelection(currentSnapshot, 1, setSelectedSlot)
+			return
+		end
+
+		if inputObject.KeyCode == DESELECT_HOTBAR_SLOT_KEYCODE then
+			if StructureActionMode.getMode() ~= "None" then
+				StructureActionMode.clearMode()
+			end
+
+			if currentSnapshot.selectedSlotIndex ~= nil then
+				setSelectedSlot:FireServer(nil)
+			end
+			return
+		end
+
+		local slotIndex = HOTBAR_KEYCODES[inputObject.KeyCode]
+		if slotIndex == nil then
 			return
 		end
 

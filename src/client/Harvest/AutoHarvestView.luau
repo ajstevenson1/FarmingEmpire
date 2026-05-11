@@ -19,13 +19,8 @@ export type AutoHarvestView = {
 local AutoHarvestView = {}
 AutoHarvestView.__index = AutoHarvestView
 
-local BUTTON_SIZE = UDim2.fromOffset(132, 44)
-local BUTTON_POSITION = UDim2.new(1, -24, 1, -112)
-local INACTIVE_COLOR = Color3.fromRGB(35, 42, 38)
-local ACTIVE_COLOR = Color3.fromRGB(45, 116, 72)
-local STROKE_INACTIVE_COLOR = Color3.fromRGB(197, 215, 189)
-local STROKE_ACTIVE_COLOR = Color3.fromRGB(221, 255, 216)
-local TEXT_COLOR = Color3.fromRGB(246, 248, 239)
+local ACTIVE_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
+local INACTIVE_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
 
 local function getRootGui(): ScreenGui
 	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -40,47 +35,42 @@ local function getHud(rootGui: ScreenGui): GuiObject
 	return hud
 end
 
-local function createButton(parent: Instance): (TextButton, UIStroke)
-	local button = Instance.new("TextButton")
-	button.Name = "AutoHarvestButton"
-	button.AnchorPoint = Vector2.new(1, 1)
-	button.AutoButtonColor = true
-	button.BackgroundColor3 = INACTIVE_COLOR
-	button.BackgroundTransparency = 0.08
-	button.BorderSizePixel = 0
-	button.Font = Enum.Font.GothamBold
-	button.Position = BUTTON_POSITION
-	button.Size = BUTTON_SIZE
-	button.Text = "Auto"
-	button.TextColor3 = TEXT_COLOR
-	button.TextSize = 16
-	button.Visible = false
-	button.ZIndex = 25
-	button.Parent = parent
+local function findStroke(button: TextButton): UIStroke
+	local designFrame = button:FindFirstChild("Design")
+	if designFrame ~= nil then
+		assert(designFrame:IsA("GuiObject"), "GUI.HUD.BottomRight.AutoScythe.Design must be a GuiObject")
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = button
+		local designStroke = designFrame:FindFirstChild("Stroke")
+		assert(designStroke ~= nil, "GUI.HUD.BottomRight.AutoScythe.Design must contain a Stroke child")
+		assert(designStroke:IsA("UIStroke"), "GUI.HUD.BottomRight.AutoScythe.Design.Stroke must be a UIStroke")
+		return designStroke
+	end
 
-	local stroke = Instance.new("UIStroke")
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Color = STROKE_INACTIVE_COLOR
-	stroke.Thickness = 1
-	stroke.Transparency = 0.15
-	stroke.Parent = button
+	local directStroke = button:FindFirstChildWhichIsA("UIStroke")
+	assert(directStroke ~= nil, "GUI.HUD.BottomRight.AutoScythe must contain a UIStroke")
+	return directStroke
+end
 
-	return button, stroke
+local function getAutoScytheButton(hud: GuiObject): (TextButton, UIStroke)
+	local bottomRight = hud:WaitForChild("BottomRight")
+	assert(bottomRight:IsA("GuiObject"), "GUI.HUD.BottomRight must be a GuiObject")
+
+	local button = bottomRight:WaitForChild("AutoScythe")
+	assert(button:IsA("TextButton"), "GUI.HUD.BottomRight.AutoScythe must be a TextButton")
+
+	return button, findStroke(button)
 end
 
 function AutoHarvestView.new(): AutoHarvestView
 	local rootGui = getRootGui()
 	local hud = getHud(rootGui)
-	local existingButton = hud:FindFirstChild("AutoHarvestButton")
-	if existingButton ~= nil then
-		existingButton:Destroy()
+	local oldCreatedButton = hud:FindFirstChild("AutoHarvestButton")
+	if oldCreatedButton ~= nil then
+		oldCreatedButton:Destroy()
 	end
 
-	local button, stroke = createButton(hud)
+	local button, stroke = getAutoScytheButton(hud)
+	button.Visible = false
 	local self = setmetatable({
 		_button = button,
 		_stroke = stroke,
@@ -94,6 +84,7 @@ function AutoHarvestView.new(): AutoHarvestView
 		end
 	end)
 
+	self:setEnabled(false)
 	return self
 end
 
@@ -107,13 +98,11 @@ end
 
 function AutoHarvestView:setEnabled(isEnabled: boolean)
 	self._isEnabled = isEnabled
-	self._button.Text = if isEnabled then "Auto On" else "Auto"
-	self._button.BackgroundColor3 = if isEnabled then ACTIVE_COLOR else INACTIVE_COLOR
-	self._stroke.Color = if isEnabled then STROKE_ACTIVE_COLOR else STROKE_INACTIVE_COLOR
+	self._stroke.Color = if isEnabled then ACTIVE_STROKE_COLOR else INACTIVE_STROKE_COLOR
 end
 
 function AutoHarvestView:destroy()
-	self._button:Destroy()
+	self._button.Visible = false
 	table.clear(self._toggleCallbacks)
 end
 

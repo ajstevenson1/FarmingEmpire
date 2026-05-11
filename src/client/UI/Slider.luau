@@ -1,5 +1,6 @@
 --!strict
 
+local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 
 type GuiButtonLike = TextButton | ImageButton
@@ -17,16 +18,23 @@ export type Slider = {
 	_step: number?,
 	_isDraggingWithMouse: boolean,
 	_activeTouchInput: InputObject?,
+	_lastThumbstickDirection: number,
+	_nextThumbstickAdjustAt: number,
 	_connections: { RBXScriptConnection },
 	_changedCallbacks: { (number) -> () },
 	setValue: (self: Slider, value: number, shouldFireChanged: boolean?) -> (),
 	getValue: (self: Slider) -> number,
+	focus: (self: Slider) -> (),
 	connectChanged: (self: Slider, callback: (number) -> ()) -> (),
 	destroy: (self: Slider) -> (),
 }
 
 local Slider = {}
 Slider.__index = Slider
+
+local DEFAULT_GAMEPAD_STEP = 0.05
+local THUMBSTICK_DEADZONE = 0.55
+local THUMBSTICK_REPEAT_SECONDS = 0.12
 
 local function quantizeValue(value: number, step: number?): number
 	local clampedValue = math.clamp(value, 0, 1)
@@ -60,6 +68,28 @@ local function render(self: Slider)
 	self._filled.Size = UDim2.new(knobCenterScale, 0, filledSize.Y.Scale, filledSize.Y.Offset)
 end
 
+local function getAdjustmentStep(self: Slider): number
+	local step = self._step
+	if step ~= nil and step > 0 then
+		return step
+	end
+
+	return DEFAULT_GAMEPAD_STEP
+end
+
+local function isSelectedForGamepad(self: Slider): boolean
+	local selectedObject = GuiService.SelectedObject
+	return selectedObject == self._track or selectedObject == self._knob
+end
+
+local function adjustWithGamepad(self: Slider, direction: number)
+	if direction == 0 or not isSelectedForGamepad(self) then
+		return
+	end
+
+	self:setValue(self._value + getAdjustmentStep(self) * direction, true)
+end
+
 local function updateValueFromScreenPosition(self: Slider, screenPositionX: number)
 	local trackWidth = self._track.AbsoluteSize.X
 	if trackWidth <= 0 then
@@ -88,9 +118,28 @@ local function beginDrag(self: Slider, inputObject: InputObject)
 	end
 end
 
+local function getHorizontalThumbstickDirection(inputObject: InputObject): number
+	local horizontalPosition = inputObject.Position.X
+	if horizontalPosition <= -THUMBSTICK_DEADZONE then
+		return -1
+	end
+
+	if horizontalPosition >= THUMBSTICK_DEADZONE then
+		return 1
+	end
+
+	return 0
+end
+
 function Slider.new(track: GuiObject, filled: GuiObject, knob: GuiButtonLike, options: SliderOptions?): Slider
 	track.Active = true
+	track.Selectable = true
+	track.NextSelectionLeft = track
+	track.NextSelectionRight = track
 	knob.Active = true
+	knob.Selectable = true
+	knob.NextSelectionLeft = knob
+	knob.NextSelectionRight = knob
 
 	local self = setmetatable({
 		_track = track,
@@ -100,6 +149,8 @@ function Slider.new(track: GuiObject, filled: GuiObject, knob: GuiButtonLike, op
 		_step = if options == nil then nil else options.step,
 		_isDraggingWithMouse = false,
 		_activeTouchInput = nil,
+		_lastThumbstickDirection = 0,
+		_nextThumbstickAdjustAt = 0,
 		_connections = {},
 		_changedCallbacks = {},
 	}, Slider) :: Slider
@@ -122,6 +173,42 @@ function Slider.new(track: GuiObject, filled: GuiObject, knob: GuiButtonLike, op
 
 		if self._activeTouchInput ~= nil and inputObject == self._activeTouchInput then
 			updateValueFromScreenPosition(self, inputObject.Position.X)
+			return
+		end
+
+		if inputObject.UserInputType ~= Enum.UserInputType.Gamepad1 or inputObject.KeyCode ~= Enum.KeyCode.Thumbstick1 then
+			return
+		end
+
+		local direction = getHorizontalThumbstickDirection(inputObject)
+		if direction == 0 then
+			self._lastThumbstickDirection = 0
+			self._nextThumbstickAdjustAt = 0
+			return
+		end
+
+		local now = os.clock()
+		if direction == self._lastThumbstickDirection and now < self._nextThumbstickAdjustAt then
+			return
+		end
+
+		adjustWithGamepad(self, direction)
+		self._lastThumbstickDirection = direction
+		self._nextThumbstickAdjustAt = now + THUMBSTICK_REPEAT_SECONDS
+	end))
+
+	table.insert(self._connections, UserInputService.InputBegan:Connect(function(inputObject: InputObject, _gameProcessedEvent: boolean)
+		if inputObject.UserInputType ~= Enum.UserInputType.Gamepad1 then
+			return
+		end
+
+		if inputObject.KeyCode == Enum.KeyCode.DPadLeft then
+			adjustWithGamepad(self, -1)
+			return
+		end
+
+		if inputObject.KeyCode == Enum.KeyCode.DPadRight then
+			adjustWithGamepad(self, 1)
 		end
 	end))
 
@@ -169,6 +256,10 @@ function Slider:getValue(): number
 	return self._value
 end
 
+function Slider:focus()
+	GuiService.SelectedObject = self._track
+end
+
 function Slider:connectChanged(callback: (number) -> ())
 	table.insert(self._changedCallbacks, callback)
 end
@@ -182,6 +273,8 @@ function Slider:destroy()
 	table.clear(self._changedCallbacks)
 	self._activeTouchInput = nil
 	self._isDraggingWithMouse = false
+	self._lastThumbstickDirection = 0
+	self._nextThumbstickAdjustAt = 0
 end
 
 return Slider

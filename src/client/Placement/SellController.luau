@@ -9,14 +9,20 @@ local localPlayer = Players.LocalPlayer
 assert(localPlayer ~= nil, "LocalPlayer must exist before starting sell")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 
+local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local HudTooltipModule = require(script.Parent.Parent.UI.HudTooltip)
 local PlacedBuildingTargeting = require(script.Parent.PlacedBuildingTargeting)
 local StructureActionMode = require(script.Parent.StructureActionMode)
 local StructureSelectionViewModule = require(script.Parent.StructureSelectionView)
 
 type StructureSelectionView = StructureSelectionViewModule.StructureSelectionView
+type BuildingId = BuildingTypes.BuildingId
+type HudTooltip = HudTooltipModule.HudTooltip
 
 type Widgets = {
 	button: TextButton,
@@ -24,6 +30,7 @@ type Widgets = {
 }
 
 local SELL_MODE_ID = "Sell"
+local SELL_TOOLTIP_OWNER_ID = "Sell"
 local SELL_SELECTION_BOX_COLOR = Color3.fromRGB(214, 72, 72)
 local SELL_SELECTION_BOX_NAME = "SellSelectionBox"
 
@@ -31,11 +38,19 @@ local hasStarted = false
 local widgets: Widgets? = nil
 local selectionView: StructureSelectionView? = nil
 local currentSellTarget: BasePart? = nil
+local hudTooltip: HudTooltip? = nil
 local connections: { RBXScriptConnection } = {}
 local disconnectModeObserver: (() -> ())? = nil
 
 local ACTIVE_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
 local INACTIVE_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
+local ITEM_ID_ATTRIBUTE = "ItemId"
+local MONEY_RICH_TEXT_COLOR = "#40FF70"
+local DESKTOP_SELL_TOOLTIP_TEXT = "Click to sell"
+local GAMEPAD_SELL_TOOLTIP_TEXT = "Press right trigger to sell"
+local MOBILE_SELL_TOOLTIP_TEXT = "Tap to select"
+local SELL_CANCEL_KEYCODE = Enum.KeyCode.ButtonB
+local SELL_CONFIRM_KEYCODE = Enum.KeyCode.ButtonR2
 
 local function getRequestSellRemote(): RemoteEvent
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
@@ -58,8 +73,76 @@ local function clearSellTarget()
 	end
 end
 
+local function isMobileSellInput(): boolean
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
+end
+
+local function isGamepadSellInput(): boolean
+	return UserInputService.GamepadEnabled and not isMobileSellInput()
+end
+
 local function isSellModeEnabled(): boolean
 	return StructureActionMode.isModeActive(SELL_MODE_ID)
+end
+
+local function escapeRichText(text: string): string
+	local escapedText = string.gsub(text, "&", "&amp;")
+	escapedText = string.gsub(escapedText, "<", "&lt;")
+	escapedText = string.gsub(escapedText, ">", "&gt;")
+	return escapedText
+end
+
+local function getSellTargetTooltipText(sellTarget: BasePart): string?
+	local rawBuildingId = sellTarget:GetAttribute(ITEM_ID_ATTRIBUTE)
+	if type(rawBuildingId) ~= "string" or not BuildingCatalog.hasBuildingDefinition(rawBuildingId) then
+		return nil
+	end
+
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(rawBuildingId :: BuildingId)
+	if isGamepadSellInput() then
+		return string.format(
+			"Press right trigger to sell %s for <font color=\"%s\">+$%d</font>",
+			escapeRichText(buildingDefinition.displayName),
+			MONEY_RICH_TEXT_COLOR,
+			buildingDefinition.sellPrice
+		)
+	end
+
+	return string.format(
+		"Sell %s for <font color=\"%s\">+$%d</font>",
+		escapeRichText(buildingDefinition.displayName),
+		MONEY_RICH_TEXT_COLOR,
+		buildingDefinition.sellPrice
+	)
+end
+
+local function updateSellTooltip()
+	local tooltip = hudTooltip
+	if tooltip == nil then
+		return
+	end
+
+	if not isSellModeEnabled() then
+		tooltip:hide(SELL_TOOLTIP_OWNER_ID)
+		return
+	end
+
+	local sellTarget = currentSellTarget
+	if sellTarget ~= nil then
+		local targetTooltipText = getSellTargetTooltipText(sellTarget)
+		if targetTooltipText ~= nil then
+			tooltip:show(targetTooltipText, true, SELL_TOOLTIP_OWNER_ID)
+			return
+		end
+	end
+
+	if isMobileSellInput() then
+		tooltip:show(MOBILE_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
+	elseif isGamepadSellInput() then
+		tooltip:show(GAMEPAD_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
+	else
+		tooltip:show(DESKTOP_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
+	end
 end
 
 local function updateSellSelection()
@@ -70,17 +153,31 @@ local function updateSellSelection()
 
 	if not isSellModeEnabled() or UserInputService:GetFocusedTextBox() ~= nil then
 		clearSellTarget()
+		updateSellTooltip()
+		return
+	end
+
+	if isMobileSellInput() then
+		local sellTarget = currentSellTarget
+		if sellTarget ~= nil and sellTarget.Parent ~= nil then
+			currentSelectionView:show(sellTarget)
+		else
+			clearSellTarget()
+		end
+		updateSellTooltip()
 		return
 	end
 
 	local sellTarget = PlacedBuildingTargeting.getCurrentTarget(localPlayer)
 	if sellTarget == nil then
 		clearSellTarget()
+		updateSellTooltip()
 		return
 	end
 
 	currentSellTarget = sellTarget
 	currentSelectionView:show(sellTarget)
+	updateSellTooltip()
 end
 
 local function renderButton(buttonWidgets: Widgets)
@@ -91,6 +188,7 @@ local function handleModeChanged(_mode: StructureActionMode.StructureActionModeI
 	if not isSellModeEnabled() then
 		clearSellTarget()
 	end
+	updateSellTooltip()
 
 	local currentWidgets = widgets
 	if currentWidgets ~= nil then
@@ -150,6 +248,7 @@ function SellController.start()
 
 	local sellWidgets = getSellButton()
 	widgets = sellWidgets
+	hudTooltip = HudTooltipModule.get()
 	selectionView = StructureSelectionViewModule.new(SELL_SELECTION_BOX_NAME, SELL_SELECTION_BOX_COLOR)
 	local requestSellRemote = getRequestSellRemote()
 	local setSelectedSlotRemote = getSetSelectedSlotRemote()
@@ -161,6 +260,7 @@ function SellController.start()
 		if nextIsEnabled then
 			setSelectedSlotRemote:FireServer(nil)
 		end
+		updateSellTooltip()
 	end))
 
 	table.insert(connections, RunService.RenderStepped:Connect(updateSellSelection))
@@ -178,7 +278,14 @@ function SellController.start()
 			return
 		end
 
-		if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		if inputObject.KeyCode == SELL_CANCEL_KEYCODE then
+			StructureActionMode.clearMode()
+			return
+		end
+
+		local isConfirmInput = inputObject.UserInputType == Enum.UserInputType.MouseButton1
+			or inputObject.KeyCode == SELL_CONFIRM_KEYCODE
+		if not isConfirmInput then
 			return
 		end
 
@@ -189,6 +296,47 @@ function SellController.start()
 
 		requestSellRemote:FireServer(sellTarget)
 		clearSellTarget()
+		updateSellTooltip()
+	end))
+
+	table.insert(connections, UserInputService.TouchTap:Connect(function(touchPositions: { Vector2 }, gameProcessedEvent: boolean)
+		if gameProcessedEvent then
+			return
+		end
+
+		if not isSellModeEnabled() or not isMobileSellInput() then
+			return
+		end
+
+		if UserInputService:GetFocusedTextBox() ~= nil then
+			return
+		end
+
+		local tapPosition = touchPositions[1]
+		if tapPosition == nil then
+			return
+		end
+
+		local tappedTarget = PlacedBuildingTargeting.getCurrentTarget(localPlayer, tapPosition)
+		if tappedTarget == nil then
+			clearSellTarget()
+			updateSellTooltip()
+			return
+		end
+
+		if currentSellTarget == tappedTarget then
+			requestSellRemote:FireServer(tappedTarget)
+			clearSellTarget()
+			updateSellTooltip()
+			return
+		end
+
+		currentSellTarget = tappedTarget
+		local currentSelectionView = selectionView
+		if currentSelectionView ~= nil then
+			currentSelectionView:show(tappedTarget)
+		end
+		updateSellTooltip()
 	end))
 end
 
@@ -219,6 +367,10 @@ function SellController.destroy()
 	end
 
 	SellController.disableSellMode()
+	local tooltip = hudTooltip
+	if tooltip ~= nil then
+		tooltip:hide(SELL_TOOLTIP_OWNER_ID)
+	end
 
 	local currentSelectionView = selectionView
 	if currentSelectionView ~= nil then
@@ -227,6 +379,7 @@ function SellController.destroy()
 
 	selectionView = nil
 	widgets = nil
+	hudTooltip = nil
 	hasStarted = false
 end
 
