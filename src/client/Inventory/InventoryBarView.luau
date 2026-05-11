@@ -22,6 +22,7 @@ type GuiButtonLike = TextButton | ImageButton
 type SlotWidgets = {
 	slotIndex: number,
 	itemId: ItemId?,
+	isSelected: boolean,
 	button: GuiButtonLike,
 	stroke: UIStroke,
 	slotNumberLabel: TextLabel,
@@ -33,6 +34,7 @@ type SlotWidgets = {
 type InventoryItemWidgets = {
 	itemId: ItemId,
 	button: GuiButtonLike,
+	stroke: UIStroke,
 }
 
 type DragState = {
@@ -48,13 +50,16 @@ export type InventoryBarView = {
 	_hotbarGrid: UIGridLayout?,
 	_openButton: GuiButtonLike,
 	_inventoryContentFrame: GuiObject,
+	_inventoryGrid: UIGridLayout?,
 	_searchBox: TextBox,
+	_tooltipLabel: TextLabel?,
 	_hotbarSlots: { SlotWidgets },
 	_inventoryItems: { InventoryItemWidgets },
 	_dragGhostLabel: TextLabel,
 	_isInventoryPanelOpen: boolean,
 	_currentSnapshot: InventorySnapshot?,
 	_dragState: DragState?,
+	_slotActivationSuppressUntil: number,
 	_searchText: string,
 	_renderedHotbarSlotCount: number,
 	_connections: { RBXScriptConnection },
@@ -90,6 +95,13 @@ local MOBILE_HOTBAR_BOTTOM_MARGIN = 20
 local DESKTOP_HOTBAR_BOTTOM_MARGIN = 28
 local MOBILE_HOTBAR_HORIZONTAL_FRACTION = 0.9
 local DESKTOP_HOTBAR_HORIZONTAL_FRACTION = 0.82
+local MOBILE_MIN_INVENTORY_GRID_CELL_SIZE = 32
+local MOBILE_INVENTORY_GRID_CELL_SIZE = 45
+local DESKTOP_INVENTORY_GRID_CELL_SIZE = 83
+local MOBILE_INVENTORY_GRID_PADDING = 12
+local DESKTOP_INVENTORY_GRID_PADDING = 12
+local MOBILE_TOOLTIP_TEXT = "Hold and tap slot to assign"
+local DESKTOP_TOOLTIP_TEXT = "Click and drag to assign"
 
 local toolButtonTemplateInstance = templatesFolder:WaitForChild("ToolButton")
 assert(
@@ -129,6 +141,18 @@ end
 
 local function getHotbarVisibleCapacity(): number
 	return if isMobileHotbarLayout() then MOBILE_VISIBLE_HOTBAR_SLOTS else DESKTOP_VISIBLE_HOTBAR_SLOTS
+end
+
+local function isMousePrimaryInput(inputObject: InputObject): boolean
+	return inputObject.UserInputType == Enum.UserInputType.MouseButton1
+end
+
+local function isPrimaryPointerReleaseInput(inputObject: InputObject): boolean
+	return inputObject.UserInputType == Enum.UserInputType.MouseButton1 or inputObject.UserInputType == Enum.UserInputType.Touch
+end
+
+local function isPointerMovementInput(inputObject: InputObject): boolean
+	return inputObject.UserInputType == Enum.UserInputType.MouseMovement or inputObject.UserInputType == Enum.UserInputType.Touch
 end
 
 local function findRequiredChild(parent: Instance, childName: string, className: string): Instance
@@ -210,6 +234,7 @@ local function createSlot(slotIndex: number, itemId: ItemId?, entry: InventoryEn
 	return {
 		slotIndex = slotIndex,
 		itemId = itemId,
+		isSelected = isSelected,
 		button = button,
 		stroke = stroke,
 		slotNumberLabel = slotNumberLabel,
@@ -285,7 +310,65 @@ local function isDroppedOnInventoryWindow(playerGui: PlayerGui, inventoryWindow:
 	return false
 end
 
-local function getViewportSize(rootGui: ScreenGui, hotbarFrame: Frame): Vector2
+local updateHeldItemHighlights: (InventoryBarView) -> ()
+
+local function beginDragState(self: InventoryBarView, itemId: ItemId, source: "Inventory" | "Hotbar", screenPosition: Vector2)
+	local itemDefinition = ItemCatalog.getItemDefinition(itemId)
+	self._dragState = {
+		itemId = itemId,
+		source = source,
+	}
+	self._dragGhostLabel.Text = itemDefinition.displayName
+	self._dragGhostLabel.Position = UDim2.fromOffset(screenPosition.X, screenPosition.Y)
+	self._dragGhostLabel.Visible = true
+	updateHeldItemHighlights(self)
+end
+
+local function clearDragState(self: InventoryBarView)
+	self._dragState = nil
+	self._dragGhostLabel.Visible = false
+	updateHeldItemHighlights(self)
+end
+
+local function fireHotbarAssignRequested(self: InventoryBarView, itemId: ItemId, slotIndex: number)
+	for _, callback in ipairs(self._hotbarAssignCallbacks) do
+		callback(itemId, slotIndex)
+	end
+end
+
+local function fireHotbarUnassignRequested(self: InventoryBarView, itemId: ItemId)
+	for _, callback in ipairs(self._hotbarUnassignCallbacks) do
+		callback(itemId)
+	end
+end
+
+updateHeldItemHighlights = function(self: InventoryBarView)
+	local dragState = self._dragState
+	for _, slot in ipairs(self._hotbarSlots) do
+		local isHeldSlot = dragState ~= nil and dragState.source == "Hotbar" and slot.itemId == dragState.itemId
+		local isAssignableTarget = dragState ~= nil
+			and dragState.source == "Inventory"
+			and HotbarConfig.isAssignableSlotIndex(slot.slotIndex)
+		slot.stroke.Color = if isHeldSlot or isAssignableTarget or slot.isSelected then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
+		slot.stroke.Transparency = if isHeldSlot or isAssignableTarget then 0 else 0.15
+	end
+
+	for _, item in ipairs(self._inventoryItems) do
+		local isHeldItem = dragState ~= nil and dragState.source == "Inventory" and item.itemId == dragState.itemId
+		item.stroke.Color = if isHeldItem then SELECTED_STROKE_COLOR else DEFAULT_STROKE_COLOR
+		item.stroke.Transparency = if isHeldItem then 0 else 0.55
+	end
+end
+
+local function updateTooltipText(tooltipLabel: TextLabel?)
+	if tooltipLabel == nil then
+		return
+	end
+
+	tooltipLabel.Text = if isMobileHotbarLayout() then MOBILE_TOOLTIP_TEXT else DESKTOP_TOOLTIP_TEXT
+end
+
+local function getViewportSize(rootGui: ScreenGui, fallbackGui: GuiObject): Vector2
 	local currentCamera = Workspace.CurrentCamera
 	if currentCamera ~= nil then
 		local viewportSize = currentCamera.ViewportSize
@@ -299,7 +382,7 @@ local function getViewportSize(rootGui: ScreenGui, hotbarFrame: Frame): Vector2
 		return absoluteSize
 	end
 
-	return hotbarFrame.AbsoluteSize
+	return fallbackGui.AbsoluteSize
 end
 
 local function updateHotbarLayout(rootGui: ScreenGui, hotbarFrame: Frame, hotbarGrid: UIGridLayout?, renderedSlotCount: number)
@@ -328,6 +411,23 @@ local function updateHotbarLayout(rootGui: ScreenGui, hotbarFrame: Frame, hotbar
 	hotbarFrame.AnchorPoint = Vector2.new(0.5, 1)
 	hotbarFrame.Position = UDim2.new(0.5, 0, 1, -bottomMargin)
 	hotbarFrame.Size = UDim2.fromOffset(frameWidth, slotSize)
+end
+
+local function updateInventoryGridLayout(rootGui: ScreenGui, inventoryContentFrame: GuiObject, inventoryGrid: UIGridLayout?)
+	if inventoryGrid == nil then
+		return
+	end
+
+	local isMobile = isMobileHotbarLayout()
+	local viewportSize = getViewportSize(rootGui, inventoryContentFrame)
+	local targetCellSize = if isMobile then MOBILE_INVENTORY_GRID_CELL_SIZE else DESKTOP_INVENTORY_GRID_CELL_SIZE
+	local cellSize = if isMobile
+		then math.clamp(math.floor(viewportSize.X * 0.12), MOBILE_MIN_INVENTORY_GRID_CELL_SIZE, targetCellSize)
+		else targetCellSize
+	local padding = if isMobile then MOBILE_INVENTORY_GRID_PADDING else DESKTOP_INVENTORY_GRID_PADDING
+
+	inventoryGrid.CellPadding = UDim2.fromOffset(padding, padding)
+	inventoryGrid.CellSize = UDim2.fromOffset(cellSize, cellSize)
 end
 
 local function getRootGui(playerGui: PlayerGui): ScreenGui
@@ -375,13 +475,21 @@ function InventoryBarView.new(): InventoryBarView
 	local inventoryContentFrame = window:WaitForChild("Frame")
 	assert(inventoryContentFrame:IsA("GuiObject"), "GUI.Frames.InventoryMenu.Window.Frame must be a GuiObject")
 	local inventoryGridInstance = inventoryContentFrame:FindFirstChild("Grid")
+	local inventoryGrid: UIGridLayout? = nil
 	if inventoryGridInstance ~= nil then
 		assert(inventoryGridInstance:IsA("UIGridLayout"), "GUI.Frames.InventoryMenu.Window.Frame.Grid must be a UIGridLayout")
-		inventoryGridInstance.SortOrder = Enum.SortOrder.LayoutOrder
+		inventoryGrid = inventoryGridInstance
+		inventoryGrid.SortOrder = Enum.SortOrder.LayoutOrder
 	end
 
 	local searchBox = window:WaitForChild("SearchBox")
 	assert(searchBox:IsA("TextBox"), "GUI.Frames.InventoryMenu.Window.SearchBox must be a TextBox")
+	local tooltipInstance = inventoryMenu:FindFirstChild("Tooltip")
+	local tooltipLabel: TextLabel? = nil
+	if tooltipInstance ~= nil then
+		assert(tooltipInstance:IsA("TextLabel"), "GUI.Frames.InventoryMenu.Tooltip must be a TextLabel")
+		tooltipLabel = tooltipInstance
+	end
 
 	clearButtonsWithPrefix(hotbarFrame, "Slot")
 	clearButtonsWithPrefix(inventoryContentFrame, "Item")
@@ -413,13 +521,16 @@ function InventoryBarView.new(): InventoryBarView
 		_hotbarGrid = hotbarGrid,
 		_openButton = openButton,
 		_inventoryContentFrame = inventoryContentFrame,
+		_inventoryGrid = inventoryGrid,
 		_searchBox = searchBox,
+		_tooltipLabel = tooltipLabel,
 		_hotbarSlots = {},
 		_inventoryItems = {},
 		_dragGhostLabel = dragGhostLabel,
 		_isInventoryPanelOpen = false,
 		_currentSnapshot = nil,
 		_dragState = nil,
+		_slotActivationSuppressUntil = 0,
 		_searchText = searchBox.Text,
 		_renderedHotbarSlotCount = 1,
 		_connections = {},
@@ -443,7 +554,7 @@ function InventoryBarView.new(): InventoryBarView
 	end))
 
 	table.insert(self._connections, UserInputService.InputChanged:Connect(function(inputObject: InputObject)
-		if inputObject.UserInputType ~= Enum.UserInputType.MouseMovement then
+		if not isPointerMovementInput(inputObject) then
 			return
 		end
 
@@ -458,11 +569,13 @@ function InventoryBarView.new(): InventoryBarView
 	if currentCamera ~= nil then
 		table.insert(self._connections, currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
+			updateInventoryGridLayout(self._rootGui, self._inventoryContentFrame, self._inventoryGrid)
+			updateTooltipText(self._tooltipLabel)
 		end))
 	end
 
 	table.insert(self._connections, UserInputService.InputEnded:Connect(function(inputObject: InputObject)
-		if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		if not isPrimaryPointerReleaseInput(inputObject) then
 			return
 		end
 
@@ -471,8 +584,7 @@ function InventoryBarView.new(): InventoryBarView
 			return
 		end
 
-		self._dragState = nil
-		self._dragGhostLabel.Visible = false
+		clearDragState(self)
 
 		local slotIndex = getAssignableSlotIndexAtPosition(playerGui, self._hotbarSlots, inputObject.Position.X, inputObject.Position.Y)
 		if dragState.source == "Inventory" then
@@ -480,27 +592,29 @@ function InventoryBarView.new(): InventoryBarView
 				return
 			end
 
-			for _, callback in ipairs(self._hotbarAssignCallbacks) do
-				callback(dragState.itemId, slotIndex)
+			if inputObject.UserInputType == Enum.UserInputType.Touch then
+				self._slotActivationSuppressUntil = os.clock() + 0.25
 			end
+			fireHotbarAssignRequested(self, dragState.itemId, slotIndex)
 			return
 		end
 
 		if slotIndex ~= nil then
-			for _, callback in ipairs(self._hotbarAssignCallbacks) do
-				callback(dragState.itemId, slotIndex)
+			if inputObject.UserInputType == Enum.UserInputType.Touch then
+				self._slotActivationSuppressUntil = os.clock() + 0.25
 			end
+			fireHotbarAssignRequested(self, dragState.itemId, slotIndex)
 			return
 		end
 
 		if isDroppedOnInventoryWindow(playerGui, self._inventoryWindow, inputObject.Position.X, inputObject.Position.Y) then
-			for _, callback in ipairs(self._hotbarUnassignCallbacks) do
-				callback(dragState.itemId)
-			end
+			fireHotbarUnassignRequested(self, dragState.itemId)
 		end
 	end))
 
 	updateHotbarLayout(rootGui, hotbarFrame, hotbarGrid, 1)
+	updateInventoryGridLayout(rootGui, inventoryContentFrame, inventoryGrid)
+	updateTooltipText(tooltipLabel)
 
 	return self
 end
@@ -528,6 +642,11 @@ end
 function InventoryBarView:setInventoryPanelOpen(isOpen: boolean)
 	self._isInventoryPanelOpen = isOpen
 
+	if not isOpen then
+		clearDragState(self)
+		self._slotActivationSuppressUntil = 0
+	end
+
 	self:render(self._currentSnapshot)
 end
 
@@ -551,6 +670,7 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 		item.button:Destroy()
 	end
 	self._inventoryItems = {}
+	updateInventoryGridLayout(self._rootGui, self._inventoryContentFrame, self._inventoryGrid)
 
 	if snapshot == nil then
 		self._renderedHotbarSlotCount = 1
@@ -602,27 +722,47 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 		local slotWidgets = createSlot(slotIndex, itemId, entry, isSelected, self._hotbarFrame)
 		table.insert(self._hotbarSlots, slotWidgets)
 
-		if itemId ~= nil then
+		if HotbarConfig.isAssignableSlotIndex(slotIndex) then
+			table.insert(self._slotConnections, slotWidgets.button.Activated:Connect(function()
+				if os.clock() <= self._slotActivationSuppressUntil then
+					self._slotActivationSuppressUntil = 0
+					return
+				end
+
+				local dragState = self._dragState
+				if self._isInventoryPanelOpen and dragState ~= nil then
+					clearDragState(self)
+					fireHotbarAssignRequested(self, dragState.itemId, slotIndex)
+					return
+				end
+
+				if self._isInventoryPanelOpen and isMobileHotbarLayout() and itemId ~= nil then
+					fireHotbarUnassignRequested(self, itemId)
+					return
+				end
+
+				if itemId ~= nil then
+					for _, callback in ipairs(self._slotActivatedCallbacks) do
+						callback(slotIndex)
+					end
+				end
+			end))
+		elseif itemId ~= nil then
 			table.insert(self._slotConnections, slotWidgets.button.Activated:Connect(function()
 				for _, callback in ipairs(self._slotActivatedCallbacks) do
 					callback(slotIndex)
 				end
 			end))
+		end
 
+		if itemId ~= nil then
 			if self._isInventoryPanelOpen and HotbarConfig.isAssignableSlotIndex(slotIndex) then
 				table.insert(self._slotConnections, slotWidgets.button.InputBegan:Connect(function(inputObject: InputObject)
-					if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+					if not isMousePrimaryInput(inputObject) then
 						return
 					end
 
-					local itemDefinition = ItemCatalog.getItemDefinition(itemId)
-					self._dragState = {
-						itemId = itemId,
-						source = "Hotbar",
-					}
-					self._dragGhostLabel.Text = itemDefinition.displayName
-					self._dragGhostLabel.Position = UDim2.fromOffset(inputObject.Position.X, inputObject.Position.Y)
-					self._dragGhostLabel.Visible = true
+					beginDragState(self, itemId, "Hotbar", Vector2.new(inputObject.Position.X, inputObject.Position.Y))
 				end))
 			end
 		end
@@ -643,24 +783,30 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 		table.insert(self._inventoryItems, {
 			itemId = entry.itemId,
 			button = itemButton,
+			stroke = ensureStroke(itemButton),
 		})
 
 		if entry.itemId ~= "Scythe" then
-			table.insert(self._itemConnections, itemButton.InputBegan:Connect(function(inputObject: InputObject)
-				if not self._isInventoryPanelOpen or inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+			table.insert(self._itemConnections, itemButton.Activated:Connect(function()
+				if not self._isInventoryPanelOpen or not isMobileHotbarLayout() then
 					return
 				end
 
-				self._dragState = {
-					itemId = entry.itemId,
-					source = "Inventory",
-				}
-				self._dragGhostLabel.Text = itemDefinition.displayName
-				self._dragGhostLabel.Position = UDim2.fromOffset(inputObject.Position.X, inputObject.Position.Y)
-				self._dragGhostLabel.Visible = true
+				local center = itemButton.AbsolutePosition + itemButton.AbsoluteSize * 0.5
+				beginDragState(self, entry.itemId, "Inventory", center)
+			end))
+
+			table.insert(self._itemConnections, itemButton.InputBegan:Connect(function(inputObject: InputObject)
+				if not self._isInventoryPanelOpen or not isMousePrimaryInput(inputObject) then
+					return
+				end
+
+				beginDragState(self, entry.itemId, "Inventory", Vector2.new(inputObject.Position.X, inputObject.Position.Y))
 			end))
 		end
 	end
+
+	updateHeldItemHighlights(self)
 end
 
 function InventoryBarView:destroy()

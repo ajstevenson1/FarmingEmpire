@@ -4,11 +4,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 
 local AudioService = require(script.Parent.Parent.Audio.AudioService)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
 local Slider = require(script.Parent.Parent.UI.Slider)
+local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 
 type SettingId = SettingsConfig.SettingId
@@ -27,10 +29,14 @@ type SettingWidgets = {
 
 local SETTINGS_FRAME_ID = "Settings"
 local MENU_FRAME_GROUP = "Menu"
+local SAVE_DEBOUNCE_SECONDS = 0.25
 
 local hasStarted = false
 local slidersById: { [SettingId]: SliderInstance } = {}
 local valuesById: SettingsValues = SettingsConfig.getDefaultValues()
+local settingChangedRemote: RemoteEvent? = nil
+local nextSaveToken = 0
+local pendingSaveTokensById: { [SettingId]: number } = {}
 
 local function getRootGui(): ScreenGui
 	local localPlayer = Players.LocalPlayer
@@ -99,6 +105,51 @@ local function applySetting(definition: SettingDefinition, value: number)
 	AudioService.setBusVolume(definition.soundGroupName :: AudioBusId, value)
 end
 
+local function getSettingsRemotes(): (RemoteFunction, RemoteEvent)
+	local remotesFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName)
+	local settingsRemoteFolder = remotesFolder:WaitForChild(RemoteNames.settingsFolderName)
+	local getSettingsSnapshot = settingsRemoteFolder:WaitForChild(RemoteNames.getSettingsSnapshotFunctionName)
+	local settingChanged = settingsRemoteFolder:WaitForChild(RemoteNames.settingChangedEventName)
+
+	assert(getSettingsSnapshot:IsA("RemoteFunction"), "Settings.GetSettingsSnapshot must be a RemoteFunction")
+	assert(settingChanged:IsA("RemoteEvent"), "Settings.SettingChanged must be a RemoteEvent")
+
+	return getSettingsSnapshot, settingChanged
+end
+
+local function loadSavedValues(getSettingsSnapshot: RemoteFunction)
+	local success, result = pcall(function(): unknown
+		return getSettingsSnapshot:InvokeServer()
+	end)
+
+	if not success then
+		warn(string.format("[SettingsController] Failed to load saved settings: %s", tostring(result)))
+		return
+	end
+
+	valuesById = SettingsConfig.sanitizeValues(result)
+end
+
+local function queueSettingSave(settingId: SettingId)
+	local remote = settingChangedRemote
+	if remote == nil then
+		return
+	end
+
+	nextSaveToken += 1
+	local saveToken = nextSaveToken
+	pendingSaveTokensById[settingId] = saveToken
+
+	task.delay(SAVE_DEBOUNCE_SECONDS, function()
+		if pendingSaveTokensById[settingId] ~= saveToken then
+			return
+		end
+
+		pendingSaveTokensById[settingId] = nil
+		remote:FireServer(settingId, valuesById[settingId])
+	end)
+end
+
 local function bindSettingSlider(settingsFrame: Frame, definition: SettingDefinition)
 	local widgets = getSettingWidgets(settingsFrame, definition.id)
 	local slider = Slider.new(widgets.sliderTrack, widgets.filledBar, widgets.knob, {
@@ -109,6 +160,7 @@ local function bindSettingSlider(settingsFrame: Frame, definition: SettingDefini
 	slider:connectChanged(function(value: number)
 		valuesById[definition.id] = value
 		applySetting(definition, value)
+		queueSettingSave(definition.id)
 	end)
 
 	slidersById[definition.id] = slider
@@ -125,6 +177,10 @@ function SettingsController.start()
 
 	hasStarted = true
 	AudioService.start()
+
+	local getSettingsSnapshot, nextSettingChangedRemote = getSettingsRemotes()
+	settingChangedRemote = nextSettingChangedRemote
+	loadSavedValues(getSettingsSnapshot)
 
 	local rootGui = getRootGui()
 	local settingsFrame = getSettingsFrame(rootGui)

@@ -47,6 +47,11 @@ type ShopRemotes = {
 	requestShopPurchase: RemoteFunction,
 }
 
+type SettingsRemotes = {
+	getSettingsSnapshot: RemoteFunction,
+	settingChanged: RemoteEvent,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -56,6 +61,7 @@ local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
+local cachedSettingsRemotes: SettingsRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -230,6 +236,20 @@ function Remotes.getShopRemotes(): ShopRemotes
 	}
 
 	return cachedShopRemotes
+end
+
+function Remotes.getSettingsRemotes(): SettingsRemotes
+	if cachedSettingsRemotes ~= nil then
+		return cachedSettingsRemotes
+	end
+
+	local settingsFolder = getOrCreateFolder(getRootFolder(), RemoteNames.settingsFolderName)
+	cachedSettingsRemotes = {
+		getSettingsSnapshot = getOrCreateRemoteFunction(settingsFolder, RemoteNames.getSettingsSnapshotFunctionName),
+		settingChanged = getOrCreateRemoteEvent(settingsFolder, RemoteNames.settingChangedEventName),
+	}
+
+	return cachedSettingsRemotes
 end
 
 return table.freeze(Remotes)

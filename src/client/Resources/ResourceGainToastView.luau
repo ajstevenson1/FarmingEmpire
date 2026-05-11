@@ -36,9 +36,7 @@ local BOTTOM_LEFT_NAME = "BottomLeft"
 local TEMPLATES_FOLDER_NAME = "Templates"
 local ITEM_COLLECTED_TEMPLATE_NAME = "ItemCollected"
 
-local START_VERTICAL_OFFSET = 8
 local FLOAT_DISTANCE = 28
-local STACK_OFFSET = 12
 local START_ROTATION_DEGREES = -30
 local TOAST_TWEEN_INFO = TweenInfo.new(1.02, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 

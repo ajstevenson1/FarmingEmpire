@@ -7,6 +7,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
+local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
@@ -15,6 +16,7 @@ local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") ::
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
+local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 
 type BuildingId = BuildingTypes.BuildingId
 type InventoryEntry = InventoryTypes.InventoryEntry
@@ -22,6 +24,7 @@ type ItemId = InventoryTypes.ItemId
 type ProductionState = BuildingTypes.ProductionState
 type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
+type SettingsValues = SettingsConfig.SettingsValues
 
 export type PlayerEconomyData = {
 	cash: number,
@@ -51,6 +54,7 @@ export type PlayerData = {
 	resources: { [ResourceId]: number },
 	placedBuildings: { PlacedBuildingData },
 	inventory: PlayerInventoryData?,
+	settings: SettingsValues,
 }
 
 export type LoadResult = {
@@ -59,7 +63,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
-local CURRENT_SCHEMA_VERSION = 4
+local CURRENT_SCHEMA_VERSION = 5
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -204,6 +208,7 @@ local function createDefaultData(): PlayerData
 		resources = resources,
 		placedBuildings = {},
 		inventory = nil,
+		settings = SettingsConfig.getDefaultValues(),
 	}
 end
 
@@ -380,6 +385,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		resources = sanitizeResources(rawDataTable.resources),
 		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
 		inventory = sanitizeInventory(rawDataTable.inventory),
+		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
 	}
 end
 
@@ -440,6 +446,7 @@ local function cloneData(data: PlayerData): PlayerData
 		resources = resources,
 		placedBuildings = placedBuildings,
 		inventory = inventory,
+		settings = SettingsConfig.sanitizeValues(data.settings),
 	}
 end
 

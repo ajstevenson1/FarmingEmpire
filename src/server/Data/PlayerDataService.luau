@@ -7,6 +7,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
+local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
@@ -14,6 +15,7 @@ local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: Mod
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
+local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 
 type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
@@ -23,6 +25,8 @@ type BuildingId = BuildingTypes.BuildingId
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
+type SettingId = SettingsConfig.SettingId
+type SettingsValues = SettingsConfig.SettingsValues
 
 type PlayerDataRecord = {
 	data: PlayerData,
@@ -426,6 +430,22 @@ function PlayerDataService.getResourceAmounts(player: Player): { [ResourceId]: n
 	end
 
 	return amountsByResourceId
+end
+
+function PlayerDataService.getSettings(player: Player): SettingsValues
+	local record = loadPlayerData(player)
+	return SettingsConfig.sanitizeValues(record.data.settings)
+end
+
+function PlayerDataService.setSettingValue(player: Player, settingId: SettingId, value: number)
+	local record = loadPlayerData(player)
+	local sanitizedValue = SettingsConfig.sanitizeSettingValue(settingId, value)
+	if record.data.settings[settingId] == sanitizedValue then
+		return
+	end
+
+	record.data.settings[settingId] = sanitizedValue
+	markDirty(record)
 end
 
 function PlayerDataService.getPlacedBuildings(player: Player): { PlacedBuildingData }
