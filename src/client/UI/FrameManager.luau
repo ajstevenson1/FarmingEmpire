@@ -43,6 +43,7 @@ export type FrameManager = {
 	isOpen: (frameId: FrameId) -> boolean,
 	isTransitioning: (frameId: FrameId?) -> boolean,
 	getOpenFrame: (group: FrameGroupId) -> FrameId?,
+	getFrameIdForInstance: (instance: Instance) -> FrameId?,
 	observeFrameOpened: (callback: FrameObserver) -> (),
 	observeFrameClosed: (callback: FrameObserver) -> (),
 	observeFrameState: (frameId: FrameId, callback: FrameStateObserver) -> (),
@@ -284,6 +285,21 @@ end
 
 function FrameManager.getOpenFrame(group: FrameGroupId): FrameId?
 	return openFrameIdsByGroup[group]
+end
+
+function FrameManager.getFrameIdForInstance(instance: Instance): FrameId?
+	local current: Instance? = instance
+	while current ~= nil do
+		for frameId, frameState in pairs(framesById) do
+			if frameState.frame == current then
+				return frameId
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return nil
 end
 
 function FrameManager.observeFrameOpened(callback: FrameObserver)

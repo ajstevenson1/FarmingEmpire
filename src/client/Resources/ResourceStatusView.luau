@@ -1,12 +1,20 @@
 --!strict
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
+
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 
 local LABEL_NAMES = {
 	moneyText = "MoneyText",
 	appleText = "AppleText",
 	ciderText = "CiderText",
 }
+
+local ABBREVIATED_DISPLAY_THRESHOLD = 1000000
 
 type Widgets = {
 	moneyText: TextLabel,
@@ -55,6 +63,14 @@ local function createWidgets(): Widgets
 	}
 end
 
+local function formatStatusNumber(value: number): string
+	if math.abs(value) >= ABBREVIATED_DISPLAY_THRESHOLD then
+		return NumberFormatter.formatAbbreviated(value)
+	end
+
+	return NumberFormatter.formatFull(value)
+end
+
 function ResourceStatusView.new(): ResourceStatusView
 	local self = setmetatable({
 		_widgets = createWidgets(),
@@ -64,9 +80,9 @@ function ResourceStatusView.new(): ResourceStatusView
 end
 
 function ResourceStatusView:render(apples: number, cider: number, cash: number)
-	self._widgets.moneyText.Text = tostring(cash)
-	self._widgets.appleText.Text = tostring(apples)
-	self._widgets.ciderText.Text = tostring(cider)
+	self._widgets.moneyText.Text = formatStatusNumber(cash)
+	self._widgets.appleText.Text = formatStatusNumber(apples)
+	self._widgets.ciderText.Text = formatStatusNumber(cider)
 end
 
 function ResourceStatusView:destroy()

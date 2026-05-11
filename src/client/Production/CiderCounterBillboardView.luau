@@ -5,9 +5,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 
 type CiderCounterWidgets = {
 	rootGui: BillboardGui,
@@ -91,7 +93,7 @@ function CiderCounterBillboardView:refresh()
 	local storedAmount = getStoredAmount(self._part)
 	local hasCider = storedAmount > 0
 
-	self._widgets.countLabel.Text = string.format("%d", storedAmount)
+	self._widgets.countLabel.Text = NumberFormatter.formatAbbreviated(storedAmount)
 	self._widgets.countLabel.TextColor3 = if hasCider then READY_TEXT_COLOR else EMPTY_TEXT_COLOR
 	self._widgets.stroke.Color = if hasCider then READY_STROKE_COLOR else EMPTY_STROKE_COLOR
 end

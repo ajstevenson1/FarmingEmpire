@@ -10,6 +10,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local sharedToolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 
+local AudioService = require(script.Parent.Parent.Audio.AudioService)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local ScytheConfig = require(sharedToolsFolder:WaitForChild("ScytheConfig") :: ModuleScript)
 
@@ -103,6 +104,7 @@ local function configureSound(sound: Sound, soundConfig: typeof(ScytheConfig.sou
 	sound.SoundId = soundConfig.soundId
 	sound.Volume = soundConfig.volume
 	sound.PlaybackSpeed = soundConfig.playbackSpeed
+	AudioService.assignSoundToBus(sound, "SFX")
 end
 
 local function getOrCreateConfiguredSound(parent: Instance, soundName: string, soundConfig: typeof(ScytheConfig.sounds.swing)): Sound
@@ -266,6 +268,7 @@ function ScytheController.start()
 	end
 
 	hasStarted = true
+	AudioService.start()
 
 	local backpack = localPlayer:WaitForChild("Backpack")
 	scanContainer(backpack)

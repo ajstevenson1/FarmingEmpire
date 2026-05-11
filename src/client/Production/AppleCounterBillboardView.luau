@@ -5,9 +5,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 
 type AppleCounterWidgets = {
 	rootGui: BillboardGui,
@@ -98,7 +100,11 @@ function AppleCounterBillboardView:refresh()
 	local storedAmount, storageCap = getClampedCounterValues(self._part)
 	local isFull = storageCap > 0 and storedAmount >= storageCap
 
-	self._widgets.countLabel.Text = string.format("%d/%d", storedAmount, storageCap)
+	self._widgets.countLabel.Text = string.format(
+		"%s/%s",
+		NumberFormatter.formatAbbreviated(storedAmount),
+		NumberFormatter.formatAbbreviated(storageCap)
+	)
 	self._widgets.countLabel.TextColor3 = if isFull then FULL_TEXT_COLOR else EMPTY_TEXT_COLOR
 	self._widgets.stroke.Color = if isFull then FULL_STROKE_COLOR else EMPTY_STROKE_COLOR
 end
