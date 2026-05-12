@@ -1,13 +1,13 @@
 --!strict
 
 local DataStoreService = game:GetService("DataStoreService")
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local leaderboardsFolder = sharedFolder:WaitForChild("Leaderboards") :: Folder
 
 local LeaderboardTypes = require(leaderboardsFolder:WaitForChild("LeaderboardTypes") :: ModuleScript)
+local LeaderboardIdentityResolver = require(script.Parent.LeaderboardIdentityResolver)
 
 type NumberLeaderboardEntry = LeaderboardTypes.NumberLeaderboardEntry
 
@@ -17,7 +17,8 @@ export type NumberLeaderboardStore = {
 	getTopValuesAsync: (self: NumberLeaderboardStore, limit: number) -> { NumberLeaderboardEntry },
 }
 
-local playerNamesByUserId: { [number]: string } = {}
+local MAX_TOP_FETCH_COUNT = 100
+local TOP_FETCH_MULTIPLIER = 3
 
 local function sanitizeValue(value: number): number
 	if value ~= value or value == math.huge or value == -math.huge or value < 0 then
@@ -28,35 +29,17 @@ local function sanitizeValue(value: number): number
 end
 
 local function getPlayerName(userId: number): string
-	local cachedName = playerNamesByUserId[userId]
-	if cachedName ~= nil then
-		return cachedName
-	end
-
-	local onlinePlayer = Players:GetPlayerByUserId(userId)
-	if onlinePlayer ~= nil then
-		playerNamesByUserId[userId] = onlinePlayer.Name
-		return onlinePlayer.Name
-	end
-
-	local success, result = pcall(function(): string
-		return Players:GetNameFromUserIdAsync(userId)
-	end)
-
-	if success then
-		local playerName = result :: string
-		playerNamesByUserId[userId] = playerName
-		return playerName
-	end
-
-	warn(string.format("Failed to resolve leaderboard name for userId %d: %s", userId, tostring(result)))
-	return `Player {userId}`
+	return LeaderboardIdentityResolver.getPlayerName(userId, "Failed to resolve leaderboard name")
 end
 
 local Store = {}
 Store.__index = Store
 
 function Store:getValueAsync(userId: number): number
+	if not LeaderboardIdentityResolver.shouldPersistUserId(userId) then
+		return 0
+	end
+
 	local success, result = pcall(function(): unknown
 		return self._orderedDataStore:GetAsync(tostring(userId))
 	end)
@@ -79,6 +62,10 @@ function Store:incrementValueAsync(userId: number, amount: number): number?
 		return nil
 	end
 
+	if not LeaderboardIdentityResolver.shouldPersistUserId(userId) then
+		return sanitizedAmount
+	end
+
 	local success, result = pcall(function(): unknown
 		return self._orderedDataStore:IncrementAsync(tostring(userId), sanitizedAmount)
 	end)
@@ -96,8 +83,14 @@ function Store:incrementValueAsync(userId: number, amount: number): number?
 end
 
 function Store:getTopValuesAsync(limit: number): { NumberLeaderboardEntry }
+	local requestedLimit = math.max(0, math.floor(limit))
+	if requestedLimit <= 0 then
+		return {}
+	end
+
+	local fetchCount = math.min(MAX_TOP_FETCH_COUNT, math.max(requestedLimit, requestedLimit * TOP_FETCH_MULTIPLIER))
 	local success, pagesOrError = pcall(function()
-		return self._orderedDataStore:GetSortedAsync(false, limit)
+		return self._orderedDataStore:GetSortedAsync(false, fetchCount)
 	end)
 
 	if not success then
@@ -107,16 +100,33 @@ function Store:getTopValuesAsync(limit: number): { NumberLeaderboardEntry }
 
 	local entries: { NumberLeaderboardEntry } = {}
 	local pages = pagesOrError :: DataStorePages
-	local currentPage = pages:GetCurrentPage()
-	for _, item in ipairs(currentPage) do
-		local userId = tonumber(item.key)
-		local value = item.value
-		if userId ~= nil and type(value) == "number" then
-			table.insert(entries, {
-				userId = userId,
-				playerName = getPlayerName(userId),
-				value = sanitizeValue(value),
-			})
+	while true do
+		local currentPage = pages:GetCurrentPage()
+		for _, item in ipairs(currentPage) do
+			local userId = tonumber(item.key)
+			local value = item.value
+			if userId ~= nil and LeaderboardIdentityResolver.shouldPersistUserId(userId) and type(value) == "number" then
+				table.insert(entries, {
+					userId = userId,
+					playerName = getPlayerName(userId),
+					value = sanitizeValue(value),
+				})
+				if #entries >= requestedLimit then
+					return entries
+				end
+			end
+		end
+
+		if pages.IsFinished then
+			break
+		end
+
+		local didAdvance, advanceError = pcall(function()
+			pages:AdvanceToNextPageAsync()
+		end)
+		if not didAdvance then
+			warn(string.format("[%s] Failed to advance leaderboard pages: %s", self._warningPrefix, tostring(advanceError)))
+			break
 		end
 	end
 

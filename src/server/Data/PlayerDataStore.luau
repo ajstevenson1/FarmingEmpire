@@ -30,6 +30,11 @@ export type PlayerEconomyData = {
 	cash: number,
 }
 
+export type PlayerOfflineData = {
+	lastSeenAt: number,
+	pendingCider: number,
+}
+
 export type PlacedBuildingData = {
 	buildingId: BuildingId,
 	gridX: number,
@@ -54,6 +59,7 @@ export type PlayerData = {
 	resources: { [ResourceId]: number },
 	placedBuildings: { PlacedBuildingData },
 	inventory: PlayerInventoryData?,
+	offline: PlayerOfflineData,
 	settings: SettingsValues,
 }
 
@@ -63,7 +69,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
-local CURRENT_SCHEMA_VERSION = 5
+local CURRENT_SCHEMA_VERSION = 6
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -99,6 +105,14 @@ local function sanitizeDuration(value: unknown): number
 	end
 
 	return value
+end
+
+local function sanitizeTimestamp(value: unknown): number
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+		return 0
+	end
+
+	return math.floor(value)
 end
 
 local function sanitizeProductionState(value: unknown): ProductionState?
@@ -208,7 +222,23 @@ local function createDefaultData(): PlayerData
 		resources = resources,
 		placedBuildings = {},
 		inventory = nil,
+		offline = {
+			lastSeenAt = 0,
+			pendingCider = 0,
+		},
 		settings = SettingsConfig.getDefaultValues(),
+	}
+end
+
+local function sanitizeOfflineData(rawOffline: unknown): PlayerOfflineData
+	local rawOfflineValues: { [string]: unknown } = {}
+	if type(rawOffline) == "table" then
+		rawOfflineValues = rawOffline :: { [string]: unknown }
+	end
+
+	return {
+		lastSeenAt = sanitizeTimestamp(rawOfflineValues.lastSeenAt),
+		pendingCider = sanitizeAmount(rawOfflineValues.pendingCider),
 	}
 end
 
@@ -385,6 +415,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		resources = sanitizeResources(rawDataTable.resources),
 		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
 		inventory = sanitizeInventory(rawDataTable.inventory),
+		offline = sanitizeOfflineData(rawDataTable.offline),
 		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
 	}
 end
@@ -446,6 +477,10 @@ local function cloneData(data: PlayerData): PlayerData
 		resources = resources,
 		placedBuildings = placedBuildings,
 		inventory = inventory,
+		offline = {
+			lastSeenAt = sanitizeTimestamp(data.offline.lastSeenAt),
+			pendingCider = sanitizeAmount(data.offline.pendingCider),
+		},
 		settings = SettingsConfig.sanitizeValues(data.settings),
 	}
 end

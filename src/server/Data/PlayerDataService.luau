@@ -20,7 +20,8 @@ local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: 
 type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
 type HotbarSlotData = PlayerDataStore.HotbarSlotData
-type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
+export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
+export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
 type BuildingId = BuildingTypes.BuildingId
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ResourceId = ResourceTypes.ResourceId
@@ -69,6 +70,14 @@ local function sanitizeDuration(duration: number): number
 	end
 
 	return duration
+end
+
+local function sanitizeTimestamp(timestamp: number): number
+	if timestamp ~= timestamp or timestamp == math.huge or timestamp == -math.huge or timestamp < 0 then
+		return 0
+	end
+
+	return math.floor(timestamp)
 end
 
 local function sanitizeSelectedSlotIndex(slotIndex: number?): number?
@@ -217,6 +226,13 @@ local function cloneInventoryData(inventory: PlayerInventoryData): PlayerInvento
 		entries = entries,
 		hotbarSlots = hotbarSlots,
 		selectedSlotIndex = sanitizeSelectedSlotIndex(inventory.selectedSlotIndex),
+	}
+end
+
+local function cloneOfflineData(offline: PlayerOfflineData): PlayerOfflineData
+	return {
+		lastSeenAt = sanitizeTimestamp(offline.lastSeenAt),
+		pendingCider = sanitizeAmount(offline.pendingCider),
 	}
 end
 
@@ -446,6 +462,61 @@ function PlayerDataService.setSettingValue(player: Player, settingId: SettingId,
 
 	record.data.settings[settingId] = sanitizedValue
 	markDirty(record)
+end
+
+function PlayerDataService.getOfflineData(player: Player): PlayerOfflineData
+	local record = loadPlayerData(player)
+	return cloneOfflineData(record.data.offline)
+end
+
+function PlayerDataService.setOfflineLastSeenAt(player: Player, lastSeenAt: number)
+	local record = loadPlayerData(player)
+	local sanitizedLastSeenAt = sanitizeTimestamp(lastSeenAt)
+	if record.data.offline.lastSeenAt == sanitizedLastSeenAt then
+		return
+	end
+
+	record.data.offline.lastSeenAt = sanitizedLastSeenAt
+	markDirty(record)
+end
+
+function PlayerDataService.getPendingOfflineCider(player: Player): number
+	local record = loadPlayerData(player)
+	return sanitizeAmount(record.data.offline.pendingCider)
+end
+
+function PlayerDataService.setPendingOfflineCider(player: Player, pendingCider: number)
+	local record = loadPlayerData(player)
+	local sanitizedPendingCider = sanitizeAmount(pendingCider)
+	if record.data.offline.pendingCider == sanitizedPendingCider then
+		return
+	end
+
+	record.data.offline.pendingCider = sanitizedPendingCider
+	markDirty(record)
+end
+
+function PlayerDataService.addPendingOfflineCider(player: Player, amount: number)
+	local sanitizedAmount = sanitizeAmount(amount)
+	if sanitizedAmount <= 0 then
+		return
+	end
+
+	local record = loadPlayerData(player)
+	record.data.offline.pendingCider = sanitizeAmount(record.data.offline.pendingCider + sanitizedAmount)
+	markDirty(record)
+end
+
+function PlayerDataService.claimPendingOfflineCider(player: Player): number
+	local record = loadPlayerData(player)
+	local pendingCider = sanitizeAmount(record.data.offline.pendingCider)
+	if pendingCider <= 0 then
+		return 0
+	end
+
+	record.data.offline.pendingCider = 0
+	markDirty(record)
+	return pendingCider
 end
 
 function PlayerDataService.getPlacedBuildings(player: Player): { PlacedBuildingData }
