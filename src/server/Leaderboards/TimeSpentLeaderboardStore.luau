@@ -1,19 +1,20 @@
 --!strict
 
 local DataStoreService = game:GetService("DataStoreService")
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local leaderboardsFolder = sharedFolder:WaitForChild("Leaderboards") :: Folder
 
 local LeaderboardTypes = require(leaderboardsFolder:WaitForChild("LeaderboardTypes") :: ModuleScript)
+local LeaderboardIdentityResolver = require(script.Parent.LeaderboardIdentityResolver)
 local TimeSpentLeaderboardConfig = require(leaderboardsFolder:WaitForChild("TimeSpentLeaderboardConfig") :: ModuleScript)
 
 type TimeSpentLeaderboardEntry = LeaderboardTypes.TimeSpentLeaderboardEntry
 
 local orderedDataStore = DataStoreService:GetOrderedDataStore(TimeSpentLeaderboardConfig.orderedDataStoreName)
-local playerNamesByUserId: { [number]: string } = {}
+local MAX_TOP_FETCH_COUNT = 100
+local TOP_FETCH_MULTIPLIER = 3
 
 local function sanitizeSeconds(seconds: number): number
 	if seconds ~= seconds or seconds == math.huge or seconds == -math.huge or seconds < 0 then
@@ -24,34 +25,16 @@ local function sanitizeSeconds(seconds: number): number
 end
 
 local function getPlayerName(userId: number): string
-	local cachedName = playerNamesByUserId[userId]
-	if cachedName ~= nil then
-		return cachedName
-	end
-
-	local onlinePlayer = Players:GetPlayerByUserId(userId)
-	if onlinePlayer ~= nil then
-		playerNamesByUserId[userId] = onlinePlayer.Name
-		return onlinePlayer.Name
-	end
-
-	local success, result = pcall(function(): string
-		return Players:GetNameFromUserIdAsync(userId)
-	end)
-
-	if success then
-		local playerName = result :: string
-		playerNamesByUserId[userId] = playerName
-		return playerName
-	end
-
-	warn(string.format("Failed to resolve time leaderboard name for userId %d: %s", userId, tostring(result)))
-	return `Player {userId}`
+	return LeaderboardIdentityResolver.getPlayerName(userId, "Failed to resolve time leaderboard name")
 end
 
 local TimeSpentLeaderboardStore = {}
 
 function TimeSpentLeaderboardStore.getSecondsAsync(userId: number): number
+	if not LeaderboardIdentityResolver.shouldPersistUserId(userId) then
+		return 0
+	end
+
 	local success, result = pcall(function(): unknown
 		return orderedDataStore:GetAsync(tostring(userId))
 	end)
@@ -69,6 +52,10 @@ function TimeSpentLeaderboardStore.getSecondsAsync(userId: number): number
 end
 
 function TimeSpentLeaderboardStore.setSecondsAsync(userId: number, totalSeconds: number): boolean
+	if not LeaderboardIdentityResolver.shouldPersistUserId(userId) then
+		return true
+	end
+
 	local sanitizedSeconds = sanitizeSeconds(totalSeconds)
 	local success, result = pcall(function()
 		orderedDataStore:SetAsync(tostring(userId), sanitizedSeconds)
@@ -83,8 +70,14 @@ function TimeSpentLeaderboardStore.setSecondsAsync(userId: number, totalSeconds:
 end
 
 function TimeSpentLeaderboardStore.getTopSecondsAsync(limit: number): { TimeSpentLeaderboardEntry }
+	local requestedLimit = math.max(0, math.floor(limit))
+	if requestedLimit <= 0 then
+		return {}
+	end
+
+	local fetchCount = math.min(MAX_TOP_FETCH_COUNT, math.max(requestedLimit, requestedLimit * TOP_FETCH_MULTIPLIER))
 	local success, pagesOrError = pcall(function()
-		return orderedDataStore:GetSortedAsync(false, limit)
+		return orderedDataStore:GetSortedAsync(false, fetchCount)
 	end)
 
 	if not success then
@@ -94,16 +87,33 @@ function TimeSpentLeaderboardStore.getTopSecondsAsync(limit: number): { TimeSpen
 
 	local entries: { TimeSpentLeaderboardEntry } = {}
 	local pages = pagesOrError :: DataStorePages
-	local currentPage = pages:GetCurrentPage()
-	for _, item in ipairs(currentPage) do
-		local userId = tonumber(item.key)
-		local totalSeconds = item.value
-		if userId ~= nil and type(totalSeconds) == "number" then
-			table.insert(entries, {
-				userId = userId,
-				playerName = getPlayerName(userId),
-				totalSeconds = sanitizeSeconds(totalSeconds),
-			})
+	while true do
+		local currentPage = pages:GetCurrentPage()
+		for _, item in ipairs(currentPage) do
+			local userId = tonumber(item.key)
+			local totalSeconds = item.value
+			if userId ~= nil and LeaderboardIdentityResolver.shouldPersistUserId(userId) and type(totalSeconds) == "number" then
+				table.insert(entries, {
+					userId = userId,
+					playerName = getPlayerName(userId),
+					totalSeconds = sanitizeSeconds(totalSeconds),
+				})
+				if #entries >= requestedLimit then
+					return entries
+				end
+			end
+		end
+
+		if pages.IsFinished then
+			break
+		end
+
+		local didAdvance, advanceError = pcall(function()
+			pages:AdvanceToNextPageAsync()
+		end)
+		if not didAdvance then
+			warn(string.format("Failed to advance time spent leaderboard pages: %s", tostring(advanceError)))
+			break
 		end
 	end
 

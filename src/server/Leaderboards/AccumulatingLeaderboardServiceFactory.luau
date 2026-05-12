@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 
 local NumberLeaderboardRendererFactory = require(script.Parent.NumberLeaderboardRendererFactory)
+local LeaderboardIdentityResolver = require(script.Parent.LeaderboardIdentityResolver)
 local NumberLeaderboardStoreFactory = require(script.Parent.NumberLeaderboardStoreFactory)
 
 type NumberLeaderboardEntry = {
@@ -51,6 +52,10 @@ function Service:_flushQueuedIncrements()
 	self._pendingIncrementsByUserId = {}
 
 	for userId, amount in pairs(incrementsToWrite) do
+		if not LeaderboardIdentityResolver.shouldPersistUserId(userId) then
+			continue
+		end
+
 		local updatedValue = self._store:incrementValueAsync(userId, amount)
 		if updatedValue == nil then
 			self._pendingIncrementsByUserId[userId] = amount
