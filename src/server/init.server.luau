@@ -1,5 +1,6 @@
 --!strict
 
+local CmdrService = require(script.Admin.CmdrService)
 local EconomyService = require(script.Economy.EconomyService)
 local ApplesEarnedLeaderboardService = require(script.Leaderboards.ApplesEarnedLeaderboardService)
 local CiderSellService = require(script.Market.CiderSellService)
@@ -21,6 +22,7 @@ local ToolSyncService = require(script.Tools.ToolSyncService)
 local RobuxSpentLeaderboardService = require(script.Leaderboards.RobuxSpentLeaderboardService)
 local SettingsService = require(script.Settings.SettingsService)
 
+CmdrService.start()
 PlayerDataService.start()
 SettingsService.start()
 PlotService.start()
