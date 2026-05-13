@@ -8,12 +8,12 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
-local dailyRewardsFolder = sharedFolder:WaitForChild("DailyRewards") :: Folder
+local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
-local DailyRewardsConfig = require(dailyRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
-local DailyRewardsTypes = require(dailyRewardsFolder:WaitForChild("DailyRewardsTypes") :: ModuleScript)
+local PlaytimeRewardsConfig = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsConfig") :: ModuleScript)
+local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
@@ -28,7 +28,7 @@ type ProductionState = BuildingTypes.ProductionState
 type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingsValues = SettingsConfig.SettingsValues
-type PlayerDailyRewardsData = DailyRewardsTypes.PlayerDailyRewardsData
+type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 
 export type PlayerEconomyData = {
 	cash: number,
@@ -66,7 +66,7 @@ export type PlayerData = {
 	inventory: PlayerInventoryData?,
 	offline: PlayerOfflineData,
 	settings: SettingsValues,
-	dailyRewards: PlayerDailyRewardsData,
+	playtimeRewards: PlayerPlaytimeRewardsData,
 }
 
 export type LoadResult = {
@@ -75,12 +75,12 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
-local CURRENT_SCHEMA_VERSION = 8
+local CURRENT_SCHEMA_VERSION = 10
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
-local DAILY_REWARDS_CYCLE_LENGTH = DailyRewardsConfig.getCycleLength()
+local PLAYTIME_REWARDS_CYCLE_LENGTH = PlaytimeRewardsConfig.getCycleLength()
 
 local function getPlayerKey(userId: number): string
 	return `Player_{userId}`
@@ -130,16 +130,41 @@ local function sanitizeTimestamp(value: unknown): number
 	return math.floor(value)
 end
 
-local function sanitizeOptionalPeriodId(value: unknown): number?
-	if value == nil then
+local function sanitizeRewardIndex(value: unknown): number?
+	local numericValue: number? = nil
+	if type(value) == "number" then
+		numericValue = value
+	elseif type(value) == "string" then
+		numericValue = tonumber(value)
+	end
+
+	if numericValue == nil
+		or numericValue ~= math.floor(numericValue)
+		or numericValue < 1
+		or numericValue > PLAYTIME_REWARDS_CYCLE_LENGTH
+	then
 		return nil
 	end
 
-	if type(value) ~= "number" or value ~= math.floor(value) or value < 0 or value == math.huge or value == -math.huge then
-		return nil
+	return numericValue
+end
+
+local function sanitizeClaimedRewardIndexes(rawClaimedRewardIndexes: unknown): { [number]: boolean }
+	local claimedRewardIndexes: { [number]: boolean } = {}
+	if type(rawClaimedRewardIndexes) ~= "table" then
+		return claimedRewardIndexes
 	end
 
-	return value
+	for rawRewardIndex, rawIsClaimed in pairs(rawClaimedRewardIndexes :: { [string]: unknown }) do
+		if rawIsClaimed == true then
+			local rewardIndex = sanitizeRewardIndex(rawRewardIndex)
+			if rewardIndex ~= nil then
+				claimedRewardIndexes[rewardIndex] = true
+			end
+		end
+	end
+
+	return claimedRewardIndexes
 end
 
 local function sanitizeProductionState(value: unknown): ProductionState?
@@ -255,29 +280,27 @@ local function createDefaultData(): PlayerData
 			ciderPerSecondSnapshot = 0,
 		},
 		settings = SettingsConfig.getDefaultValues(),
-		dailyRewards = {
-			lastClaimPeriodId = nil,
-			nextDayIndex = 1,
+		playtimeRewards = {
+			accumulatedPlaytimeSeconds = 0,
+			claimedRewardIndexes = {},
 			totalClaims = 0,
 		},
 	}
 end
 
-local function sanitizeDailyRewardsData(rawDailyRewards: unknown): PlayerDailyRewardsData
-	local rawDailyRewardsValues: { [string]: unknown } = {}
-	if type(rawDailyRewards) == "table" then
-		rawDailyRewardsValues = rawDailyRewards :: { [string]: unknown }
+local function sanitizePlaytimeRewardsData(rawPlaytimeRewards: unknown): PlayerPlaytimeRewardsData
+	local rawPlaytimeRewardsValues: { [string]: unknown } = {}
+	if type(rawPlaytimeRewards) == "table" then
+		rawPlaytimeRewardsValues = rawPlaytimeRewards :: { [string]: unknown }
 	end
 
-	local nextDayIndex = sanitizeAmount(rawDailyRewardsValues.nextDayIndex)
-	if nextDayIndex < 1 or nextDayIndex > DAILY_REWARDS_CYCLE_LENGTH then
-		nextDayIndex = 1
-	end
+	local claimedRewardIndexes = sanitizeClaimedRewardIndexes(rawPlaytimeRewardsValues.claimedRewardIndexes)
+	local totalClaims = if rawPlaytimeRewardsValues.claimedRewardIndexes == nil then 0 else sanitizeAmount(rawPlaytimeRewardsValues.totalClaims)
 
 	return {
-		lastClaimPeriodId = sanitizeOptionalPeriodId(rawDailyRewardsValues.lastClaimPeriodId),
-		nextDayIndex = nextDayIndex,
-		totalClaims = sanitizeAmount(rawDailyRewardsValues.totalClaims),
+		accumulatedPlaytimeSeconds = sanitizeDuration(rawPlaytimeRewardsValues.accumulatedPlaytimeSeconds),
+		claimedRewardIndexes = claimedRewardIndexes,
+		totalClaims = totalClaims,
 	}
 end
 
@@ -453,6 +476,10 @@ local function sanitizeData(rawData: unknown): PlayerData
 	end
 
 	local rawDataTable = rawData :: { [string]: unknown }
+	local rawPlaytimeRewards = rawDataTable.playtimeRewards
+	if rawPlaytimeRewards == nil then
+		rawPlaytimeRewards = rawDataTable["daily" .. "Rewards"]
+	end
 	local rawEconomy = rawDataTable.economy
 	local rawEconomyValues: { [string]: unknown } = {}
 	if type(rawEconomy) == "table" then
@@ -469,7 +496,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		inventory = sanitizeInventory(rawDataTable.inventory),
 		offline = sanitizeOfflineData(rawDataTable.offline),
 		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
-		dailyRewards = sanitizeDailyRewardsData(rawDataTable.dailyRewards),
+		playtimeRewards = sanitizePlaytimeRewardsData(rawPlaytimeRewards),
 	}
 end
 
@@ -536,10 +563,10 @@ local function cloneData(data: PlayerData): PlayerData
 			ciderPerSecondSnapshot = sanitizeRate(data.offline.ciderPerSecondSnapshot),
 		},
 		settings = SettingsConfig.sanitizeValues(data.settings),
-		dailyRewards = {
-			lastClaimPeriodId = sanitizeOptionalPeriodId(data.dailyRewards.lastClaimPeriodId),
-			nextDayIndex = math.clamp(sanitizeAmount(data.dailyRewards.nextDayIndex), 1, DAILY_REWARDS_CYCLE_LENGTH),
-			totalClaims = sanitizeAmount(data.dailyRewards.totalClaims),
+		playtimeRewards = {
+			accumulatedPlaytimeSeconds = sanitizeDuration(data.playtimeRewards.accumulatedPlaytimeSeconds),
+			claimedRewardIndexes = sanitizeClaimedRewardIndexes(data.playtimeRewards.claimedRewardIndexes),
+			totalClaims = sanitizeAmount(data.playtimeRewards.totalClaims),
 		},
 	}
 end

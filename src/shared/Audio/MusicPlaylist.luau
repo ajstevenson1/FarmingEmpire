@@ -7,8 +7,7 @@ local trackIds: { MusicTrackId } = table.freeze({
 	"rbxassetid://77024728793668",
 	"rbxassetid://81946202273748",
 	"rbxassetid://121714232027914",
-	"rbxassetid://102634357944202",
-	"rbxassetid://121057314654356",
+	"rbxassetid://122519120400338",
 })
 
 local MusicPlaylist = {}

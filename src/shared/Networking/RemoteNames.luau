@@ -11,7 +11,7 @@ local RemoteNames = {
 	teleportFolderName = "Teleport",
 	shopFolderName = "Shop",
 	settingsFolderName = "Settings",
-	dailyRewardsFolderName = "DailyRewards",
+	playtimeRewardsFolderName = "PlaytimeRewards",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
 	setSelectedSlotEventName = "SetSelectedSlot",
@@ -37,9 +37,9 @@ local RemoteNames = {
 	requestShopPurchaseFunctionName = "RequestShopPurchase",
 	getSettingsSnapshotFunctionName = "GetSettingsSnapshot",
 	settingChangedEventName = "SettingChanged",
-	dailyRewardsUpdatedEventName = "DailyRewardsUpdated",
-	getDailyRewardsSnapshotFunctionName = "GetDailyRewardsSnapshot",
-	claimDailyRewardFunctionName = "ClaimDailyReward",
+	playtimeRewardsUpdatedEventName = "PlaytimeRewardsUpdated",
+	getPlaytimeRewardsSnapshotFunctionName = "GetPlaytimeRewardsSnapshot",
+	claimPlaytimeRewardFunctionName = "ClaimPlaytimeReward",
 }
 
 return table.freeze(RemoteNames)
