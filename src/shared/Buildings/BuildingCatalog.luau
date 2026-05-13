@@ -104,6 +104,7 @@ local function createAppleTreeDefinition(
 	id: BuildingId,
 	displayName: string,
 	sellPrice: number,
+	offlineCiderPerSecond: number,
 	outputAmountPerInterval: number,
 	storageCap: number,
 	visualVariantConfig: VisualVariantConfig?
@@ -120,6 +121,9 @@ local function createAppleTreeDefinition(
 			outputAmountPerInterval = outputAmountPerInterval,
 			storageCap = storageCap,
 		}),
+		offlineEarningsConfig = table.freeze({
+			ciderPerSecond = offlineCiderPerSecond,
+		}),
 		growthVisualConfig = table.freeze({
 			assetFolderName = "BasicTree",
 			stages = TREE_STAGES,
@@ -132,6 +136,7 @@ local function createCiderMillDefinition(
 	id: BuildingId,
 	displayName: string,
 	sellPrice: number,
+	offlineCiderPerSecond: number,
 	inputAmount: number,
 	outputAmount: number,
 	visualVariantConfig: VisualVariantConfig?
@@ -152,6 +157,9 @@ local function createCiderMillDefinition(
 			idleStatusText = "Idle",
 			blockedStatusText = "Need apples",
 		}),
+		offlineEarningsConfig = table.freeze({
+			ciderPerSecond = offlineCiderPerSecond,
+		}),
 		growthVisualConfig = table.freeze({
 			assetFolderName = "CiderMill",
 			stages = CIDER_MILL_STAGES,
@@ -161,11 +169,12 @@ local function createCiderMillDefinition(
 end
 
 local buildingsById: { [BuildingId]: BuildingDefinition } = {
-	BasicTree = createAppleTreeDefinition("BasicTree", "Apple Tree", 25, 1, 10, nil),
+	BasicTree = createAppleTreeDefinition("BasicTree", "Apple Tree", 25, 0.05, 1, 10, nil),
 	RubyAppleTree = createAppleTreeDefinition(
 		"RubyAppleTree",
 		"Ruby Apple Tree",
 		75,
+		0.12,
 		2,
 		18,
 		createTreeVisualVariant(Color3.fromRGB(190, 48, 68), Color3.fromRGB(255, 92, 105), Color3.fromRGB(143, 48, 64))
@@ -174,6 +183,7 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 		"GoldenAppleTree",
 		"Golden Apple Tree",
 		325,
+		0.35,
 		4,
 		35,
 		createTreeVisualVariant(Color3.fromRGB(232, 184, 57), Color3.fromRGB(255, 226, 99), Color3.fromRGB(196, 150, 45))
@@ -182,15 +192,17 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 		"CrystalAppleTree",
 		"Crystal Apple Tree",
 		1250,
+		1,
 		7,
 		60,
 		createTreeVisualVariant(Color3.fromRGB(112, 214, 229), Color3.fromRGB(178, 241, 255), Color3.fromRGB(86, 169, 202))
 	),
-	CiderMill = createCiderMillDefinition("CiderMill", "Cider Mill", 50, 1, 1, nil),
+	CiderMill = createCiderMillDefinition("CiderMill", "Cider Mill", 50, 0.1, 1, 1, nil),
 	CopperCiderMill = createCiderMillDefinition(
 		"CopperCiderMill",
 		"Copper Cider Mill",
 		175,
+		0.3,
 		1,
 		2,
 		createMillVisualVariant(Color3.fromRGB(196, 108, 50), Color3.fromRGB(171, 95, 51), Enum.Material.Metal)
@@ -199,6 +211,7 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 		"SteelCiderMill",
 		"Steel Cider Mill",
 		600,
+		0.8,
 		2,
 		5,
 		createMillVisualVariant(Color3.fromRGB(142, 151, 158), Color3.fromRGB(116, 128, 135), Enum.Material.Metal)
@@ -207,6 +220,7 @@ local buildingsById: { [BuildingId]: BuildingDefinition } = {
 		"RoyalCiderMill",
 		"Royal Cider Mill",
 		2250,
+		2,
 		3,
 		10,
 		createMillVisualVariant(Color3.fromRGB(135, 77, 183), Color3.fromRGB(196, 159, 62), Enum.Material.Metal)

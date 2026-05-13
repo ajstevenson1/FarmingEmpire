@@ -10,103 +10,54 @@ local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: M
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
-type InputProcessorProductionConfig = BuildingTypes.InputProcessorProductionConfig
-type TimedStorageProducerProductionConfig = BuildingTypes.TimedStorageProducerProductionConfig
 
 export type OfflineRateBuilding = {
 	buildingId: BuildingId,
 }
 
-type OfflineMillRate = {
-	appleConsumptionPerSecond: number,
-	ciderPerApple: number,
-}
-
-local APPLE_RESOURCE_ID = "Apple"
-local CIDER_RESOURCE_ID = "Cider"
 local SECONDS_PER_HOUR = 60 * 60
 
-local function getSafeTimedProducerRate(buildingDefinition: BuildingDefinition): number
-	local productionConfig = buildingDefinition.productionConfig
-	if productionConfig.behaviorId ~= "TimedStorageProducer" or productionConfig.outputResourceId ~= APPLE_RESOURCE_ID then
+local function getSafeCiderPerSecond(buildingDefinition: BuildingDefinition): number
+	local offlineEarningsConfig = buildingDefinition.offlineEarningsConfig
+	if offlineEarningsConfig == nil then
 		return 0
 	end
 
-	local typedConfig = productionConfig :: TimedStorageProducerProductionConfig
-	local outputAmountPerInterval = math.max(0, typedConfig.outputAmountPerInterval)
-	local produceIntervalSeconds = math.max(0.001, typedConfig.produceIntervalSeconds)
-	if outputAmountPerInterval <= 0 then
+	local ciderPerSecond = offlineEarningsConfig.ciderPerSecond
+	if ciderPerSecond ~= ciderPerSecond or ciderPerSecond == math.huge or ciderPerSecond == -math.huge or ciderPerSecond < 0 then
 		return 0
 	end
 
-	return outputAmountPerInterval / produceIntervalSeconds
-end
-
-local function createOfflineMillRate(buildingDefinition: BuildingDefinition): OfflineMillRate?
-	local productionConfig = buildingDefinition.productionConfig
-	if productionConfig.behaviorId ~= "InputProcessor"
-		or productionConfig.inputResourceId ~= APPLE_RESOURCE_ID
-		or productionConfig.outputResourceId ~= CIDER_RESOURCE_ID
-	then
-		return nil
-	end
-
-	local typedConfig = productionConfig :: InputProcessorProductionConfig
-	local inputAmount = math.max(0, typedConfig.inputAmount)
-	local outputAmount = math.max(0, typedConfig.outputAmount)
-	local cycleDurationSeconds = math.max(0.001, typedConfig.cycleDurationSeconds)
-	if inputAmount <= 0 or outputAmount <= 0 then
-		return nil
-	end
-
-	return {
-		appleConsumptionPerSecond = inputAmount / cycleDurationSeconds,
-		ciderPerApple = outputAmount / inputAmount,
-	}
+	return ciderPerSecond
 end
 
 local OfflineCiderRateCalculator = {}
 
-function OfflineCiderRateCalculator.calculateCiderPerHour(buildings: { OfflineRateBuilding }): number
-	local totalAppleRatePerSecond = 0
-	local offlineMills: { OfflineMillRate } = {}
+function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { OfflineRateBuilding }): number
+	local ciderPerSecond = 0
 
 	for _, building in ipairs(buildings) do
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(building.buildingId)
-		totalAppleRatePerSecond += getSafeTimedProducerRate(buildingDefinition)
-
-		local offlineMillRate = createOfflineMillRate(buildingDefinition)
-		if offlineMillRate ~= nil then
-			table.insert(offlineMills, offlineMillRate)
-		end
+		ciderPerSecond += getSafeCiderPerSecond(buildingDefinition)
 	end
 
-	if totalAppleRatePerSecond <= 0 or #offlineMills == 0 then
+	return math.max(0, ciderPerSecond)
+end
+
+function OfflineCiderRateCalculator.calculateCiderPerHour(buildings: { OfflineRateBuilding }): number
+	return OfflineCiderRateCalculator.calculateCiderPerSecond(buildings) * SECONDS_PER_HOUR
+end
+
+function OfflineCiderRateCalculator.calculateCiderForSeconds(ciderPerSecond: number, seconds: number): number
+	if ciderPerSecond ~= ciderPerSecond or ciderPerSecond == math.huge or ciderPerSecond == -math.huge or ciderPerSecond < 0 then
 		return 0
 	end
 
-	table.sort(offlineMills, function(leftMill: OfflineMillRate, rightMill: OfflineMillRate): boolean
-		if leftMill.ciderPerApple == rightMill.ciderPerApple then
-			return leftMill.appleConsumptionPerSecond < rightMill.appleConsumptionPerSecond
-		end
-
-		return leftMill.ciderPerApple > rightMill.ciderPerApple
-	end)
-
-	local remainingAppleRatePerSecond = totalAppleRatePerSecond
-	local ciderRatePerSecond = 0
-
-	for _, offlineMill in ipairs(offlineMills) do
-		if remainingAppleRatePerSecond <= 0 then
-			break
-		end
-
-		local consumedAppleRatePerSecond = math.min(remainingAppleRatePerSecond, offlineMill.appleConsumptionPerSecond)
-		ciderRatePerSecond += consumedAppleRatePerSecond * offlineMill.ciderPerApple
-		remainingAppleRatePerSecond -= consumedAppleRatePerSecond
+	if seconds ~= seconds or seconds == math.huge or seconds == -math.huge or seconds < 0 then
+		return 0
 	end
 
-	return math.max(0, ciderRatePerSecond * SECONDS_PER_HOUR)
+	return math.max(0, math.floor(ciderPerSecond * seconds))
 end
 
 return table.freeze(OfflineCiderRateCalculator)

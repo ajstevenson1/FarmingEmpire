@@ -56,6 +56,14 @@ local function sanitizeAmount(amount: number): number
 	return math.floor(amount)
 end
 
+local function sanitizeRate(rate: number): number
+	if rate ~= rate or rate == math.huge or rate == -math.huge or rate < 0 then
+		return 0
+	end
+
+	return rate
+end
+
 local function sanitizeGridCoordinate(coordinate: number): number
 	if coordinate ~= coordinate or coordinate == math.huge or coordinate == -math.huge then
 		return 0
@@ -233,6 +241,7 @@ local function cloneOfflineData(offline: PlayerOfflineData): PlayerOfflineData
 	return {
 		lastSeenAt = sanitizeTimestamp(offline.lastSeenAt),
 		pendingCider = sanitizeAmount(offline.pendingCider),
+		ciderPerSecondSnapshot = sanitizeRate(offline.ciderPerSecondSnapshot),
 	}
 end
 
@@ -477,6 +486,17 @@ function PlayerDataService.setOfflineLastSeenAt(player: Player, lastSeenAt: numb
 	end
 
 	record.data.offline.lastSeenAt = sanitizedLastSeenAt
+	markDirty(record)
+end
+
+function PlayerDataService.setOfflineCiderPerSecondSnapshot(player: Player, ciderPerSecondSnapshot: number)
+	local record = loadPlayerData(player)
+	local sanitizedSnapshot = sanitizeRate(ciderPerSecondSnapshot)
+	if record.data.offline.ciderPerSecondSnapshot == sanitizedSnapshot then
+		return
+	end
+
+	record.data.offline.ciderPerSecondSnapshot = sanitizedSnapshot
 	markDirty(record)
 end
 

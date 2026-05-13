@@ -33,6 +33,7 @@ export type PlayerEconomyData = {
 export type PlayerOfflineData = {
 	lastSeenAt: number,
 	pendingCider: number,
+	ciderPerSecondSnapshot: number,
 }
 
 export type PlacedBuildingData = {
@@ -69,7 +70,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
-local CURRENT_SCHEMA_VERSION = 6
+local CURRENT_SCHEMA_VERSION = 7
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -85,6 +86,14 @@ local function sanitizeAmount(value: unknown): number
 	end
 
 	return math.floor(value)
+end
+
+local function sanitizeRate(value: unknown): number
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+		return 0
+	end
+
+	return value
 end
 
 local function sanitizeGridCoordinate(value: unknown): number?
@@ -225,6 +234,7 @@ local function createDefaultData(): PlayerData
 		offline = {
 			lastSeenAt = 0,
 			pendingCider = 0,
+			ciderPerSecondSnapshot = 0,
 		},
 		settings = SettingsConfig.getDefaultValues(),
 	}
@@ -239,6 +249,7 @@ local function sanitizeOfflineData(rawOffline: unknown): PlayerOfflineData
 	return {
 		lastSeenAt = sanitizeTimestamp(rawOfflineValues.lastSeenAt),
 		pendingCider = sanitizeAmount(rawOfflineValues.pendingCider),
+		ciderPerSecondSnapshot = sanitizeRate(rawOfflineValues.ciderPerSecondSnapshot),
 	}
 end
 
@@ -480,6 +491,7 @@ local function cloneData(data: PlayerData): PlayerData
 		offline = {
 			lastSeenAt = sanitizeTimestamp(data.offline.lastSeenAt),
 			pendingCider = sanitizeAmount(data.offline.pendingCider),
+			ciderPerSecondSnapshot = sanitizeRate(data.offline.ciderPerSecondSnapshot),
 		},
 		settings = SettingsConfig.sanitizeValues(data.settings),
 	}

@@ -45,6 +45,10 @@ export type VisualVariantConfig = {
 	tintRules: { VisualTintRule },
 }
 
+export type OfflineEarningsConfig = {
+	ciderPerSecond: number,
+}
+
 export type GrowAndHarvestProductionConfig = {
 	behaviorId: "GrowAndHarvest",
 	cycleDurationSeconds: number,
@@ -149,6 +153,7 @@ export type BuildingDefinition = {
 	sellPrice: number,
 	placementSize: Vector3,
 	productionConfig: ProductionConfig,
+	offlineEarningsConfig: OfflineEarningsConfig?,
 	growthVisualConfig: GrowthVisualConfig,
 	visualVariantConfig: VisualVariantConfig?,
 }
