@@ -95,7 +95,7 @@ end
 
 local function getPlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
 	local frames = rootGui:FindFirstChild("Frames")
-	if frames == nil or not frames:IsA("Frame") then
+	if frames == nil then
 		return nil
 	end
 
@@ -109,6 +109,29 @@ local function getPlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
 	end
 
 	return playtimeRewardsFrame
+end
+
+local function getOrCreatePlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
+	local frames = rootGui:FindFirstChild("Frames")
+	if frames == nil then
+		frames = Instance.new("Folder")
+		frames.Name = "Frames"
+		frames.Parent = rootGui
+	end
+
+	local existingFrame = getPlaytimeRewardsFrame(rootGui)
+	if existingFrame ~= nil then
+		return existingFrame
+	end
+
+	local frame = Instance.new("Frame")
+	frame.Name = PLAYTIME_REWARDS_FRAME_ID
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = DEFAULT_PANEL_POSITION
+	frame.Size = DEFAULT_PANEL_SIZE
+	frame.Visible = false
+	frame.Parent = frames
+	return frame
 end
 
 local function getClosedPanelPosition(panel: Frame): UDim2
@@ -485,7 +508,7 @@ local function ensureFrameRegistered(rootGui: ScreenGui, claimPlaytimeReward: Re
 		return registeredFrame
 	end
 
-	local frame = getPlaytimeRewardsFrame(rootGui)
+	local frame = getOrCreatePlaytimeRewardsFrame(rootGui)
 	if frame == nil then
 		warnMissingFrame()
 		return nil
