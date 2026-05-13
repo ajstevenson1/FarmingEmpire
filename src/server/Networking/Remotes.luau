@@ -53,6 +53,12 @@ type SettingsRemotes = {
 	settingChanged: RemoteEvent,
 }
 
+type DailyRewardsRemotes = {
+	dailyRewardsUpdated: RemoteEvent,
+	getDailyRewardsSnapshot: RemoteFunction,
+	claimDailyReward: RemoteFunction,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -63,6 +69,7 @@ local cachedMarketRemotes: MarketRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
 local cachedSettingsRemotes: SettingsRemotes? = nil
+local cachedDailyRewardsRemotes: DailyRewardsRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -252,6 +259,21 @@ function Remotes.getSettingsRemotes(): SettingsRemotes
 	}
 
 	return cachedSettingsRemotes
+end
+
+function Remotes.getDailyRewardsRemotes(): DailyRewardsRemotes
+	if cachedDailyRewardsRemotes ~= nil then
+		return cachedDailyRewardsRemotes
+	end
+
+	local dailyRewardsFolder = getOrCreateFolder(getRootFolder(), RemoteNames.dailyRewardsFolderName)
+	cachedDailyRewardsRemotes = {
+		dailyRewardsUpdated = getOrCreateRemoteEvent(dailyRewardsFolder, RemoteNames.dailyRewardsUpdatedEventName),
+		getDailyRewardsSnapshot = getOrCreateRemoteFunction(dailyRewardsFolder, RemoteNames.getDailyRewardsSnapshotFunctionName),
+		claimDailyReward = getOrCreateRemoteFunction(dailyRewardsFolder, RemoteNames.claimDailyRewardFunctionName),
+	}
+
+	return cachedDailyRewardsRemotes
 end
 
 return table.freeze(Remotes)

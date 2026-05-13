@@ -8,9 +8,12 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
+local dailyRewardsFolder = sharedFolder:WaitForChild("DailyRewards") :: Folder
 
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+local DailyRewardsConfig = require(dailyRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
+local DailyRewardsTypes = require(dailyRewardsFolder:WaitForChild("DailyRewardsTypes") :: ModuleScript)
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
@@ -28,6 +31,7 @@ type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingId = SettingsConfig.SettingId
 type SettingsValues = SettingsConfig.SettingsValues
+export type PlayerDailyRewardsData = DailyRewardsTypes.PlayerDailyRewardsData
 
 type PlayerDataRecord = {
 	data: PlayerData,
@@ -47,6 +51,7 @@ local loadingPlayers: { [Player]: boolean } = {}
 local beforeSaveListeners: { BeforeSaveListener } = {}
 local afterRemoveListeners: { AfterRemoveListener } = {}
 local hasStarted = false
+local DAILY_REWARDS_CYCLE_LENGTH = DailyRewardsConfig.getCycleLength()
 
 local function sanitizeAmount(amount: number): number
 	if amount ~= amount or amount == math.huge or amount == -math.huge or amount < 0 then
@@ -86,6 +91,18 @@ local function sanitizeTimestamp(timestamp: number): number
 	end
 
 	return math.floor(timestamp)
+end
+
+local function sanitizeOptionalPeriodId(periodId: number?): number?
+	if periodId == nil then
+		return nil
+	end
+
+	if periodId ~= periodId or periodId == math.huge or periodId == -math.huge or periodId < 0 then
+		return nil
+	end
+
+	return math.floor(periodId)
 end
 
 local function sanitizeSelectedSlotIndex(slotIndex: number?): number?
@@ -243,6 +260,25 @@ local function cloneOfflineData(offline: PlayerOfflineData): PlayerOfflineData
 		pendingCider = sanitizeAmount(offline.pendingCider),
 		ciderPerSecondSnapshot = sanitizeRate(offline.ciderPerSecondSnapshot),
 	}
+end
+
+local function cloneDailyRewardsData(dailyRewards: PlayerDailyRewardsData): PlayerDailyRewardsData
+	local sanitizedNextDayIndex = sanitizeAmount(dailyRewards.nextDayIndex)
+	if sanitizedNextDayIndex < 1 or sanitizedNextDayIndex > DAILY_REWARDS_CYCLE_LENGTH then
+		sanitizedNextDayIndex = 1
+	end
+
+	return {
+		lastClaimPeriodId = sanitizeOptionalPeriodId(dailyRewards.lastClaimPeriodId),
+		nextDayIndex = sanitizedNextDayIndex,
+		totalClaims = sanitizeAmount(dailyRewards.totalClaims),
+	}
+end
+
+local function areDailyRewardsDataEqual(leftDailyRewards: PlayerDailyRewardsData, rightDailyRewards: PlayerDailyRewardsData): boolean
+	return sanitizeOptionalPeriodId(leftDailyRewards.lastClaimPeriodId) == sanitizeOptionalPeriodId(rightDailyRewards.lastClaimPeriodId)
+		and math.clamp(sanitizeAmount(leftDailyRewards.nextDayIndex), 1, DAILY_REWARDS_CYCLE_LENGTH) == math.clamp(sanitizeAmount(rightDailyRewards.nextDayIndex), 1, DAILY_REWARDS_CYCLE_LENGTH)
+		and sanitizeAmount(leftDailyRewards.totalClaims) == sanitizeAmount(rightDailyRewards.totalClaims)
 end
 
 local function areInventoryDataEqual(leftInventory: PlayerInventoryData?, rightInventory: PlayerInventoryData): boolean
@@ -583,6 +619,22 @@ function PlayerDataService.setInventory(player: Player, inventory: PlayerInvento
 	end
 
 	record.data.inventory = clonedInventory
+	markDirty(record)
+end
+
+function PlayerDataService.getDailyRewardsData(player: Player): PlayerDailyRewardsData
+	local record = loadPlayerData(player)
+	return cloneDailyRewardsData(record.data.dailyRewards)
+end
+
+function PlayerDataService.setDailyRewardsData(player: Player, dailyRewardsData: PlayerDailyRewardsData)
+	local record = loadPlayerData(player)
+	local clonedDailyRewardsData = cloneDailyRewardsData(dailyRewardsData)
+	if areDailyRewardsDataEqual(record.data.dailyRewards, clonedDailyRewardsData) then
+		return
+	end
+
+	record.data.dailyRewards = clonedDailyRewardsData
 	markDirty(record)
 end
 

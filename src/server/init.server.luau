@@ -22,6 +22,7 @@ local TimeSpentLeaderboardService = require(script.Leaderboards.TimeSpentLeaderb
 local ToolSyncService = require(script.Tools.ToolSyncService)
 local RobuxSpentLeaderboardService = require(script.Leaderboards.RobuxSpentLeaderboardService)
 local SettingsService = require(script.Settings.SettingsService)
+local DailyRewardsService = require(script.DailyRewards.DailyRewardsService)
 
 CmdrService.start()
 PlayerDataService.start()
@@ -45,3 +46,4 @@ HarvestService.start()
 PlacementService.start()
 WalkoverCollectionService.start()
 OfflineEarningsService.start()
+DailyRewardsService.start()
