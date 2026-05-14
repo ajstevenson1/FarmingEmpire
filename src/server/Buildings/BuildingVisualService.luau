@@ -13,7 +13,10 @@ type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
 
 local VISUAL_MODEL_NAME = "CurrentVisual"
+local NEXT_VISUAL_MODEL_NAME = "NextVisual"
+local PREVIOUS_VISUAL_MODEL_NAME = "PreviousVisual"
 local PLACEMENT_BOX_NAME = "PlacementBox"
+local VISUAL_SWAP_OVERLAP_SECONDS = 0.05
 
 local function setBasePartVisualProperties(basePart: BasePart)
 	basePart.Anchored = true
@@ -27,15 +30,19 @@ local BuildingVisualService = {}
 
 function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, buildingId: BuildingId, stageModelName: string)
 	local existingVisual = rootPart:FindFirstChild(VISUAL_MODEL_NAME)
-	if existingVisual ~= nil then
-		existingVisual:Destroy()
+	local existingNextVisual = rootPart:FindFirstChild(NEXT_VISUAL_MODEL_NAME)
+	if existingNextVisual ~= nil then
+		existingNextVisual:Destroy()
+	end
+	local existingPreviousVisual = rootPart:FindFirstChild(PREVIOUS_VISUAL_MODEL_NAME)
+	if existingPreviousVisual ~= nil then
+		existingPreviousVisual:Destroy()
 	end
 
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
-	local stageModel = BuildingAssetUtils.getStageModel(buildingDefinition, stageModelName):Clone()
+	local stageModel = BuildingAssetUtils.getVisualModel(buildingDefinition, stageModelName):Clone()
 	BuildingAssetUtils.normalizeStageModel(stageModel)
-	BuildingAssetUtils.applyVisualVariant(stageModel, buildingDefinition)
-	stageModel.Name = VISUAL_MODEL_NAME
+	stageModel.Name = NEXT_VISUAL_MODEL_NAME
 	stageModel:PivotTo(rootPart.CFrame)
 
 	for _, descendant in ipairs(stageModel:GetDescendants()) do
@@ -47,7 +54,19 @@ function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, building
 		end
 	end
 
+	if existingVisual ~= nil then
+		existingVisual.Name = PREVIOUS_VISUAL_MODEL_NAME
+	end
 	stageModel.Parent = rootPart
+	stageModel.Name = VISUAL_MODEL_NAME
+
+	if existingVisual ~= nil then
+		task.delay(VISUAL_SWAP_OVERLAP_SECONDS, function()
+			if existingVisual.Parent == rootPart then
+				existingVisual:Destroy()
+			end
+		end)
+	end
 end
 
 return table.freeze(BuildingVisualService)

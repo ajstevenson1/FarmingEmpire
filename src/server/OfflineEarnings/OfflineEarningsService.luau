@@ -219,9 +219,7 @@ local function initializePlayer(player: Player)
 		local ciderPerSecond = getAwardCiderPerSecond(player, offlineData.ciderPerSecondSnapshot)
 		local earnedCider = OfflineCiderRateCalculator.calculateCiderForSeconds(ciderPerSecond, offlineSeconds)
 		if earnedCider > 0 then
-			local currentPendingCider = PlayerDataService.getPendingOfflineCider(player)
-			local remainingPendingCapacity = math.max(0, OfflineEarningsConfig.maxPendingCider - currentPendingCider)
-			PlayerDataService.addPendingOfflineCider(player, math.min(earnedCider, remainingPendingCapacity))
+			PlayerDataService.addPendingOfflineCider(player, earnedCider)
 		end
 	end
 

@@ -31,6 +31,12 @@ type PlacementRemotes = {
 	requestSell: RemoteEvent,
 }
 
+type HarvestRemotes = {
+	requestScytheSwing: RemoteEvent,
+	scytheHarvestConfirmed: RemoteEvent,
+	harvestEffect: RemoteEvent,
+}
+
 type MarketRemotes = {
 	marketUpdated: RemoteEvent,
 	ciderMarketOpened: RemoteEvent,
@@ -63,6 +69,7 @@ local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
 local cachedHarvestConfirmedRemote: RemoteEvent? = nil
+local cachedHarvestRemotes: HarvestRemotes? = nil
 local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
@@ -154,25 +161,30 @@ function Remotes.getPlacementRemotes(): PlacementRemotes
 end
 
 function Remotes.getHarvestRemote(): RemoteEvent
-	if cachedHarvestRemote ~= nil then
-		return cachedHarvestRemote
-	end
-
-	local harvestFolder = getOrCreateFolder(getRootFolder(), RemoteNames.harvestFolderName)
-	cachedHarvestRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName)
-
-	return cachedHarvestRemote
+	return Remotes.getHarvestRemotes().requestScytheSwing
 end
 
 function Remotes.getScytheHarvestConfirmedRemote(): RemoteEvent
-	if cachedHarvestConfirmedRemote ~= nil then
-		return cachedHarvestConfirmedRemote
+	return Remotes.getHarvestRemotes().scytheHarvestConfirmed
+end
+
+function Remotes.getHarvestRemotes(): HarvestRemotes
+	if cachedHarvestRemotes ~= nil then
+		return cachedHarvestRemotes
 	end
 
 	local harvestFolder = getOrCreateFolder(getRootFolder(), RemoteNames.harvestFolderName)
-	cachedHarvestConfirmedRemote = getOrCreateRemoteEvent(harvestFolder, RemoteNames.scytheHarvestConfirmedEventName)
+	local requestScytheSwing = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestScytheSwingEventName)
+	local scytheHarvestConfirmed = getOrCreateRemoteEvent(harvestFolder, RemoteNames.scytheHarvestConfirmedEventName)
+	cachedHarvestRemote = requestScytheSwing
+	cachedHarvestConfirmedRemote = scytheHarvestConfirmed
+	cachedHarvestRemotes = {
+		requestScytheSwing = requestScytheSwing,
+		scytheHarvestConfirmed = scytheHarvestConfirmed,
+		harvestEffect = getOrCreateRemoteEvent(harvestFolder, RemoteNames.harvestEffectEventName),
+	}
 
-	return cachedHarvestConfirmedRemote
+	return cachedHarvestRemotes
 end
 
 function Remotes.getResourceRemotes(): ResourceRemotes

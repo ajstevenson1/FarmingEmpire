@@ -2,9 +2,8 @@
 
 local OfflineEarningsConfig = {}
 
-OfflineEarningsConfig.maxOfflineSeconds = 12 * 60 * 60
+OfflineEarningsConfig.maxOfflineSeconds = 72 * 60 * 60
 OfflineEarningsConfig.minOfflineSecondsToReward = 5
-OfflineEarningsConfig.maxPendingCider = 1000000
 
 OfflineEarningsConfig.plateModelName = "OfflineEarningsPlate"
 OfflineEarningsConfig.touchPartName = "Touch"

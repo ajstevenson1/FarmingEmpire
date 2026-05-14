@@ -11,11 +11,14 @@ local toolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local ScytheConfig = require(toolsFolder:WaitForChild("ScytheConfig") :: ModuleScript)
 local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
+local HarvestEffectService = require(script.Parent.HarvestEffectService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+
+type AppleHarvestEffectPayload = HarvestEffectService.AppleHarvestEffectPayload
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
@@ -112,6 +115,7 @@ local function handleScytheSwingRequest(player: Player)
 	end
 
 	local harvestedAny = false
+	local harvestEffectPayloads: { AppleHarvestEffectPayload } = {}
 
 	for _, part in ipairs(getSwingOverlapParts(rootPart.CFrame, placedObjectsFolder)) do
 		if isOwnedPartOnAssignedPlot(player, part)
@@ -121,12 +125,18 @@ local function handleScytheSwingRequest(player: Player)
 			if didHarvest and harvestOutput ~= nil then
 				harvestedAny = true
 				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+
+				local harvestEffectPayload = HarvestEffectService.createAppleHarvestEffectPayload(part, harvestOutput)
+				if harvestEffectPayload ~= nil then
+					table.insert(harvestEffectPayloads, harvestEffectPayload)
+				end
 			end
 		end
 	end
 
 	if harvestedAny then
 		Remotes.getScytheHarvestConfirmedRemote():FireClient(player)
+		HarvestEffectService.fireAppleHarvestEffects(player, harvestEffectPayloads)
 	end
 end
 

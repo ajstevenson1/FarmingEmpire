@@ -50,21 +50,27 @@ export type GrowthVisualStage = {
 	minProgress: number,
 }
 
-export type GrowthVisualConfig = {
-	assetFolderName: string,
+export type StagedBuildingVisualConfig = {
+	kind: "Staged",
+	categoryFolderName: string,
+	assetName: string,
+	fallbackAssetName: string,
 	stages: { GrowthVisualStage },
+	placementPreviewStageModelName: string,
 }
 
-export type VisualTintRule = {
-	partNameContains: string,
-	color: Color3,
-	material: Enum.Material?,
+export type SingleBuildingVisualConfig = {
+	kind: "Single",
+	categoryFolderName: string,
+	assetName: string,
+	fallbackAssetName: string,
 }
 
-export type VisualVariantConfig = {
-	fallbackColor: Color3?,
-	fallbackMaterial: Enum.Material?,
-	tintRules: { VisualTintRule },
+export type BuildingVisualConfig = StagedBuildingVisualConfig | SingleBuildingVisualConfig
+
+export type HarvestVisualConfig = {
+	appleModelName: string,
+	maxAppleEffectCount: number,
 }
 
 export type OfflineEarningsConfig = {
@@ -176,8 +182,8 @@ export type BuildingDefinition = {
 	placementSize: Vector3,
 	productionConfig: ProductionConfig,
 	offlineEarningsConfig: OfflineEarningsConfig?,
-	growthVisualConfig: GrowthVisualConfig,
-	visualVariantConfig: VisualVariantConfig?,
+	visualConfig: BuildingVisualConfig,
+	harvestVisualConfig: HarvestVisualConfig?,
 }
 
 return {}

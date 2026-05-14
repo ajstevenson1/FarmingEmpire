@@ -28,13 +28,12 @@ local VALID_OUTLINE_COLOR = Color3.fromRGB(112, 212, 123)
 local INVALID_OUTLINE_COLOR = Color3.fromRGB(205, 91, 91)
 local PREVIEW_MODEL_NAME = "PlacementPreviewModel"
 local PREVIEW_HIGHLIGHT_PART_NAME = "PlacementBox"
-local STAGE_ZERO_MODEL_NAME = "Stage0"
 
 local PlacementPreviewView = {}
 PlacementPreviewView.__index = PlacementPreviewView
 
-local function getStageZeroSourceModel(buildingDefinition: BuildingDefinition): Model
-	return BuildingAssetUtils.getStageModel(buildingDefinition, STAGE_ZERO_MODEL_NAME)
+local function getPreviewSourceModel(buildingDefinition: BuildingDefinition): Model
+	return BuildingAssetUtils.getPlacementPreviewModel(buildingDefinition)
 end
 
 local function applyPreviewVisualState(model: Model, isValid: boolean)
@@ -90,9 +89,8 @@ function PlacementPreviewView:show(buildingDefinition: BuildingDefinition, _item
 			self._previewModel:Destroy()
 		end
 
-		self._previewModel = getStageZeroSourceModel(buildingDefinition):Clone()
+		self._previewModel = getPreviewSourceModel(buildingDefinition):Clone()
 		BuildingAssetUtils.normalizeStageModel(self._previewModel)
-		BuildingAssetUtils.applyVisualVariant(self._previewModel, buildingDefinition)
 		self._previewModel.Name = PREVIEW_MODEL_NAME
 		self._previewModel.Parent = Workspace
 		self._previewHighlightTarget = getPreviewHighlightTarget(self._previewModel)

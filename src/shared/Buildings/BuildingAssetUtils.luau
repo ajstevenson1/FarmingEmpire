@@ -4,12 +4,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsCodeFolder = sharedFolder:WaitForChild("Buildings") :: Folder
-local buildingAssetsFolder = ReplicatedStorage:WaitForChild("Buildings") :: Folder
 
 local BuildingTypes = require(buildingsCodeFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
-type VisualTintRule = BuildingTypes.VisualTintRule
+type SingleBuildingVisualConfig = BuildingTypes.SingleBuildingVisualConfig
+type StagedBuildingVisualConfig = BuildingTypes.StagedBuildingVisualConfig
 
 local PLACEMENT_BOX_NAME = "PlacementBox"
 local missingAssetWarnings: { [string]: boolean } = {}
@@ -25,9 +25,9 @@ local function warnMissingAssetOnce(assetKey: string)
 	warn(string.format("[BuildingAssetUtils] Missing building asset %s, using placeholder visuals", assetKey))
 end
 
-local function createPlaceholderStageModel(buildingDefinition: BuildingDefinition, stageModelName: string): Model
+local function createPlaceholderModel(buildingDefinition: BuildingDefinition, modelName: string): Model
 	local model = Instance.new("Model")
-	model.Name = stageModelName
+	model.Name = modelName
 
 	local placementBox = Instance.new("Part")
 	placementBox.Name = PLACEMENT_BOX_NAME
@@ -58,20 +58,129 @@ local function createPlaceholderStageModel(buildingDefinition: BuildingDefinitio
 	return model
 end
 
-function BuildingAssetUtils.getStageModel(buildingDefinition: BuildingDefinition, stageModelName: string): Model
-	local buildingFolder = buildingAssetsFolder:FindFirstChild(buildingDefinition.growthVisualConfig.assetFolderName)
-	if buildingFolder == nil or not buildingFolder:IsA("Folder") then
-		warnMissingAssetOnce(buildingDefinition.growthVisualConfig.assetFolderName)
-		return createPlaceholderStageModel(buildingDefinition, stageModelName)
+local function findCategoryFolder(categoryFolderName: string): Folder?
+	local directCategoryFolder = ReplicatedStorage:FindFirstChild(categoryFolderName)
+	if directCategoryFolder ~= nil and directCategoryFolder:IsA("Folder") then
+		return directCategoryFolder
 	end
 
-	local stageModel = buildingFolder:FindFirstChild(stageModelName)
-	if stageModel == nil or not stageModel:IsA("Model") then
-		warnMissingAssetOnce(string.format("%s/%s", buildingDefinition.growthVisualConfig.assetFolderName, stageModelName))
-		return createPlaceholderStageModel(buildingDefinition, stageModelName)
+	local legacyBuildingsFolder = ReplicatedStorage:FindFirstChild("Buildings")
+	if legacyBuildingsFolder == nil or not legacyBuildingsFolder:IsA("Folder") then
+		return nil
 	end
 
-	return stageModel
+	local legacyCategoryFolder = legacyBuildingsFolder:FindFirstChild(categoryFolderName)
+	if legacyCategoryFolder == nil or not legacyCategoryFolder:IsA("Folder") then
+		return nil
+	end
+
+	return legacyCategoryFolder
+end
+
+local function findAssetFolder(categoryFolder: Folder, assetName: string): Folder?
+	local assetFolder = categoryFolder:FindFirstChild(assetName)
+	if assetFolder == nil or not assetFolder:IsA("Folder") then
+		return nil
+	end
+
+	return assetFolder
+end
+
+local function findModel(parent: Instance, modelName: string): Model?
+	local model = parent:FindFirstChild(modelName)
+	if model == nil or not model:IsA("Model") then
+		return nil
+	end
+
+	return model
+end
+
+local function getStagedVisualModel(
+	buildingDefinition: BuildingDefinition,
+	visualConfig: StagedBuildingVisualConfig,
+	stageModelName: string
+): Model
+	local categoryFolder = findCategoryFolder(visualConfig.categoryFolderName)
+	if categoryFolder == nil then
+		warnMissingAssetOnce(visualConfig.categoryFolderName)
+		return createPlaceholderModel(buildingDefinition, stageModelName)
+	end
+
+	local assetFolder = findAssetFolder(categoryFolder, visualConfig.assetName)
+	if assetFolder ~= nil then
+		local stageModel = findModel(assetFolder, stageModelName)
+		if stageModel ~= nil then
+			return stageModel
+		end
+	end
+
+	local fallbackAssetFolder = findAssetFolder(categoryFolder, visualConfig.fallbackAssetName)
+	if fallbackAssetFolder ~= nil then
+		local fallbackStageModel = findModel(fallbackAssetFolder, stageModelName)
+		if fallbackStageModel ~= nil then
+			if assetFolder == nil then
+				warnMissingAssetOnce(string.format("%s/%s", visualConfig.categoryFolderName, visualConfig.assetName))
+			else
+				warnMissingAssetOnce(string.format("%s/%s/%s", visualConfig.categoryFolderName, visualConfig.assetName, stageModelName))
+			end
+
+			return fallbackStageModel
+		end
+	end
+
+	warnMissingAssetOnce(string.format("%s/%s/%s", visualConfig.categoryFolderName, visualConfig.assetName, stageModelName))
+	return createPlaceholderModel(buildingDefinition, stageModelName)
+end
+
+local function getSingleVisualModel(buildingDefinition: BuildingDefinition, visualConfig: SingleBuildingVisualConfig): Model
+	local categoryFolder = findCategoryFolder(visualConfig.categoryFolderName)
+	if categoryFolder == nil then
+		warnMissingAssetOnce(visualConfig.categoryFolderName)
+		return createPlaceholderModel(buildingDefinition, visualConfig.assetName)
+	end
+
+	local model = findModel(categoryFolder, visualConfig.assetName)
+	if model ~= nil then
+		return model
+	end
+
+	local fallbackModel = findModel(categoryFolder, visualConfig.fallbackAssetName)
+	if fallbackModel ~= nil then
+		warnMissingAssetOnce(string.format("%s/%s", visualConfig.categoryFolderName, visualConfig.assetName))
+		return fallbackModel
+	end
+
+	warnMissingAssetOnce(string.format("%s/%s", visualConfig.categoryFolderName, visualConfig.assetName))
+	return createPlaceholderModel(buildingDefinition, visualConfig.assetName)
+end
+
+function BuildingAssetUtils.getVisualModel(buildingDefinition: BuildingDefinition, stageModelName: string?): Model
+	local visualConfig = buildingDefinition.visualConfig
+	if visualConfig.kind == "Staged" then
+		local stagedModelName = stageModelName
+		assert(stagedModelName ~= nil, string.format("%s requires a staged visual model name", buildingDefinition.id))
+		return getStagedVisualModel(buildingDefinition, visualConfig, stagedModelName)
+	end
+
+	return getSingleVisualModel(buildingDefinition, visualConfig)
+end
+
+function BuildingAssetUtils.getPlacementPreviewModel(buildingDefinition: BuildingDefinition): Model
+	local visualConfig = buildingDefinition.visualConfig
+	if visualConfig.kind == "Staged" then
+		return BuildingAssetUtils.getVisualModel(buildingDefinition, visualConfig.placementPreviewStageModelName)
+	end
+
+	return BuildingAssetUtils.getVisualModel(buildingDefinition, nil)
+end
+
+local function getFootprintSourceModel(buildingDefinition: BuildingDefinition): Model
+	local visualConfig = buildingDefinition.visualConfig
+	if visualConfig.kind == "Staged" then
+		return BuildingAssetUtils.getVisualModel(buildingDefinition, visualConfig.stages[1].modelName)
+	end
+
+	return BuildingAssetUtils.getVisualModel(buildingDefinition, nil)
 end
 
 function BuildingAssetUtils.getPlacementBox(model: Model): BasePart
@@ -82,73 +191,13 @@ function BuildingAssetUtils.getPlacementBox(model: Model): BasePart
 end
 
 function BuildingAssetUtils.getPlacementFootprint(buildingDefinition: BuildingDefinition): Vector3
-	local stageModel = BuildingAssetUtils.getStageModel(buildingDefinition, buildingDefinition.growthVisualConfig.stages[1].modelName)
-	local placementBox = BuildingAssetUtils.getPlacementBox(stageModel)
+	local placementBox = BuildingAssetUtils.getPlacementBox(getFootprintSourceModel(buildingDefinition))
 	return placementBox.Size
 end
 
 function BuildingAssetUtils.normalizeStageModel(model: Model)
 	local placementBox = BuildingAssetUtils.getPlacementBox(model)
 	model.PrimaryPart = placementBox
-end
-
-local function applyTintRule(basePart: BasePart, rule: VisualTintRule)
-	basePart.Color = rule.color
-	if rule.material ~= nil then
-		basePart.Material = rule.material
-	end
-end
-
-local function applyFallbackTint(basePart: BasePart, buildingDefinition: BuildingDefinition)
-	local visualVariantConfig = buildingDefinition.visualVariantConfig
-	if visualVariantConfig == nil then
-		return
-	end
-
-	local fallbackColor = visualVariantConfig.fallbackColor
-	if fallbackColor == nil then
-		return
-	end
-
-	basePart.Color = fallbackColor
-
-	local fallbackMaterial = visualVariantConfig.fallbackMaterial
-	if fallbackMaterial ~= nil then
-		basePart.Material = fallbackMaterial
-	end
-end
-
-function BuildingAssetUtils.applyVisualVariant(model: Model, buildingDefinition: BuildingDefinition)
-	local visualVariantConfig = buildingDefinition.visualVariantConfig
-	if visualVariantConfig == nil then
-		return
-	end
-
-	local matchedAnyRule = false
-	for _, descendant in ipairs(model:GetDescendants()) do
-		if not descendant:IsA("BasePart") or descendant.Name == PLACEMENT_BOX_NAME then
-			continue
-		end
-
-		local lowerName = string.lower(descendant.Name)
-		for _, rule in ipairs(visualVariantConfig.tintRules) do
-			if string.find(lowerName, string.lower(rule.partNameContains), 1, true) ~= nil then
-				applyTintRule(descendant, rule)
-				matchedAnyRule = true
-				break
-			end
-		end
-	end
-
-	if matchedAnyRule then
-		return
-	end
-
-	for _, descendant in ipairs(model:GetDescendants()) do
-		if descendant:IsA("BasePart") and descendant.Name ~= PLACEMENT_BOX_NAME then
-			applyFallbackTint(descendant, buildingDefinition)
-		end
-	end
 end
 
 return table.freeze(BuildingAssetUtils)
