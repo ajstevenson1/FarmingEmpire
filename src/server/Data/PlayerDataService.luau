@@ -468,9 +468,25 @@ function PlayerDataService.getCash(player: Player): number
 	return record.data.economy.cash
 end
 
+function PlayerDataService.getLifetimeCashEarned(player: Player): number
+	local record = loadPlayerData(player)
+	return sanitizeAmount(record.data.economy.lifetimeCashEarned)
+end
+
 function PlayerDataService.setCash(player: Player, cash: number)
 	local record = loadPlayerData(player)
 	record.data.economy.cash = sanitizeAmount(cash)
+	markDirty(record)
+end
+
+function PlayerDataService.addLifetimeCashEarned(player: Player, amount: number)
+	local sanitizedAmount = sanitizeAmount(amount)
+	if sanitizedAmount <= 0 then
+		return
+	end
+
+	local record = loadPlayerData(player)
+	record.data.economy.lifetimeCashEarned = sanitizeAmount(record.data.economy.lifetimeCashEarned + sanitizedAmount)
 	markDirty(record)
 end
 

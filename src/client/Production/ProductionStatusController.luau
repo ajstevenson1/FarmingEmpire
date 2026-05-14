@@ -5,8 +5,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local AppleCounterBillboardView = require(script.Parent.AppleCounterBillboardView)
 local CiderCounterBillboardView = require(script.Parent.CiderCounterBillboardView)
 local ProductionBillboardView = require(script.Parent.ProductionBillboardView)
@@ -22,18 +24,6 @@ type TrackedConnections = {
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
-local TREE_BUILDING_IDS: { [string]: boolean } = {
-	BasicTree = true,
-	RubyAppleTree = true,
-	GoldenAppleTree = true,
-	CrystalAppleTree = true,
-}
-local CIDER_MILL_BUILDING_IDS: { [string]: boolean } = {
-	CiderMill = true,
-	CopperCiderMill = true,
-	SteelCiderMill = true,
-	RoyalCiderMill = true,
-}
 
 local trackedViewsByPart: { [BasePart]: ProductionViewInstance } = {}
 local trackedConnectionsByPart: { [BasePart]: TrackedConnections } = {}
@@ -64,12 +54,12 @@ end
 
 local function shouldUseAppleCounter(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
-	return type(buildingId) == "string" and TREE_BUILDING_IDS[buildingId] == true
+	return type(buildingId) == "string" and ProgressionConfig.isTreeBuildingId(buildingId)
 end
 
 local function shouldUseCiderCounter(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
-	return type(buildingId) == "string" and CIDER_MILL_BUILDING_IDS[buildingId] == true
+	return type(buildingId) == "string" and ProgressionConfig.isMillBuildingId(buildingId)
 end
 
 local function createView(part: BasePart): ProductionViewInstance

@@ -40,7 +40,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewards = table.freeze({
 			table.freeze({
 				kind = "Item",
-				itemId = "BasicTree",
+				itemId = "OakTree",
 				amount = 1,
 			}),
 		}),
@@ -75,7 +75,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewards = table.freeze({
 			table.freeze({
 				kind = "Item",
-				itemId = "BasicTree",
+				itemId = "OakTree",
 				amount = 2,
 			}),
 		}),
@@ -87,7 +87,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewards = table.freeze({
 			table.freeze({
 				kind = "Item",
-				itemId = "RubyAppleTree",
+				itemId = "BirchTree",
 				amount = 1,
 			}),
 			table.freeze({

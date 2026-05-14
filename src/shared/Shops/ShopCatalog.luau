@@ -1,11 +1,15 @@
 --!strict
 
 local ShopTypes = require(script.Parent.ShopTypes)
+local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
+type MillTierDefinition = ProgressionConfig.MillTierDefinition
+type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 
 local RESTOCK_INTERVAL_SECONDS = 5 * 60
 
@@ -37,92 +41,39 @@ local definitionsById: { [ShopId]: ShopDefinition } = {
 	}),
 }
 
-local productsByShopId: { [ShopId]: { ShopProductDefinition } } = {
-	TreesShop = table.freeze({
-		table.freeze({
-			id = "BasicTree",
-			shopId = "TreesShop",
-			itemId = "BasicTree",
-			price = 25,
-			quantityPerPurchase = 1,
-			stockPerRestock = 10,
-			sortOrder = 10,
-			description = "Steady starter tree. Produces 1 apple every 5 seconds.",
-		}),
-		table.freeze({
-			id = "RubyAppleTree",
-			shopId = "TreesShop",
-			itemId = "RubyAppleTree",
-			price = 150,
-			quantityPerPurchase = 1,
-			stockPerRestock = 5,
-			sortOrder = 20,
-			description = "Red-leaf variant. Produces 2 apples every 5 seconds.",
-		}),
-		table.freeze({
-			id = "GoldenAppleTree",
-			shopId = "TreesShop",
-			itemId = "GoldenAppleTree",
-			price = 650,
-			quantityPerPurchase = 1,
-			stockPerRestock = 3,
-			sortOrder = 30,
-			description = "High-yield orchard tree. Produces 4 apples every 5 seconds.",
-		}),
-		table.freeze({
-			id = "CrystalAppleTree",
-			shopId = "TreesShop",
-			itemId = "CrystalAppleTree",
-			price = 2500,
-			quantityPerPurchase = 1,
-			stockPerRestock = 1,
-			sortOrder = 40,
-			description = "Rare blue variant. Produces 7 apples every 5 seconds.",
-		}),
-	}),
-	MillsShop = table.freeze({
-		table.freeze({
-			id = "CiderMill",
-			shopId = "MillsShop",
-			itemId = "CiderMill",
-			price = 75,
-			quantityPerPurchase = 1,
-			stockPerRestock = 5,
-			sortOrder = 10,
-			description = "Basic mill. Turns 1 apple into 1 cider each second.",
-		}),
-		table.freeze({
-			id = "CopperCiderMill",
-			shopId = "MillsShop",
-			itemId = "CopperCiderMill",
-			price = 350,
-			quantityPerPurchase = 1,
-			stockPerRestock = 4,
-			sortOrder = 20,
-			description = "Copper fittings. Turns 1 apple into 2 cider each second.",
-		}),
-		table.freeze({
-			id = "SteelCiderMill",
-			shopId = "MillsShop",
-			itemId = "SteelCiderMill",
-			price = 1200,
-			quantityPerPurchase = 1,
-			stockPerRestock = 2,
-			sortOrder = 30,
-			description = "Reinforced press. Turns 2 apples into 5 cider each second.",
-		}),
-		table.freeze({
-			id = "RoyalCiderMill",
-			shopId = "MillsShop",
-			itemId = "RoyalCiderMill",
-			price = 4500,
-			quantityPerPurchase = 1,
-			stockPerRestock = 1,
-			sortOrder = 40,
-			description = "Top-tier press. Turns 3 apples into 10 cider each second.",
-		}),
-	}),
-}
+local productsByShopId: { [ShopId]: { ShopProductDefinition } } = {}
+
+local treeProducts: { ShopProductDefinition } = {}
+for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+	table.insert(treeProducts, table.freeze({
+		id = treeDefinition.id,
+		shopId = "TreesShop",
+		itemId = treeDefinition.id,
+		price = treeDefinition.price,
+		unlockLifetimeCash = treeDefinition.unlockLifetimeCash,
+		quantityPerPurchase = 1,
+		stockPerRestock = treeDefinition.stockPerRestock,
+		sortOrder = 10 + index - 1,
+		description = treeDefinition.description,
+	}))
+end
+productsByShopId.TreesShop = table.freeze(treeProducts)
+
+local millProducts: { ShopProductDefinition } = {}
+for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+	table.insert(millProducts, table.freeze({
+		id = millDefinition.id,
+		shopId = "MillsShop",
+		itemId = millDefinition.id,
+		price = millDefinition.price,
+		unlockLifetimeCash = millDefinition.unlockLifetimeCash,
+		quantityPerPurchase = 1,
+		stockPerRestock = millDefinition.stockPerRestock,
+		sortOrder = 10 + index - 1,
+		description = millDefinition.description,
+	}))
+end
+productsByShopId.MillsShop = table.freeze(millProducts)
 
 local productsByShopIdAndProductId: { [ShopId]: { [ShopProductId]: ShopProductDefinition } } = {}
 

@@ -32,6 +32,7 @@ type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 
 export type PlayerEconomyData = {
 	cash: number,
+	lifetimeCashEarned: number,
 }
 
 export type PlayerOfflineData = {
@@ -75,12 +76,24 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
-local CURRENT_SCHEMA_VERSION = 10
+local CURRENT_SCHEMA_VERSION = 11
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 local PLAYTIME_REWARDS_CYCLE_LENGTH = PlaytimeRewardsConfig.getCycleLength()
+local LEGACY_ITEM_ID_ALIASES: { [string]: ItemId } = {
+	BasicTree = "OakTree",
+	RubyAppleTree = "CherryTree",
+	GoldenAppleTree = "GoldenTree",
+	CrystalAppleTree = "SapphireTree",
+}
+local LEGACY_BUILDING_ID_ALIASES: { [string]: BuildingId } = {
+	BasicTree = "OakTree",
+	RubyAppleTree = "CherryTree",
+	GoldenAppleTree = "GoldenTree",
+	CrystalAppleTree = "SapphireTree",
+}
 
 local function getPlayerKey(userId: number): string
 	return `Player_{userId}`
@@ -147,6 +160,32 @@ local function sanitizeRewardIndex(value: unknown): number?
 	end
 
 	return numericValue
+end
+
+local function sanitizeItemId(value: unknown): ItemId?
+	if type(value) ~= "string" then
+		return nil
+	end
+
+	local canonicalItemId = LEGACY_ITEM_ID_ALIASES[value] or value
+	if not ItemCatalog.hasItemDefinition(canonicalItemId) then
+		return nil
+	end
+
+	return canonicalItemId :: ItemId
+end
+
+local function sanitizeBuildingId(value: unknown): BuildingId?
+	if type(value) ~= "string" then
+		return nil
+	end
+
+	local canonicalBuildingId = LEGACY_BUILDING_ID_ALIASES[value] or value
+	if not BuildingCatalog.hasBuildingDefinition(canonicalBuildingId) then
+		return nil
+	end
+
+	return canonicalBuildingId :: BuildingId
 end
 
 local function sanitizeClaimedRewardIndexes(rawClaimedRewardIndexes: unknown): { [number]: boolean }
@@ -269,7 +308,8 @@ local function createDefaultData(): PlayerData
 	return {
 		schemaVersion = CURRENT_SCHEMA_VERSION,
 		economy = {
-			cash = 0,
+			cash = 250,
+			lifetimeCashEarned = 0,
 		},
 		resources = resources,
 		placedBuildings = {},
@@ -341,16 +381,13 @@ local function sanitizePlacedBuildings(rawPlacedBuildings: unknown): { PlacedBui
 	for _, rawPlacedBuilding in ipairs(rawPlacedBuildings :: { unknown }) do
 		if type(rawPlacedBuilding) == "table" then
 			local rawPlacedBuildingValues = rawPlacedBuilding :: { [string]: unknown }
-			local rawBuildingId = rawPlacedBuildingValues.buildingId
+			local buildingId = sanitizeBuildingId(rawPlacedBuildingValues.buildingId)
 			local gridX = sanitizeGridCoordinate(rawPlacedBuildingValues.gridX)
 			local gridZ = sanitizeGridCoordinate(rawPlacedBuildingValues.gridZ)
 
-			if type(rawBuildingId) == "string"
-				and BuildingCatalog.hasBuildingDefinition(rawBuildingId)
-				and gridX ~= nil
-				and gridZ ~= nil then
+			if buildingId ~= nil and gridX ~= nil and gridZ ~= nil then
 				table.insert(placedBuildings, {
-					buildingId = rawBuildingId :: BuildingId,
+					buildingId = buildingId,
 					gridX = gridX,
 					gridZ = gridZ,
 					production = sanitizeSavedProductionState(rawPlacedBuildingValues.production),
@@ -372,11 +409,10 @@ local function sanitizeInventoryEntries(rawEntries: unknown): { InventoryEntry }
 	for _, rawEntry in ipairs(rawEntries :: { unknown }) do
 		if type(rawEntry) == "table" then
 			local rawEntryValues = rawEntry :: { [string]: unknown }
-			local rawItemId = rawEntryValues.itemId
+			local itemId = sanitizeItemId(rawEntryValues.itemId)
 			local quantity = sanitizeAmount(rawEntryValues.quantity)
 
-			if type(rawItemId) == "string" and ItemCatalog.hasItemDefinition(rawItemId) and quantity > 0 then
-				local itemId = rawItemId :: ItemId
+			if itemId ~= nil and quantity > 0 then
 				quantitiesByItemId[itemId] = sanitizeAmount((quantitiesByItemId[itemId] or 0) + quantity)
 			end
 		end
@@ -416,16 +452,14 @@ local function sanitizeHotbarSlots(rawHotbarSlots: unknown): { HotbarSlotData }
 		if type(rawHotbarSlot) == "table" then
 			local rawHotbarSlotValues = rawHotbarSlot :: { [string]: unknown }
 			local rawSlotIndex = rawHotbarSlotValues.slotIndex
-			local rawItemId = rawHotbarSlotValues.itemId
+			local itemId = sanitizeItemId(rawHotbarSlotValues.itemId)
 
 			if type(rawSlotIndex) == "number"
 				and rawSlotIndex == math.floor(rawSlotIndex)
 				and HotbarConfig.isAssignableSlotIndex(rawSlotIndex)
-				and type(rawItemId) == "string"
-				and rawItemId ~= "Scythe"
-				and ItemCatalog.hasItemDefinition(rawItemId)
+				and itemId ~= nil
+				and itemId ~= "Scythe"
 			then
-				local itemId = rawItemId :: ItemId
 				if seenSlots[rawSlotIndex] ~= true and seenItems[itemId] ~= true then
 					seenSlots[rawSlotIndex] = true
 					seenItems[itemId] = true
@@ -490,6 +524,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		schemaVersion = CURRENT_SCHEMA_VERSION,
 		economy = {
 			cash = sanitizeAmount(rawEconomyValues.cash),
+			lifetimeCashEarned = sanitizeAmount(rawEconomyValues.lifetimeCashEarned),
 		},
 		resources = sanitizeResources(rawDataTable.resources),
 		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
@@ -553,6 +588,7 @@ local function cloneData(data: PlayerData): PlayerData
 		schemaVersion = CURRENT_SCHEMA_VERSION,
 		economy = {
 			cash = sanitizeAmount(data.economy.cash),
+			lifetimeCashEarned = sanitizeAmount(data.economy.lifetimeCashEarned),
 		},
 		resources = resources,
 		placedBuildings = placedBuildings,

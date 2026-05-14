@@ -19,6 +19,7 @@ type BottomNavState = {
 	tweenCompletedConnection: RBXScriptConnection?,
 	positionConnection: RBXScriptConnection?,
 	isApplyingControlledPosition: boolean,
+	lastControlledPosition: UDim2?,
 }
 
 local state: BottomNavState = {
@@ -29,6 +30,7 @@ local state: BottomNavState = {
 	tweenCompletedConnection = nil,
 	positionConnection = nil,
 	isApplyingControlledPosition = false,
+	lastControlledPosition = nil,
 }
 
 local hasStarted = false
@@ -104,6 +106,18 @@ local function playTransition(targetPosition: UDim2)
 	tween:Play()
 end
 
+local function applyControlledPosition(targetPosition: UDim2)
+	local hotbarFrame = state.hotbarFrame
+	if hotbarFrame == nil then
+		return
+	end
+
+	state.isApplyingControlledPosition = true
+	state.lastControlledPosition = targetPosition
+	hotbarFrame.Position = targetPosition
+	state.isApplyingControlledPosition = false
+end
+
 local function setHidden(shouldHide: boolean)
 	local hotbarFrame = state.hotbarFrame
 	if hotbarFrame == nil or state.isHidden == shouldHide then
@@ -138,15 +152,20 @@ local function bindLayoutPositionTracking(hotbarFrame: Frame)
 			return
 		end
 
-		if not state.isHidden then
-			state.openPosition = hotbarFrame.Position
+		local currentPosition = hotbarFrame.Position
+		local lastControlledPosition = state.lastControlledPosition
+		if lastControlledPosition ~= nil and currentPosition == lastControlledPosition then
+			state.lastControlledPosition = nil
 			return
 		end
 
-		state.openPosition = hotbarFrame.Position
-		state.isApplyingControlledPosition = true
-		hotbarFrame.Position = getHiddenPosition(hotbarFrame, state.openPosition)
-		state.isApplyingControlledPosition = false
+		if not state.isHidden then
+			state.openPosition = currentPosition
+			return
+		end
+
+		state.openPosition = currentPosition
+		applyControlledPosition(getHiddenPosition(hotbarFrame, currentPosition))
 	end)
 end
 

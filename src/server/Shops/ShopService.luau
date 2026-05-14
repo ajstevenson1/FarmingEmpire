@@ -9,6 +9,7 @@ local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
@@ -307,6 +308,10 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 
 	if productDefinition.quantityPerPurchase <= 0 then
 		return createPurchaseResult(player, false, "InvalidQuantity", shopId, productId)
+	end
+
+	if PlayerDataService.getLifetimeCashEarned(player) < productDefinition.unlockLifetimeCash then
+		return createPurchaseResult(player, false, "Locked", shopId, productId)
 	end
 
 	if getStockRemaining(player, shopId, productDefinition) <= 0 then

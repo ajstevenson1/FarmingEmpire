@@ -19,6 +19,7 @@ local cashChangedListeners: { CashChangedListener } = {}
 local function buildSnapshot(player: Player): EconomySnapshot
 	return {
 		cash = PlayerDataService.getCash(player),
+		lifetimeCashEarned = PlayerDataService.getLifetimeCashEarned(player),
 	}
 end
 
@@ -72,6 +73,7 @@ function EconomyService.addCash(player: Player, amount: number)
 
 	local newCash = PlayerDataService.getCash(player) + amount
 	PlayerDataService.setCash(player, newCash)
+	PlayerDataService.addLifetimeCashEarned(player, amount)
 	pushEconomyUpdate(player)
 	notifyCashChanged(player, newCash)
 end

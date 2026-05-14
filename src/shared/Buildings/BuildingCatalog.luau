@@ -1,11 +1,15 @@
 --!strict
 
 local BuildingTypes = require(script.Parent.BuildingTypes)
+local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
 type GrowthVisualStage = BuildingTypes.GrowthVisualStage
 type VisualVariantConfig = BuildingTypes.VisualVariantConfig
+type MillTierDefinition = ProgressionConfig.MillTierDefinition
+type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 
 local TREE_STAGES: { GrowthVisualStage } = table.freeze({
 	table.freeze({
@@ -100,132 +104,75 @@ local function createMillVisualVariant(accentColor: Color3, fallbackColor: Color
 	})
 end
 
-local function createAppleTreeDefinition(
-	id: BuildingId,
-	displayName: string,
-	sellPrice: number,
-	offlineCiderPerSecond: number,
-	outputAmountPerInterval: number,
-	storageCap: number,
-	visualVariantConfig: VisualVariantConfig?
-): BuildingDefinition
+local function createAppleTreeDefinition(treeDefinition: TreeTierDefinition): BuildingDefinition
 	return table.freeze({
-		id = id,
-		displayName = displayName,
-		sellPrice = sellPrice,
+		id = treeDefinition.id,
+		displayName = treeDefinition.displayName,
+		sellPrice = treeDefinition.sellPrice,
 		placementSize = Vector3.new(6, 6, 6),
 		productionConfig = table.freeze({
 			behaviorId = "TimedStorageProducer",
 			produceIntervalSeconds = 5,
 			outputResourceId = "Apple",
-			outputAmountPerInterval = outputAmountPerInterval,
-			storageCap = storageCap,
+			outputAmountPerInterval = treeDefinition.fruitPerInterval,
+			storageCap = treeDefinition.storageCap,
 		}),
 		offlineEarningsConfig = table.freeze({
-			ciderPerSecond = offlineCiderPerSecond,
+			ciderPerSecond = treeDefinition.offlineCiderPerSecond,
 		}),
 		growthVisualConfig = table.freeze({
 			assetFolderName = "BasicTree",
 			stages = TREE_STAGES,
 		}),
-		visualVariantConfig = visualVariantConfig,
+		visualVariantConfig = createTreeVisualVariant(
+			treeDefinition.leafColor,
+			treeDefinition.fruitColor,
+			treeDefinition.fallbackColor
+		),
 	})
 end
 
-local function createCiderMillDefinition(
-	id: BuildingId,
-	displayName: string,
-	sellPrice: number,
-	offlineCiderPerSecond: number,
-	inputAmount: number,
-	outputAmount: number,
-	visualVariantConfig: VisualVariantConfig?
-): BuildingDefinition
+local function createCiderMillDefinition(millDefinition: MillTierDefinition): BuildingDefinition
 	return table.freeze({
-		id = id,
-		displayName = displayName,
-		sellPrice = sellPrice,
+		id = millDefinition.id,
+		displayName = millDefinition.displayName,
+		sellPrice = millDefinition.sellPrice,
 		placementSize = Vector3.new(8, 6, 8),
 		productionConfig = table.freeze({
 			behaviorId = "InputProcessor",
 			cycleDurationSeconds = 1,
 			inputResourceId = "Apple",
-			inputAmount = inputAmount,
+			inputAmount = millDefinition.inputAmount,
 			outputResourceId = "Cider",
-			outputAmount = outputAmount,
+			outputAmount = millDefinition.outputAmount,
 			outputStorageMode = "Unlimited",
 			idleStatusText = "Idle",
 			blockedStatusText = "Need apples",
 		}),
 		offlineEarningsConfig = table.freeze({
-			ciderPerSecond = offlineCiderPerSecond,
+			ciderPerSecond = millDefinition.offlineCiderPerSecond,
 		}),
 		growthVisualConfig = table.freeze({
 			assetFolderName = "CiderMill",
 			stages = CIDER_MILL_STAGES,
 		}),
-		visualVariantConfig = visualVariantConfig,
+		visualVariantConfig = createMillVisualVariant(
+			millDefinition.accentColor,
+			millDefinition.fallbackColor,
+			Enum.Material.Metal
+		),
 	})
 end
 
-local buildingsById: { [BuildingId]: BuildingDefinition } = {
-	BasicTree = createAppleTreeDefinition("BasicTree", "Apple Tree", 25, 0.05, 1, 10, nil),
-	RubyAppleTree = createAppleTreeDefinition(
-		"RubyAppleTree",
-		"Ruby Apple Tree",
-		75,
-		0.12,
-		2,
-		18,
-		createTreeVisualVariant(Color3.fromRGB(190, 48, 68), Color3.fromRGB(255, 92, 105), Color3.fromRGB(143, 48, 64))
-	),
-	GoldenAppleTree = createAppleTreeDefinition(
-		"GoldenAppleTree",
-		"Golden Apple Tree",
-		325,
-		0.35,
-		4,
-		35,
-		createTreeVisualVariant(Color3.fromRGB(232, 184, 57), Color3.fromRGB(255, 226, 99), Color3.fromRGB(196, 150, 45))
-	),
-	CrystalAppleTree = createAppleTreeDefinition(
-		"CrystalAppleTree",
-		"Crystal Apple Tree",
-		1250,
-		1,
-		7,
-		60,
-		createTreeVisualVariant(Color3.fromRGB(112, 214, 229), Color3.fromRGB(178, 241, 255), Color3.fromRGB(86, 169, 202))
-	),
-	CiderMill = createCiderMillDefinition("CiderMill", "Cider Mill", 50, 0.1, 1, 1, nil),
-	CopperCiderMill = createCiderMillDefinition(
-		"CopperCiderMill",
-		"Copper Cider Mill",
-		175,
-		0.3,
-		1,
-		2,
-		createMillVisualVariant(Color3.fromRGB(196, 108, 50), Color3.fromRGB(171, 95, 51), Enum.Material.Metal)
-	),
-	SteelCiderMill = createCiderMillDefinition(
-		"SteelCiderMill",
-		"Steel Cider Mill",
-		600,
-		0.8,
-		2,
-		5,
-		createMillVisualVariant(Color3.fromRGB(142, 151, 158), Color3.fromRGB(116, 128, 135), Enum.Material.Metal)
-	),
-	RoyalCiderMill = createCiderMillDefinition(
-		"RoyalCiderMill",
-		"Royal Cider Mill",
-		2250,
-		2,
-		3,
-		10,
-		createMillVisualVariant(Color3.fromRGB(135, 77, 183), Color3.fromRGB(196, 159, 62), Enum.Material.Metal)
-	),
-}
+local buildingsById: { [BuildingId]: BuildingDefinition } = {}
+
+for _, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+	buildingsById[treeDefinition.id] = createAppleTreeDefinition(treeDefinition)
+end
+
+for _, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+	buildingsById[millDefinition.id] = createCiderMillDefinition(millDefinition)
+end
 
 local BuildingCatalog = {}
 

@@ -2,6 +2,7 @@
 
 export type EconomySnapshot = {
 	cash: number,
+	lifetimeCashEarned: number,
 }
 
 export type MarketSnapshot = {

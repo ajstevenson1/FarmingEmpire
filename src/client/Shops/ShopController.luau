@@ -32,6 +32,7 @@ local hasStarted = false
 local activeShopId: ShopId? = nil
 local latestSnapshot: ShopSnapshot? = nil
 local latestCash = 0
+local latestLifetimeCashEarned = 0
 local latestStatusText: string? = nil
 local isPurchasePending = false
 
@@ -43,6 +44,7 @@ local PURCHASE_STATUS_TEXT: { [string]: string } = {
 	InsufficientCash = "Not enough cash.",
 	TooFar = "Move closer to the shop.",
 	InvalidQuantity = "That item cannot be purchased right now.",
+	Locked = "Earn more lifetime cash to unlock that item.",
 }
 
 local function getShopRemotes(): (RemoteEvent, RemoteFunction, RemoteFunction)
@@ -115,7 +117,7 @@ local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 	end
 end
 
-local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash: number): { RenderProduct }
+local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash: number, lifetimeCashEarned: number): { RenderProduct }
 	local products: { RenderProduct } = {}
 	local shopState = snapshot.shopsById[shopId]
 	if shopState == nil then
@@ -124,10 +126,13 @@ local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash:
 
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		local itemDefinition = ItemCatalog.getItemDefinition(productDefinition.itemId)
+		local isUnlocked = lifetimeCashEarned >= productDefinition.unlockLifetimeCash
 		table.insert(products, {
 			productDefinition = productDefinition,
 			displayName = itemDefinition.displayName,
 			stockRemaining = shopState.stockRemainingByProductId[productDefinition.id] or 0,
+			isUnlocked = isUnlocked,
+			unlockLifetimeCash = productDefinition.unlockLifetimeCash,
 			canAfford = cash >= productDefinition.price,
 		})
 	end
@@ -153,7 +158,7 @@ local function renderIfReady(view: ShopMenuViewInstance)
 		definition.displayName,
 		getSecondsUntilRestock(snapshot, shopId),
 		latestCash,
-		buildRenderProducts(shopId, snapshot, latestCash),
+		buildRenderProducts(shopId, snapshot, latestCash, latestLifetimeCashEarned),
 		latestStatusText
 	)
 end
@@ -184,7 +189,9 @@ function ShopController.start()
 	local shopOpened, getShopSnapshot, requestShopPurchase = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
 	latestSnapshot = getShopSnapshot:InvokeServer() :: ShopSnapshot
-	latestCash = (getEconomySnapshot:InvokeServer() :: EconomySnapshot).cash
+	local initialEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
+	latestCash = initialEconomySnapshot.cash
+	latestLifetimeCashEarned = initialEconomySnapshot.lifetimeCashEarned
 
 	view:connectCloseRequested(function()
 		FrameManager.close(SHOP_FRAME_ID)
@@ -206,7 +213,9 @@ function ShopController.start()
 		}) :: ShopPurchaseResult
 		latestSnapshot = result.snapshot
 		latestStatusText = getPurchaseStatusText(result)
-		latestCash = (getEconomySnapshot:InvokeServer() :: EconomySnapshot).cash
+		local refreshedEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
+		latestCash = refreshedEconomySnapshot.cash
+		latestLifetimeCashEarned = refreshedEconomySnapshot.lifetimeCashEarned
 		isPurchasePending = false
 		renderIfReady(view)
 	end)
@@ -221,6 +230,7 @@ function ShopController.start()
 
 	economyUpdated.OnClientEvent:Connect(function(economySnapshot: EconomySnapshot)
 		latestCash = economySnapshot.cash
+		latestLifetimeCashEarned = economySnapshot.lifetimeCashEarned
 		renderIfReady(view)
 	end)
 

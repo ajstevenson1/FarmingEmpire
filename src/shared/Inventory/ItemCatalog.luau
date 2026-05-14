@@ -1,9 +1,13 @@
 --!strict
 
 local InventoryTypes = require(script.Parent.InventoryTypes)
+local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 
 type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
+type MillTierDefinition = ProgressionConfig.MillTierDefinition
+type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 
 local itemsById: { [ItemId]: ItemDefinition } = {
 	Scythe = table.freeze({
@@ -14,71 +18,26 @@ local itemsById: { [ItemId]: ItemDefinition } = {
 		inventoryOrder = 0,
 		toolAssetName = "Scythe",
 	}),
-	BasicTree = table.freeze({
-		id = "BasicTree",
-		displayName = "Apple Tree",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 10,
-		toolAssetName = nil,
-	}),
-	RubyAppleTree = table.freeze({
-		id = "RubyAppleTree",
-		displayName = "Ruby Apple Tree",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 11,
-		toolAssetName = nil,
-	}),
-	GoldenAppleTree = table.freeze({
-		id = "GoldenAppleTree",
-		displayName = "Golden Apple Tree",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 12,
-		toolAssetName = nil,
-	}),
-	CrystalAppleTree = table.freeze({
-		id = "CrystalAppleTree",
-		displayName = "Crystal Apple Tree",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 13,
-		toolAssetName = nil,
-	}),
-	CiderMill = table.freeze({
-		id = "CiderMill",
-		displayName = "Cider Mill",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 20,
-		toolAssetName = nil,
-	}),
-	CopperCiderMill = table.freeze({
-		id = "CopperCiderMill",
-		displayName = "Copper Cider Mill",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 21,
-		toolAssetName = nil,
-	}),
-	SteelCiderMill = table.freeze({
-		id = "SteelCiderMill",
-		displayName = "Steel Cider Mill",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 22,
-		toolAssetName = nil,
-	}),
-	RoyalCiderMill = table.freeze({
-		id = "RoyalCiderMill",
-		displayName = "Royal Cider Mill",
-		kind = "Placeable",
-		maxStack = 99,
-		inventoryOrder = 23,
-		toolAssetName = nil,
-	}),
 }
+
+local function createPlaceableItemDefinition(id: ItemId, displayName: string, inventoryOrder: number): ItemDefinition
+	return table.freeze({
+		id = id,
+		displayName = displayName,
+		kind = "Placeable",
+		maxStack = 99,
+		inventoryOrder = inventoryOrder,
+		toolAssetName = nil,
+	})
+end
+
+for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+	itemsById[treeDefinition.id :: ItemId] = createPlaceableItemDefinition(treeDefinition.id :: ItemId, treeDefinition.displayName, 10 + index - 1)
+end
+
+for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+	itemsById[millDefinition.id :: ItemId] = createPlaceableItemDefinition(millDefinition.id :: ItemId, millDefinition.displayName, 30 + index - 1)
+end
 
 local ItemCatalog = {}
 
