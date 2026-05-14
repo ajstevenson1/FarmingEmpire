@@ -9,6 +9,7 @@ type BuildingId = BuildingTypes.BuildingId
 export type TreeTierDefinition = {
 	id: BuildingId,
 	displayName: string,
+	fruitDisplayName: string,
 	description: string,
 	price: number,
 	sellPrice: number,
@@ -40,6 +41,7 @@ export type MillTierDefinition = {
 local function createTreeTier(
 	id: BuildingId,
 	displayName: string,
+	fruitDisplayName: string,
 	price: number,
 	fruitPerInterval: number,
 	storageCap: number,
@@ -53,7 +55,8 @@ local function createTreeTier(
 	return table.freeze({
 		id = id,
 		displayName = displayName,
-		description = string.format("Produces %d %s apples every 5 seconds.", fruitPerInterval, displayName),
+		fruitDisplayName = fruitDisplayName,
+		description = string.format("Produces %d %s every 5 seconds.", fruitPerInterval, fruitDisplayName),
 		price = price,
 		sellPrice = math.floor(price * 0.5),
 		fruitPerInterval = fruitPerInterval,
@@ -96,21 +99,21 @@ local function createMillTier(
 end
 
 local treeDefinitions: { TreeTierDefinition } = table.freeze({
-	createTreeTier("OakTree", "Oak", 500, 1, 12, 0.05, 0, 10, Color3.fromRGB(88, 145, 71), Color3.fromRGB(201, 74, 58), Color3.fromRGB(109, 85, 59)),
-	createTreeTier("BirchTree", "Birch", 1250, 2, 20, 0.1, 1500, 8, Color3.fromRGB(165, 190, 120), Color3.fromRGB(234, 220, 120), Color3.fromRGB(190, 193, 163)),
-	createTreeTier("CherryTree", "Cherry", 3200, 4, 30, 0.2, 6000, 6, Color3.fromRGB(181, 92, 130), Color3.fromRGB(231, 63, 88), Color3.fromRGB(125, 78, 98)),
-	createTreeTier("GoldenTree", "Golden", 8000, 7, 45, 0.35, 20000, 5, Color3.fromRGB(224, 183, 63), Color3.fromRGB(255, 223, 104), Color3.fromRGB(190, 152, 50)),
-	createTreeTier("EmeraldTree", "Emerald", 20000, 11, 65, 0.55, 60000, 4, Color3.fromRGB(66, 173, 112), Color3.fromRGB(113, 230, 159), Color3.fromRGB(48, 122, 81)),
-	createTreeTier("SapphireTree", "Sapphire", 48000, 17, 90, 0.85, 180000, 3, Color3.fromRGB(58, 112, 201), Color3.fromRGB(116, 176, 255), Color3.fromRGB(52, 79, 138)),
-	createTreeTier("DiamondTree", "Diamond", 115000, 25, 125, 1.25, 500000, 3, Color3.fromRGB(179, 233, 241), Color3.fromRGB(239, 252, 255), Color3.fromRGB(123, 176, 184)),
-	createTreeTier("InfernoTree", "Inferno", 275000, 36, 170, 1.8, 1500000, 2, Color3.fromRGB(164, 68, 34), Color3.fromRGB(250, 125, 54), Color3.fromRGB(111, 47, 28)),
-	createTreeTier("FrostbiteTree", "Frostbite", 650000, 50, 230, 2.5, 4500000, 2, Color3.fromRGB(164, 221, 250), Color3.fromRGB(221, 244, 255), Color3.fromRGB(118, 168, 191)),
-	createTreeTier("VoidfruitTree", "Voidfruit", 1500000, 68, 310, 3.4, 12000000, 2, Color3.fromRGB(84, 64, 129), Color3.fromRGB(162, 111, 255), Color3.fromRGB(52, 42, 82)),
-	createTreeTier("FalloutTree", "Fallout", 3500000, 90, 420, 4.5, 35000000, 1, Color3.fromRGB(125, 165, 55), Color3.fromRGB(195, 233, 74), Color3.fromRGB(81, 106, 41)),
-	createTreeTier("RainbowPrismTree", "Rainbow Prism", 8000000, 118, 560, 5.9, 100000000, 1, Color3.fromRGB(132, 115, 220), Color3.fromRGB(255, 120, 185), Color3.fromRGB(203, 169, 89)),
-	createTreeTier("GhostwoodTree", "Ghostwood", 18000000, 153, 740, 7.65, 280000000, 1, Color3.fromRGB(188, 210, 213), Color3.fromRGB(230, 244, 246), Color3.fromRGB(144, 161, 166)),
-	createTreeTier("CandyTree", "Candy", 40000000, 197, 970, 9.85, 800000000, 1, Color3.fromRGB(252, 154, 191), Color3.fromRGB(255, 209, 101), Color3.fromRGB(197, 117, 149)),
-	createTreeTier("CyberTree", "Cyber", 90000000, 252, 1260, 12.6, 2200000000, 1, Color3.fromRGB(41, 201, 173), Color3.fromRGB(100, 255, 221), Color3.fromRGB(35, 111, 103)),
+	createTreeTier("OakTree", "Oak Apple Tree", "apples", 500, 1, 12, 0.05, 0, 10, Color3.fromRGB(88, 145, 71), Color3.fromRGB(201, 74, 58), Color3.fromRGB(109, 85, 59)),
+	createTreeTier("BirchTree", "Birch Apple Tree", "Birch apples", 1250, 2, 20, 0.1, 1500, 8, Color3.fromRGB(165, 190, 120), Color3.fromRGB(234, 220, 120), Color3.fromRGB(190, 193, 163)),
+	createTreeTier("CherryTree", "Cherry Apple Tree", "Cherry apples", 3200, 4, 30, 0.2, 6000, 6, Color3.fromRGB(181, 92, 130), Color3.fromRGB(231, 63, 88), Color3.fromRGB(125, 78, 98)),
+	createTreeTier("GoldenTree", "Golden Apple Tree", "Golden apples", 8000, 7, 45, 0.35, 20000, 5, Color3.fromRGB(224, 183, 63), Color3.fromRGB(255, 223, 104), Color3.fromRGB(190, 152, 50)),
+	createTreeTier("EmeraldTree", "Emerald Apple Tree", "Emerald apples", 20000, 11, 65, 0.55, 60000, 4, Color3.fromRGB(66, 173, 112), Color3.fromRGB(113, 230, 159), Color3.fromRGB(48, 122, 81)),
+	createTreeTier("SapphireTree", "Sapphire Apple Tree", "Sapphire apples", 48000, 17, 90, 0.85, 180000, 3, Color3.fromRGB(58, 112, 201), Color3.fromRGB(116, 176, 255), Color3.fromRGB(52, 79, 138)),
+	createTreeTier("DiamondTree", "Diamond Apple Tree", "Diamond apples", 115000, 25, 125, 1.25, 500000, 3, Color3.fromRGB(179, 233, 241), Color3.fromRGB(239, 252, 255), Color3.fromRGB(123, 176, 184)),
+	createTreeTier("InfernoTree", "Inferno Apple Tree", "Inferno apples", 275000, 36, 170, 1.8, 1500000, 2, Color3.fromRGB(164, 68, 34), Color3.fromRGB(250, 125, 54), Color3.fromRGB(111, 47, 28)),
+	createTreeTier("FrostbiteTree", "Frostbite Apple Tree", "Frostbite apples", 650000, 50, 230, 2.5, 4500000, 2, Color3.fromRGB(164, 221, 250), Color3.fromRGB(221, 244, 255), Color3.fromRGB(118, 168, 191)),
+	createTreeTier("VoidfruitTree", "Voidfruit Apple Tree", "Void apples", 1500000, 68, 310, 3.4, 12000000, 2, Color3.fromRGB(84, 64, 129), Color3.fromRGB(162, 111, 255), Color3.fromRGB(52, 42, 82)),
+	createTreeTier("FalloutTree", "Fallout Apple Tree", "Fallout apples", 3500000, 90, 420, 4.5, 35000000, 1, Color3.fromRGB(125, 165, 55), Color3.fromRGB(195, 233, 74), Color3.fromRGB(81, 106, 41)),
+	createTreeTier("RainbowPrismTree", "Rainbow Prism Apple Tree", "Rainbow apples", 8000000, 118, 560, 5.9, 100000000, 1, Color3.fromRGB(132, 115, 220), Color3.fromRGB(255, 120, 185), Color3.fromRGB(203, 169, 89)),
+	createTreeTier("GhostwoodTree", "Ghostwood Apple Tree", "Ghost apples", 18000000, 153, 740, 7.65, 280000000, 1, Color3.fromRGB(188, 210, 213), Color3.fromRGB(230, 244, 246), Color3.fromRGB(144, 161, 166)),
+	createTreeTier("CandyTree", "Candy Apple Tree", "Candy apples", 40000000, 197, 970, 9.85, 800000000, 1, Color3.fromRGB(252, 154, 191), Color3.fromRGB(255, 209, 101), Color3.fromRGB(197, 117, 149)),
+	createTreeTier("CyberTree", "Cyber Apple Tree", "Cyber apples", 90000000, 252, 1260, 12.6, 2200000000, 1, Color3.fromRGB(41, 201, 173), Color3.fromRGB(100, 255, 221), Color3.fromRGB(35, 111, 103)),
 })
 
 local millDefinitions: { MillTierDefinition } = table.freeze({
