@@ -14,6 +14,7 @@ local OfflineCiderRateCalculator = require(offlineEarningsFolder:WaitForChild("O
 local OfflineEarningsConfig = require(offlineEarningsFolder:WaitForChild("OfflineEarningsConfig") :: ModuleScript)
 local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
+local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
@@ -176,6 +177,12 @@ local function getOfflineRateBuildings(player: Player): { OfflineRateBuilding }
 	for _, placedBuilding in ipairs(PlayerDataService.getPlacedBuildings(player)) do
 		table.insert(offlineRateBuildings, {
 			buildingId = placedBuilding.buildingId,
+			rateMultiplier = PlotExpansionService.getOfflineCiderRateMultiplierForPlacedBuilding(
+				player,
+				placedBuilding.buildingId,
+				placedBuilding.gridX,
+				placedBuilding.gridZ
+			),
 		})
 	end
 

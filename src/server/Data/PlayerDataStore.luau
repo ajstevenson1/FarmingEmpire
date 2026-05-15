@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
+local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
@@ -17,6 +18,9 @@ local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("Playtim
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local PlotExpansionConfig = require(plotsFolder:WaitForChild("PlotExpansionConfig") :: ModuleScript)
+local PlotExpansionTypes = require(plotsFolder:WaitForChild("PlotExpansionTypes") :: ModuleScript)
+local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
@@ -25,6 +29,7 @@ type BuildingId = BuildingTypes.BuildingId
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ItemId = InventoryTypes.ItemId
 type ProductionState = BuildingTypes.ProductionState
+type PlotTileCoordinate = PlotExpansionTypes.PlotTileCoordinate
 type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingsValues = SettingsConfig.SettingsValues
@@ -64,6 +69,7 @@ export type PlayerData = {
 	economy: PlayerEconomyData,
 	resources: { [ResourceId]: number },
 	placedBuildings: { PlacedBuildingData },
+	unlockedPlotTiles: { PlotTileCoordinate },
 	inventory: PlayerInventoryData?,
 	offline: PlayerOfflineData,
 	settings: SettingsValues,
@@ -76,7 +82,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV2"
-local CURRENT_SCHEMA_VERSION = 11
+local CURRENT_SCHEMA_VERSION = 12
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -172,6 +178,41 @@ local function sanitizeBuildingId(value: unknown): BuildingId?
 	end
 
 	return value :: BuildingId
+end
+
+local function cloneTileCoordinate(tileCoordinate: PlotTileCoordinate): PlotTileCoordinate
+	return {
+		row = tileCoordinate.row,
+		column = tileCoordinate.column,
+	}
+end
+
+local function buildStarterUnlockedTiles(): { PlotTileCoordinate }
+	return {
+		cloneTileCoordinate(PlotExpansionConfig.getStarterTile()),
+	}
+end
+
+local function insertUniqueTileCoordinate(
+	into: { PlotTileCoordinate },
+	seenTileKeys: { [string]: boolean },
+	row: number,
+	column: number
+)
+	if not PlotExpansionConfig.isValidTileCoordinate(row, column) then
+		return
+	end
+
+	local tileKey = PlotExpansionUtils.getTileKey(row, column)
+	if seenTileKeys[tileKey] == true then
+		return
+	end
+
+	seenTileKeys[tileKey] = true
+	table.insert(into, {
+		row = row,
+		column = column,
+	})
 end
 
 local function sanitizeClaimedRewardIndexes(rawClaimedRewardIndexes: unknown): { [number]: boolean }
@@ -299,6 +340,7 @@ local function createDefaultData(): PlayerData
 		},
 		resources = resources,
 		placedBuildings = {},
+		unlockedPlotTiles = buildStarterUnlockedTiles(),
 		inventory = nil,
 		offline = {
 			lastSeenAt = 0,
@@ -356,6 +398,37 @@ local function sanitizeResources(rawResources: unknown): { [ResourceId]: number 
 	end
 
 	return sanitized
+end
+
+local function sanitizeUnlockedPlotTiles(rawUnlockedPlotTiles: unknown): { PlotTileCoordinate }
+	local unlockedPlotTiles: { PlotTileCoordinate } = {}
+	local seenTileKeys: { [string]: boolean } = {}
+
+	if type(rawUnlockedPlotTiles) == "table" then
+		for _, rawTileCoordinate in ipairs(rawUnlockedPlotTiles :: { unknown }) do
+			if type(rawTileCoordinate) == "table" then
+				local rawTileCoordinateValues = rawTileCoordinate :: { [string]: unknown }
+				local row = sanitizeGridCoordinate(rawTileCoordinateValues.row)
+				local column = sanitizeGridCoordinate(rawTileCoordinateValues.column)
+				if row ~= nil and column ~= nil then
+					insertUniqueTileCoordinate(unlockedPlotTiles, seenTileKeys, row, column)
+				end
+			end
+		end
+	end
+
+	local starterTile = PlotExpansionConfig.getStarterTile()
+	insertUniqueTileCoordinate(unlockedPlotTiles, seenTileKeys, starterTile.row, starterTile.column)
+
+	table.sort(unlockedPlotTiles, function(leftTile, rightTile)
+		if leftTile.row == rightTile.row then
+			return leftTile.column < rightTile.column
+		end
+
+		return leftTile.row < rightTile.row
+	end)
+
+	return unlockedPlotTiles
 end
 
 local function sanitizePlacedBuildings(rawPlacedBuildings: unknown): { PlacedBuildingData }
@@ -514,6 +587,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		},
 		resources = sanitizeResources(rawDataTable.resources),
 		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
+		unlockedPlotTiles = sanitizeUnlockedPlotTiles(rawDataTable.unlockedPlotTiles),
 		inventory = sanitizeInventory(rawDataTable.inventory),
 		offline = sanitizeOfflineData(rawDataTable.offline),
 		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
@@ -535,6 +609,11 @@ local function cloneData(data: PlayerData): PlayerData
 			gridZ = placedBuilding.gridZ,
 			production = cloneSavedProductionState(placedBuilding.production),
 		})
+	end
+
+	local unlockedPlotTiles: { PlotTileCoordinate } = {}
+	for _, unlockedPlotTile in ipairs(data.unlockedPlotTiles) do
+		table.insert(unlockedPlotTiles, cloneTileCoordinate(unlockedPlotTile))
 	end
 
 	local inventory: PlayerInventoryData? = nil
@@ -578,6 +657,7 @@ local function cloneData(data: PlayerData): PlayerData
 		},
 		resources = resources,
 		placedBuildings = placedBuildings,
+		unlockedPlotTiles = sanitizeUnlockedPlotTiles(unlockedPlotTiles),
 		inventory = inventory,
 		offline = {
 			lastSeenAt = sanitizeTimestamp(data.offline.lastSeenAt),

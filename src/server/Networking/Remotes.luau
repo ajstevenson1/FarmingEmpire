@@ -44,6 +44,12 @@ type MarketRemotes = {
 	sellAllCider: RemoteEvent,
 }
 
+type PlotExpansionRemotes = {
+	plotExpansionUpdated: RemoteEvent,
+	getPlotExpansionSnapshot: RemoteFunction,
+	requestPlotTilePurchase: RemoteFunction,
+}
+
 type TeleportRemotes = {
 	requestTeleport: RemoteEvent,
 }
@@ -73,6 +79,7 @@ local cachedHarvestRemotes: HarvestRemotes? = nil
 local cachedResourceRemotes: ResourceRemotes? = nil
 local cachedEconomyRemotes: EconomyRemotes? = nil
 local cachedMarketRemotes: MarketRemotes? = nil
+local cachedPlotExpansionRemotes: PlotExpansionRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
 local cachedSettingsRemotes: SettingsRemotes? = nil
@@ -229,6 +236,21 @@ function Remotes.getMarketRemotes(): MarketRemotes
 	}
 
 	return cachedMarketRemotes
+end
+
+function Remotes.getPlotExpansionRemotes(): PlotExpansionRemotes
+	if cachedPlotExpansionRemotes ~= nil then
+		return cachedPlotExpansionRemotes
+	end
+
+	local plotExpansionFolder = getOrCreateFolder(getRootFolder(), RemoteNames.plotExpansionFolderName)
+	cachedPlotExpansionRemotes = {
+		plotExpansionUpdated = getOrCreateRemoteEvent(plotExpansionFolder, RemoteNames.plotExpansionUpdatedEventName),
+		getPlotExpansionSnapshot = getOrCreateRemoteFunction(plotExpansionFolder, RemoteNames.getPlotExpansionSnapshotFunctionName),
+		requestPlotTilePurchase = getOrCreateRemoteFunction(plotExpansionFolder, RemoteNames.requestPlotTilePurchaseFunctionName),
+	}
+
+	return cachedPlotExpansionRemotes
 end
 
 function Remotes.getTeleportRemotes(): TeleportRemotes

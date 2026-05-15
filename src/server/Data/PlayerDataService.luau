@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
+local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
@@ -17,6 +18,9 @@ local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("Playtim
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local PlotExpansionConfig = require(plotsFolder:WaitForChild("PlotExpansionConfig") :: ModuleScript)
+local PlotExpansionTypes = require(plotsFolder:WaitForChild("PlotExpansionTypes") :: ModuleScript)
+local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 
@@ -25,6 +29,7 @@ type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
 type HotbarSlotData = PlayerDataStore.HotbarSlotData
 export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
+export type UnlockedPlotTileData = PlotExpansionTypes.PlotTileCoordinate
 type BuildingId = BuildingTypes.BuildingId
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ResourceId = ResourceTypes.ResourceId
@@ -190,6 +195,45 @@ local function clonePlacedBuildings(placedBuildings: { PlacedBuildingData }): { 
 	return clone
 end
 
+local function cloneUnlockedPlotTiles(unlockedPlotTiles: { UnlockedPlotTileData }): { UnlockedPlotTileData }
+	local clone: { UnlockedPlotTileData } = {}
+	local seenTileKeys: { [string]: boolean } = {}
+
+	for _, unlockedPlotTile in ipairs(unlockedPlotTiles) do
+		local row = sanitizeGridCoordinate(unlockedPlotTile.row)
+		local column = sanitizeGridCoordinate(unlockedPlotTile.column)
+		if PlotExpansionConfig.isValidTileCoordinate(row, column) then
+			local tileKey = PlotExpansionUtils.getTileKey(row, column)
+			if seenTileKeys[tileKey] ~= true then
+				seenTileKeys[tileKey] = true
+				table.insert(clone, {
+					row = row,
+					column = column,
+				})
+			end
+		end
+	end
+
+	local starterTile = PlotExpansionConfig.getStarterTile()
+	local starterTileKey = PlotExpansionUtils.getTileKey(starterTile.row, starterTile.column)
+	if seenTileKeys[starterTileKey] ~= true then
+		table.insert(clone, {
+			row = starterTile.row,
+			column = starterTile.column,
+		})
+	end
+
+	table.sort(clone, function(leftTile, rightTile)
+		if leftTile.row == rightTile.row then
+			return leftTile.column < rightTile.column
+		end
+
+		return leftTile.row < rightTile.row
+	end)
+
+	return clone
+end
+
 local function arePlacedBuildingsEqual(leftBuildings: { PlacedBuildingData }, rightBuildings: { PlacedBuildingData }): boolean
 	if #leftBuildings ~= #rightBuildings then
 		return false
@@ -202,6 +246,24 @@ local function arePlacedBuildingsEqual(leftBuildings: { PlacedBuildingData }, ri
 			or sanitizeGridCoordinate(leftBuilding.gridX) ~= sanitizeGridCoordinate(rightBuilding.gridX)
 			or sanitizeGridCoordinate(leftBuilding.gridZ) ~= sanitizeGridCoordinate(rightBuilding.gridZ)
 			or not areSavedProductionStatesEqual(leftBuilding.production, rightBuilding.production)
+		then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function areUnlockedPlotTilesEqual(leftTiles: { UnlockedPlotTileData }, rightTiles: { UnlockedPlotTileData }): boolean
+	if #leftTiles ~= #rightTiles then
+		return false
+	end
+
+	for index, leftTile in ipairs(leftTiles) do
+		local rightTile = rightTiles[index]
+		if rightTile == nil
+			or sanitizeGridCoordinate(leftTile.row) ~= sanitizeGridCoordinate(rightTile.row)
+			or sanitizeGridCoordinate(leftTile.column) ~= sanitizeGridCoordinate(rightTile.column)
 		then
 			return false
 		end
@@ -618,6 +680,42 @@ function PlayerDataService.setPlacedBuildings(player: Player, placedBuildings: {
 	end
 
 	record.data.placedBuildings = sanitizedPlacedBuildings
+	markDirty(record)
+end
+
+function PlayerDataService.getUnlockedPlotTiles(player: Player): { UnlockedPlotTileData }
+	local record = loadPlayerData(player)
+	return cloneUnlockedPlotTiles(record.data.unlockedPlotTiles)
+end
+
+function PlayerDataService.setUnlockedPlotTiles(player: Player, unlockedPlotTiles: { UnlockedPlotTileData })
+	local record = loadPlayerData(player)
+	local sanitizedUnlockedPlotTiles = cloneUnlockedPlotTiles(unlockedPlotTiles)
+	if areUnlockedPlotTilesEqual(record.data.unlockedPlotTiles, sanitizedUnlockedPlotTiles) then
+		return
+	end
+
+	record.data.unlockedPlotTiles = sanitizedUnlockedPlotTiles
+	markDirty(record)
+end
+
+function PlayerDataService.unlockPlotTile(player: Player, row: number, column: number)
+	if not PlotExpansionConfig.isValidTileCoordinate(row, column) then
+		return
+	end
+
+	local record = loadPlayerData(player)
+	for _, unlockedPlotTile in ipairs(record.data.unlockedPlotTiles) do
+		if unlockedPlotTile.row == row and unlockedPlotTile.column == column then
+			return
+		end
+	end
+
+	table.insert(record.data.unlockedPlotTiles, {
+		row = row,
+		column = column,
+	})
+	record.data.unlockedPlotTiles = cloneUnlockedPlotTiles(record.data.unlockedPlotTiles)
 	markDirty(record)
 end
 

@@ -20,6 +20,7 @@ local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
+local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
@@ -209,11 +210,23 @@ local function createPlacedPart(
 	return placedPart
 end
 
-local function canPlaceBuildingOnPlot(plotBase: BasePart, plotName: string, buildingId: BuildingId, gridX: number, gridZ: number): boolean
+local function canPlaceBuildingOnPlot(
+	player: Player,
+	plotBase: BasePart,
+	plotName: string,
+	buildingId: BuildingId,
+	gridX: number,
+	gridZ: number,
+	requireUnlockedTiles: boolean
+): boolean
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 
 	if not PlotMath.isGridWithinPlot(plotBase.Size, placementFootprint, gridX, gridZ) then
+		return false
+	end
+
+	if requireUnlockedTiles and not PlotExpansionService.isFootprintUnlockedForAssignedPlot(player, plotBase, placementFootprint, gridX, gridZ) then
 		return false
 	end
 
@@ -244,10 +257,18 @@ local function loadPlayerPlacedBuildings(player: Player)
 	local loadedCount = 0
 	for _, placedBuilding in ipairs(savedPlacedBuildings) do
 		local buildingId = placedBuilding.buildingId
-		if canPlaceBuildingOnPlot(plotBase, plotName, buildingId, placedBuilding.gridX, placedBuilding.gridZ) then
+		if canPlaceBuildingOnPlot(player, plotBase, plotName, buildingId, placedBuilding.gridX, placedBuilding.gridZ, false) then
 			local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
 			if placedPart ~= nil then
 				ProductionService.registerPlacedBuilding(placedPart, buildingId, placedBuilding.production)
+				local placementFootprint = BuildingAssetUtils.getPlacementFootprint(BuildingCatalog.getBuildingDefinition(buildingId))
+				PlotExpansionService.ensureFootprintUnlockedForAssignedPlot(
+					player,
+					plotBase,
+					placementFootprint,
+					placedBuilding.gridX,
+					placedBuilding.gridZ
+				)
 				loadedCount += 1
 			end
 		end
@@ -300,7 +321,7 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 	end
 
 	local buildingId = itemId :: BuildingId
-	if not canPlaceBuildingOnPlot(plotBase, plotName, buildingId, gridX, gridZ) then
+	if not canPlaceBuildingOnPlot(player, plotBase, plotName, buildingId, gridX, gridZ, true) then
 		return
 	end
 

@@ -16,6 +16,9 @@ local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAtt
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local OfflineCiderRateCalculator = require(offlineEarningsFolder:WaitForChild("OfflineCiderRateCalculator") :: ModuleScript)
+local PlotExpansionConfig = require(plotsFolder:WaitForChild("PlotExpansionConfig") :: ModuleScript)
+local PlotExpansionRules = require(plotsFolder:WaitForChild("PlotExpansionRules") :: ModuleScript)
+local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local OfflineRateView = require(script.Parent.OfflineRateView)
 
@@ -31,11 +34,14 @@ type TrackedPartConnections = {
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
+local GRID_X_ATTRIBUTE = "GridX"
+local GRID_Z_ATTRIBUTE = "GridZ"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
 
 local hasStarted = false
 local trackedConnectionsByPart: { [BasePart]: TrackedPartConnections } = {}
+local workspacePlotsFolder = Workspace:WaitForChild(PlotLocator.PLOTS_FOLDER_NAME) :: Folder
 
 local function getPlacedObjectsFolder(): Folder
 	local folder = Workspace:WaitForChild(PLACED_OBJECTS_FOLDER_NAME)
@@ -46,6 +52,35 @@ end
 local function getAssignedPlotName(): string?
 	local value = localPlayer:GetAttribute(PlotLocator.PlayerAttributes.assignedPlotName)
 	return if type(value) == "string" then value else nil
+end
+
+local function getAssignedPlot(): Instance?
+	return PlotLocator.getAssignedPlot(workspacePlotsFolder, localPlayer)
+end
+
+local function getOfflineRateMultiplier(buildingId: BuildingId, gridX: number, gridZ: number): number
+	local assignedPlot = getAssignedPlot()
+	if assignedPlot == nil then
+		return 1
+	end
+
+	local plotBase = PlotLocator.getPlacementBase(assignedPlot)
+	local spawnPart = PlotLocator.getSpawnPart(assignedPlot)
+	if plotBase == nil or spawnPart == nil then
+		return 1
+	end
+
+	local tileCoordinate = PlotExpansionUtils.getTileCoordinateForGridPosition(plotBase, spawnPart, gridX, gridZ)
+	if tileCoordinate == nil then
+		return 1
+	end
+
+	local tileDefinition = PlotExpansionConfig.getTileDefinition(tileCoordinate.row, tileCoordinate.column)
+	if tileDefinition == nil then
+		return 1
+	end
+
+	return PlotExpansionRules.getOfflineCiderRateMultiplier(tileDefinition.modifierId, buildingId)
 end
 
 local function getOwnedBuildingIds(placedObjectsFolder: Folder): { OfflineRateBuilding }
@@ -61,9 +96,17 @@ local function getOwnedBuildingIds(placedObjectsFolder: Folder): { OfflineRateBu
 			and child:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
 		then
 			local buildingIdValue = child:GetAttribute(BuildingAttributeNames.buildingId)
-			if type(buildingIdValue) == "string" and BuildingCatalog.hasBuildingDefinition(buildingIdValue) then
+			local gridXValue = child:GetAttribute(GRID_X_ATTRIBUTE)
+			local gridZValue = child:GetAttribute(GRID_Z_ATTRIBUTE)
+			if type(buildingIdValue) == "string"
+				and BuildingCatalog.hasBuildingDefinition(buildingIdValue)
+				and type(gridXValue) == "number"
+				and type(gridZValue) == "number"
+			then
+				local buildingId = buildingIdValue :: BuildingId
 				table.insert(ownedBuildings, {
-					buildingId = buildingIdValue :: BuildingId,
+					buildingId = buildingId,
+					rateMultiplier = getOfflineRateMultiplier(buildingId, gridXValue, gridZValue),
 				})
 			end
 		end

@@ -13,6 +13,7 @@ type BuildingId = BuildingTypes.BuildingId
 
 export type OfflineRateBuilding = {
 	buildingId: BuildingId,
+	rateMultiplier: number?,
 }
 
 local SECONDS_PER_HOUR = 60 * 60
@@ -31,6 +32,18 @@ local function getSafeCiderPerSecond(buildingDefinition: BuildingDefinition): nu
 	return ciderPerSecond
 end
 
+local function getSafeRateMultiplier(rateMultiplier: number?): number
+	if rateMultiplier == nil then
+		return 1
+	end
+
+	if rateMultiplier ~= rateMultiplier or rateMultiplier == math.huge or rateMultiplier == -math.huge or rateMultiplier < 0 then
+		return 1
+	end
+
+	return rateMultiplier
+end
+
 local OfflineCiderRateCalculator = {}
 
 function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { OfflineRateBuilding }): number
@@ -38,7 +51,7 @@ function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { Offline
 
 	for _, building in ipairs(buildings) do
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(building.buildingId)
-		ciderPerSecond += getSafeCiderPerSecond(buildingDefinition)
+		ciderPerSecond += getSafeCiderPerSecond(buildingDefinition) * getSafeRateMultiplier(building.rateMultiplier)
 	end
 
 	return math.max(0, ciderPerSecond)

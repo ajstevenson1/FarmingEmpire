@@ -13,6 +13,7 @@ local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") 
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local BuildingVisualService = require(script.Parent.Parent.Buildings.BuildingVisualService)
+local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionBehaviorRegistry = require(script.Parent.ProductionBehaviorRegistry)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
@@ -22,6 +23,7 @@ type BuildingId = BuildingTypes.BuildingId
 type GrowthVisualStage = BuildingTypes.GrowthVisualStage
 type HarvestOutput = BuildingTypes.HarvestOutput
 type ProductionBehavior = BuildingTypes.ProductionBehavior
+type ProductionConfig = BuildingTypes.ProductionConfig
 type ProductionBehaviorContext = BuildingTypes.ProductionBehaviorContext
 type ProductionRuntimeState = BuildingTypes.ProductionRuntimeState
 type ResourceId = ResourceTypes.ResourceId
@@ -30,6 +32,7 @@ type SavedProductionState = BuildingTypes.SavedProductionState
 type TrackedBuilding = {
 	part: BasePart,
 	buildingDefinition: BuildingDefinition,
+	effectiveProductionConfig: ProductionConfig,
 	runtimeState: ProductionRuntimeState,
 	currentGrowthStageName: string,
 }
@@ -76,9 +79,9 @@ local function getOwnerPlayer(part: BasePart): Player?
 	return ownerPlayer
 end
 
-local function getProductionBehavior(buildingDefinition: BuildingDefinition): ProductionBehavior
-	local behavior = ProductionBehaviorRegistry.getBehavior(buildingDefinition.productionConfig.behaviorId)
-	assert(behavior ~= nil, string.format("No production behavior registered for %s", buildingDefinition.productionConfig.behaviorId))
+local function getProductionBehavior(productionConfig: ProductionConfig): ProductionBehavior
+	local behavior = ProductionBehaviorRegistry.getBehavior(productionConfig.behaviorId)
+	assert(behavior ~= nil, string.format("No production behavior registered for %s", productionConfig.behaviorId))
 	return behavior
 end
 
@@ -92,8 +95,7 @@ local function getBehaviorContext(part: BasePart): ProductionBehaviorContext
 	}
 end
 
-local function getStorageCap(buildingDefinition: BuildingDefinition): number
-	local productionConfig = buildingDefinition.productionConfig
+local function getStorageCap(productionConfig: ProductionConfig): number
 	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.storageCap
 	end
@@ -101,8 +103,7 @@ local function getStorageCap(buildingDefinition: BuildingDefinition): number
 	return 0
 end
 
-local function getOutputResourceName(buildingDefinition: BuildingDefinition): string
-	local productionConfig = buildingDefinition.productionConfig
+local function getOutputResourceName(productionConfig: ProductionConfig): string
 	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputResourceId
 	end
@@ -110,8 +111,7 @@ local function getOutputResourceName(buildingDefinition: BuildingDefinition): st
 	return productionConfig.outputResourceId
 end
 
-local function getOutputResourceId(buildingDefinition: BuildingDefinition): ResourceId
-	local productionConfig = buildingDefinition.productionConfig
+local function getOutputResourceId(productionConfig: ProductionConfig): ResourceId
 	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputResourceId
 	end
@@ -119,8 +119,7 @@ local function getOutputResourceId(buildingDefinition: BuildingDefinition): Reso
 	return productionConfig.outputResourceId
 end
 
-local function getProductionDuration(buildingDefinition: BuildingDefinition): number
-	local productionConfig = buildingDefinition.productionConfig
+local function getProductionDuration(productionConfig: ProductionConfig): number
 	if productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.produceIntervalSeconds
 	end
@@ -128,10 +127,49 @@ local function getProductionDuration(buildingDefinition: BuildingDefinition): nu
 	return productionConfig.cycleDurationSeconds
 end
 
+local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: BuildingDefinition): ProductionConfig
+	local baseProductionConfig = buildingDefinition.productionConfig
+	local outputResourceId = getOutputResourceId(baseProductionConfig)
+	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId)
+	if outputMultiplier <= 1 then
+		return baseProductionConfig
+	end
+
+	if baseProductionConfig.behaviorId == "GrowAndHarvest" then
+		return {
+			behaviorId = "GrowAndHarvest",
+			cycleDurationSeconds = baseProductionConfig.cycleDurationSeconds,
+			outputResourceId = baseProductionConfig.outputResourceId,
+			outputAmount = math.max(0, math.floor(baseProductionConfig.outputAmount * outputMultiplier)),
+			storageCap = baseProductionConfig.storageCap,
+		}
+	elseif baseProductionConfig.behaviorId == "TimedStorageProducer" then
+		return {
+			behaviorId = "TimedStorageProducer",
+			produceIntervalSeconds = baseProductionConfig.produceIntervalSeconds,
+			outputResourceId = baseProductionConfig.outputResourceId,
+			outputAmountPerInterval = math.max(0, math.floor(baseProductionConfig.outputAmountPerInterval * outputMultiplier)),
+			storageCap = baseProductionConfig.storageCap,
+		}
+	end
+
+	return {
+		behaviorId = "InputProcessor",
+		cycleDurationSeconds = baseProductionConfig.cycleDurationSeconds,
+		inputResourceId = baseProductionConfig.inputResourceId,
+		inputAmount = baseProductionConfig.inputAmount,
+		outputResourceId = baseProductionConfig.outputResourceId,
+		outputAmount = math.max(0, math.floor(baseProductionConfig.outputAmount * outputMultiplier)),
+		outputStorageMode = baseProductionConfig.outputStorageMode,
+		idleStatusText = baseProductionConfig.idleStatusText,
+		blockedStatusText = baseProductionConfig.blockedStatusText,
+	}
+end
+
 local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	local part = trackedBuilding.part
 	local buildingDefinition = trackedBuilding.buildingDefinition
-	local productionConfig = buildingDefinition.productionConfig
+	local productionConfig = trackedBuilding.effectiveProductionConfig
 	local runtimeState = trackedBuilding.runtimeState
 	local currentGrowthStage = BuildingCatalog.getGrowthStageForProgress(buildingDefinition, runtimeState.progress)
 
@@ -142,10 +180,10 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	part:SetAttribute(BuildingAttributeNames.productionProgress, runtimeState.progress)
 	part:SetAttribute(BuildingAttributeNames.productionTimeLeft, runtimeState.timeLeft)
 	part:SetAttribute(BuildingAttributeNames.productionStatusText, runtimeState.statusText)
-	part:SetAttribute(BuildingAttributeNames.productionDuration, getProductionDuration(buildingDefinition))
-	part:SetAttribute(BuildingAttributeNames.productionOutputName, getOutputResourceName(buildingDefinition))
+	part:SetAttribute(BuildingAttributeNames.productionDuration, getProductionDuration(productionConfig))
+	part:SetAttribute(BuildingAttributeNames.productionOutputName, getOutputResourceName(productionConfig))
 	part:SetAttribute(BuildingAttributeNames.productionStoredAmount, runtimeState.storedAmount)
-	part:SetAttribute(BuildingAttributeNames.productionStorageCap, getStorageCap(buildingDefinition))
+	part:SetAttribute(BuildingAttributeNames.productionStorageCap, getStorageCap(productionConfig))
 	part:SetAttribute(BuildingAttributeNames.isReadyToHarvest, runtimeState.isReadyToHarvest)
 	part:SetAttribute(BuildingAttributeNames.growthVisualStageName, currentGrowthStage.modelName)
 end
@@ -159,23 +197,25 @@ local function createTrackedBuilding(
 	buildingDefinition: BuildingDefinition,
 	savedProductionState: SavedProductionState?
 ): TrackedBuilding
-	local behavior = getProductionBehavior(buildingDefinition)
+	local effectiveProductionConfig = getEffectiveProductionConfig(part, buildingDefinition)
+	local behavior = getProductionBehavior(effectiveProductionConfig)
 	local currentTime = getCurrentTime()
 	local hydratedRuntimeState: ProductionRuntimeState? = nil
 
-	if savedProductionState ~= nil and savedProductionState.behaviorId == buildingDefinition.productionConfig.behaviorId then
+	if savedProductionState ~= nil and savedProductionState.behaviorId == effectiveProductionConfig.behaviorId then
 		hydratedRuntimeState = behavior.createRuntimeStateFromSavedState(
-			buildingDefinition.productionConfig,
+			effectiveProductionConfig,
 			savedProductionState,
 			currentTime
 		)
 	end
 
-	local runtimeState = hydratedRuntimeState or behavior.createRuntimeState(buildingDefinition.productionConfig, currentTime)
+	local runtimeState = hydratedRuntimeState or behavior.createRuntimeState(effectiveProductionConfig, currentTime)
 	local initialGrowthStage = getCurrentGrowthStage(buildingDefinition, runtimeState)
 	local trackedBuilding: TrackedBuilding = {
 		part = part,
 		buildingDefinition = buildingDefinition,
+		effectiveProductionConfig = effectiveProductionConfig,
 		runtimeState = runtimeState,
 		currentGrowthStageName = initialGrowthStage.modelName,
 	}
@@ -187,10 +227,10 @@ local function createTrackedBuilding(
 end
 
 local function updateTrackedBuilding(trackedBuilding: TrackedBuilding)
-	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
+	local behavior = getProductionBehavior(trackedBuilding.effectiveProductionConfig)
 	trackedBuilding.runtimeState = behavior.updateRuntimeState(
 		trackedBuilding.runtimeState,
-		trackedBuilding.buildingDefinition.productionConfig,
+		trackedBuilding.effectiveProductionConfig,
 		getBehaviorContext(trackedBuilding.part)
 	)
 
@@ -262,10 +302,10 @@ function ProductionService.getSavedProductionState(part: BasePart): SavedProduct
 		return nil
 	end
 
-	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
+	local behavior = getProductionBehavior(trackedBuilding.effectiveProductionConfig)
 	return behavior.createSavedState(
 		trackedBuilding.runtimeState,
-		trackedBuilding.buildingDefinition.productionConfig,
+		trackedBuilding.effectiveProductionConfig,
 		getCurrentTime()
 	)
 end
@@ -282,7 +322,7 @@ function ProductionService.getStoredOutput(part: BasePart): HarvestOutput?
 	end
 
 	return {
-		resourceId = getOutputResourceId(trackedBuilding.buildingDefinition),
+		resourceId = getOutputResourceId(trackedBuilding.effectiveProductionConfig),
 		amount = storedAmount,
 	}
 end
@@ -297,14 +337,14 @@ function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, H
 		return false, nil
 	end
 
-	local behavior = getProductionBehavior(trackedBuilding.buildingDefinition)
+	local behavior = getProductionBehavior(trackedBuilding.effectiveProductionConfig)
 	if behavior.harvest == nil then
 		return false, nil
 	end
 
 	local nextRuntimeState, harvestOutput = behavior.harvest(
 		trackedBuilding.runtimeState,
-		trackedBuilding.buildingDefinition.productionConfig,
+		trackedBuilding.effectiveProductionConfig,
 		getCurrentTime()
 	)
 
