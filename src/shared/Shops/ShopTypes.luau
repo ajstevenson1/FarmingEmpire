@@ -28,7 +28,6 @@ export type ShopProductDefinition = {
 	shopId: ShopId,
 	itemId: ItemId,
 	price: number,
-	unlockLifetimeCash: number,
 	quantityPerPurchase: number,
 	stockPerRestock: number,
 	sortOrder: number,
@@ -57,7 +56,6 @@ export type ShopPurchaseStatus =
 	| "InsufficientCash"
 	| "TooFar"
 	| "InvalidQuantity"
-	| "Locked"
 
 export type ShopPurchaseRequest = {
 	shopId: ShopId,

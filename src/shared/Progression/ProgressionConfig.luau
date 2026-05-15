@@ -6,6 +6,8 @@ local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: M
 
 type BuildingId = BuildingTypes.BuildingId
 
+local TREE_PRODUCE_INTERVAL_SECONDS = 1
+
 export type TreeTierDefinition = {
 	id: BuildingId,
 	displayName: string,
@@ -16,7 +18,6 @@ export type TreeTierDefinition = {
 	fruitPerInterval: number,
 	storageCap: number,
 	offlineCiderPerSecond: number,
-	unlockLifetimeCash: number,
 	stockPerRestock: number,
 }
 
@@ -29,7 +30,6 @@ export type MillTierDefinition = {
 	inputAmount: number,
 	outputAmount: number,
 	offlineCiderPerSecond: number,
-	unlockLifetimeCash: number,
 	stockPerRestock: number,
 }
 
@@ -41,20 +41,18 @@ local function createTreeTier(
 	fruitPerInterval: number,
 	storageCap: number,
 	offlineCiderPerSecond: number,
-	unlockLifetimeCash: number,
 	stockPerRestock: number
 ): TreeTierDefinition
 	return table.freeze({
 		id = id,
 		displayName = displayName,
-		description = string.format("Produces %d apples every 5 seconds.", fruitPerInterval),
+		description = string.format("Produces %d apples every %d second.", fruitPerInterval, TREE_PRODUCE_INTERVAL_SECONDS),
 		price = price,
 		sellPrice = math.floor(price * 0.5),
 		appleModelName = appleModelName,
 		fruitPerInterval = fruitPerInterval,
 		storageCap = storageCap,
 		offlineCiderPerSecond = offlineCiderPerSecond,
-		unlockLifetimeCash = unlockLifetimeCash,
 		stockPerRestock = stockPerRestock,
 	})
 end
@@ -66,7 +64,6 @@ local function createMillTier(
 	inputAmount: number,
 	outputAmount: number,
 	offlineCiderPerSecond: number,
-	unlockLifetimeCash: number,
 	stockPerRestock: number
 ): MillTierDefinition
 	return table.freeze({
@@ -78,45 +75,44 @@ local function createMillTier(
 		inputAmount = inputAmount,
 		outputAmount = outputAmount,
 		offlineCiderPerSecond = offlineCiderPerSecond,
-		unlockLifetimeCash = unlockLifetimeCash,
 		stockPerRestock = stockPerRestock,
 	})
 end
 
 local treeDefinitions: { TreeTierDefinition } = table.freeze({
-	createTreeTier("OakTree", "Oak Apple Tree", "Apple", 500, 1, 12, 0.05, 0, 10),
-	createTreeTier("BirchTree", "Birch Apple Tree", "BirchApple", 1250, 2, 20, 0.1, 1500, 8),
-	createTreeTier("CherryTree", "Cherry Apple Tree", "CherryApple", 3200, 4, 30, 0.2, 6000, 6),
-	createTreeTier("GoldenTree", "Golden Apple Tree", "GoldenApple", 8000, 7, 45, 0.35, 20000, 5),
-	createTreeTier("EmeraldTree", "Emerald Apple Tree", "EmeraldApple", 20000, 11, 65, 0.55, 60000, 4),
-	createTreeTier("SapphireTree", "Sapphire Apple Tree", "SapphireApple", 48000, 17, 90, 0.85, 180000, 3),
-	createTreeTier("DiamondTree", "Diamond Apple Tree", "DiamondApple", 115000, 25, 125, 1.25, 500000, 3),
-	createTreeTier("InfernoTree", "Inferno Apple Tree", "InfernoApple", 275000, 36, 170, 1.8, 1500000, 2),
-	createTreeTier("FrostbiteTree", "Frostbite Apple Tree", "FrostbiteApple", 650000, 50, 230, 2.5, 4500000, 2),
-	createTreeTier("VoidfruitTree", "Voidfruit Apple Tree", "VoidApple", 1500000, 68, 310, 3.4, 12000000, 2),
-	createTreeTier("FalloutTree", "Fallout Apple Tree", "FalloutApple", 3500000, 90, 420, 4.5, 35000000, 1),
-	createTreeTier("RainbowPrismTree", "Rainbow Prism Apple Tree", "RainbowPrismApple", 8000000, 118, 560, 5.9, 100000000, 1),
-	createTreeTier("GhostwoodTree", "Ghostwood Apple Tree", "GhostwoodApple", 18000000, 153, 740, 7.65, 280000000, 1),
-	createTreeTier("CandyTree", "Candy Apple Tree", "CandyApple", 40000000, 197, 970, 9.85, 800000000, 1),
-	createTreeTier("CyberTree", "Cyber Apple Tree", "CyberApple", 90000000, 252, 1260, 12.6, 2200000000, 1),
+	createTreeTier("OakTree", "Oak Apple Tree", "Apple", 100, 2, 10, 0.05, 10),
+	createTreeTier("BirchTree", "Birch Apple Tree", "BirchApple", 500, 5, 25, 0.1, 8),
+	createTreeTier("CherryTree", "Cherry Apple Tree", "CherryApple", 1800, 12, 84, 0.2, 6),
+	createTreeTier("GoldenTree", "Golden Apple Tree", "GoldenApple", 6000, 18, 144, 0.35, 5),
+	createTreeTier("EmeraldTree", "Emerald Apple Tree", "EmeraldApple", 20000, 25, 250, 0.55, 4),
+	createTreeTier("SapphireTree", "Sapphire Apple Tree", "SapphireApple", 100000, 33, 363, 0.85, 3),
+	createTreeTier("DiamondTree", "Diamond Apple Tree", "DiamondApple", 280000, 42, 504, 1.25, 3),
+	createTreeTier("InfernoTree", "Inferno Apple Tree", "InfernoApple", 820000, 55, 715, 1.8, 2),
+	createTreeTier("FrostbiteTree", "Frostbite Apple Tree", "FrostbiteApple", 2000000, 65, 975, 2.5, 2),
+	createTreeTier("VoidfruitTree", "Voidfruit Apple Tree", "VoidApple", 12000000, 75, 1250, 3.4, 2),
+	createTreeTier("FalloutTree", "Fallout Apple Tree", "FalloutApple", 40000000, 90, 1800, 4.5, 1),
+	createTreeTier("RainbowPrismTree", "Rainbow Prism Apple Tree", "RainbowPrismApple", 230000000, 110, 2750, 5.9, 1),
+	createTreeTier("GhostwoodTree", "Ghostwood Apple Tree", "GhostwoodApple", 870000000, 125, 3750, 7.65, 1),
+	createTreeTier("CandyTree", "Candy Apple Tree", "CandyApple", 2300000000, 150, 4500, 9.85, 1),
+	createTreeTier("CyberTree", "Cyber Apple Tree", "CyberApple", 10000000000, 200, 6000, 12.6, 1),
 })
 
 local millDefinitions: { MillTierDefinition } = table.freeze({
-	createMillTier("CiderMill", "Cider Mill", 500, 1, 1, 0.1, 0, 5),
-	createMillTier("CopperCiderMill", "Copper Cider Mill", 1250, 2, 2, 0.2, 1500, 4),
-	createMillTier("SteelCiderMill", "Steel Cider Mill", 3200, 4, 4, 0.4, 6000, 3),
-	createMillTier("PlatinumCiderMill", "Platinum Cider Mill", 8500, 7, 8, 0.8, 20000, 3),
-	createMillTier("DiamondCiderMill", "Diamond Cider Mill", 21000, 11, 13, 1.3, 60000, 2),
-	createMillTier("RoyalCiderMill", "Royal Cider Mill", 52000, 17, 21, 2.1, 180000, 2),
-	createMillTier("IndustrialCiderMill", "Industrial Cider Mill", 125000, 25, 32, 3.2, 500000, 2),
-	createMillTier("AdvancedCiderMill", "Advanced Cider Mill", 300000, 36, 47, 4.7, 1500000, 1),
-	createMillTier("MagmaCiderMill", "Magma Cider Mill", 700000, 50, 67, 6.7, 4500000, 1),
-	createMillTier("WastelandCiderMill", "Wasteland Cider Mill", 1600000, 68, 92, 9.2, 12000000, 1),
-	createMillTier("AncientCiderMill", "Ancient Cider Mill", 3700000, 90, 123, 12.3, 35000000, 1),
-	createMillTier("TitanCiderMill", "Titan Cider Mill", 8500000, 118, 164, 16.4, 100000000, 1),
-	createMillTier("QuantumReactorMill", "Quantum Reactor Mill", 19000000, 153, 214, 21.4, 280000000, 1),
-	createMillTier("DyingForgeMill", "Dying Forge Mill", 43000000, 197, 281, 28.1, 800000000, 1),
-	createMillTier("DeepSpaceMill", "Deep Space Mill", 95000000, 252, 363, 36.3, 2200000000, 1),
+	createMillTier("CiderMill", "Cider Mill", 100, 1, 1, 0.1, 5),
+	createMillTier("CopperCiderMill", "Copper Cider Mill", 500, 2, 2, 0.2, 4),
+	createMillTier("SteelCiderMill", "Steel Cider Mill", 2500, 4, 4, 0.4, 3),
+	createMillTier("PlatinumCiderMill", "Platinum Cider Mill", 8500, 8, 8, 0.8, 3),
+	createMillTier("DiamondCiderMill", "Diamond Cider Mill", 21000, 12, 12, 1.3, 2),
+	createMillTier("RoyalCiderMill", "Royal Cider Mill", 80000, 20, 20, 2.1, 2),
+	createMillTier("IndustrialCiderMill", "Industrial Cider Mill", 225000, 28, 28, 3.2, 2),
+	createMillTier("AdvancedCiderMill", "Advanced Cider Mill", 570000, 35, 35, 4.7, 1),
+	createMillTier("MagmaCiderMill", "Magma Cider Mill", 1800000, 45, 45, 6.7, 1),
+	createMillTier("WastelandCiderMill", "Wasteland Cider Mill", 6500000, 58, 58, 9.2, 1),
+	createMillTier("AncientCiderMill", "Ancient Cider Mill", 28000000, 70, 70, 12.3, 1),
+	createMillTier("TitanCiderMill", "Titan Cider Mill", 110000000, 92, 92, 16.4, 1),
+	createMillTier("QuantumReactorMill", "Quantum Reactor Mill", 340000000, 115, 115, 21.4, 1),
+	createMillTier("DyingForgeMill", "Dying Forge Mill", 1050000000, 140, 140, 28.1, 1),
+	createMillTier("DeepSpaceMill", "Deep Space Mill", 72000000, 200, 200, 36.3, 1),
 })
 
 local treeBuildingIds: { [string]: boolean } = {}
@@ -137,6 +133,10 @@ end
 
 function ProgressionConfig.getMillDefinitions(): { MillTierDefinition }
 	return millDefinitions
+end
+
+function ProgressionConfig.getTreeProduceIntervalSeconds(): number
+	return TREE_PRODUCE_INTERVAL_SECONDS
 end
 
 function ProgressionConfig.isTreeBuildingId(buildingId: string): boolean

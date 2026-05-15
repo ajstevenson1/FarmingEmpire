@@ -18,7 +18,8 @@ local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local UPDATE_INTERVAL_SECONDS = 0.15
 local COLLECTION_MARGIN_STUDS = 1.5
 local COLLECTION_VERTICAL_TOLERANCE_STUDS = 7
-local COLLECTION_COOLDOWN_SECONDS = 0.25
+local COLLECTION_COOLDOWN_SECONDS = 2
+local MIN_HORIZONTAL_MOVEMENT_STUDS = 0.2
 
 local WALKOVER_PRODUCTION_BEHAVIORS: { [string]: boolean } = {
 	InputProcessor = true,
@@ -27,6 +28,7 @@ local WALKOVER_PRODUCTION_BEHAVIORS: { [string]: boolean } = {
 local hasStarted = false
 local collectableParts: { [BasePart]: boolean } = {}
 local nextAllowedCollectionByPlayerPart: { [Player]: { [BasePart]: number } } = {}
+local lastRootPositionByPlayer: { [Player]: Vector3 } = {}
 
 local function getPlacedObjectsFolder(): Folder?
 	local existingFolder = Workspace:FindFirstChild(PLACED_OBJECTS_FOLDER_NAME)
@@ -57,11 +59,19 @@ local function shouldTrackPart(part: BasePart): boolean
 	return type(productionBehaviorId) == "string" and WALKOVER_PRODUCTION_BEHAVIORS[productionBehaviorId] == true
 end
 
+local function clearPartCollectionState(part: BasePart)
+	collectableParts[part] = nil
+
+	for _, nextAllowedByPart in pairs(nextAllowedCollectionByPlayerPart) do
+		nextAllowedByPart[part] = nil
+	end
+end
+
 local function trackPart(part: BasePart)
 	if shouldTrackPart(part) then
 		collectableParts[part] = true
 	else
-		collectableParts[part] = nil
+		clearPartCollectionState(part)
 	end
 end
 
@@ -74,7 +84,7 @@ local function connectPartForTracking(part: BasePart)
 
 	part.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
-			collectableParts[part] = nil
+			clearPartCollectionState(part)
 			attributeConnection:Disconnect()
 		end
 	end)
@@ -89,20 +99,41 @@ local function isRootOverPart(rootPart: BasePart, placedPart: BasePart): boolean
 		and math.abs(localPoint.Y) <= COLLECTION_VERTICAL_TOLERANCE_STUDS
 end
 
-local function canAttemptCollection(player: Player, part: BasePart, currentTime: number): boolean
+local function getHorizontalMovementDistance(previousPosition: Vector3, currentPosition: Vector3): number
+	local horizontalDelta = Vector3.new(currentPosition.X - previousPosition.X, 0, currentPosition.Z - previousPosition.Z)
+	return horizontalDelta.Magnitude
+end
+
+local function isPlayerMoving(player: Player, rootPart: BasePart): boolean
+	local currentPosition = rootPart.Position
+	local previousPosition = lastRootPositionByPlayer[player]
+	lastRootPositionByPlayer[player] = currentPosition
+
+	if previousPosition == nil then
+		return false
+	end
+
+	return getHorizontalMovementDistance(previousPosition, currentPosition) >= MIN_HORIZONTAL_MOVEMENT_STUDS
+end
+
+local function canCollectFromPart(player: Player, part: BasePart, currentTime: number): boolean
+	local nextAllowedByPart = nextAllowedCollectionByPlayerPart[player]
+	if nextAllowedByPart == nil then
+		return true
+	end
+
+	local nextAllowedTime = nextAllowedByPart[part] or 0
+	return currentTime >= nextAllowedTime
+end
+
+local function markSuccessfulCollection(player: Player, part: BasePart, currentTime: number)
 	local nextAllowedByPart = nextAllowedCollectionByPlayerPart[player]
 	if nextAllowedByPart == nil then
 		nextAllowedByPart = {}
 		nextAllowedCollectionByPlayerPart[player] = nextAllowedByPart
 	end
 
-	local nextAllowedTime = nextAllowedByPart[part] or 0
-	if currentTime < nextAllowedTime then
-		return false
-	end
-
 	nextAllowedByPart[part] = currentTime + COLLECTION_COOLDOWN_SECONDS
-	return true
 end
 
 local function isOwnedPartOnAssignedPlot(player: Player, part: BasePart): boolean
@@ -114,15 +145,20 @@ local function isOwnedPartOnAssignedPlot(player: Player, part: BasePart): boolea
 	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
 end
 
-local function collectForPlayer(player: Player, rootPart: BasePart, currentTime: number)
+local function collectForPlayer(player: Player, rootPart: BasePart, currentTime: number, isMoving: boolean)
+	if not isMoving then
+		return
+	end
+
 	for part in pairs(collectableParts) do
 		if part.Parent ~= nil
 			and isOwnedPartOnAssignedPlot(player, part)
 			and isRootOverPart(rootPart, part)
-			and canAttemptCollection(player, part, currentTime)
+			and canCollectFromPart(player, part, currentTime)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then
+				markSuccessfulCollection(player, part, currentTime)
 				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
 			end
 		end
@@ -149,7 +185,7 @@ local function registerExistingParts()
 
 	placedObjectsFolder.ChildRemoved:Connect(function(child)
 		if child:IsA("BasePart") then
-			collectableParts[child] = nil
+			clearPartCollectionState(child)
 		end
 	end)
 end
@@ -161,7 +197,9 @@ local function startCollectionLoop()
 			for _, player in ipairs(Players:GetPlayers()) do
 				local rootPart = getHumanoidRootPart(player)
 				if rootPart ~= nil then
-					collectForPlayer(player, rootPart, currentTime)
+					collectForPlayer(player, rootPart, currentTime, isPlayerMoving(player, rootPart))
+				else
+					lastRootPositionByPlayer[player] = nil
 				end
 			end
 
@@ -184,6 +222,7 @@ function WalkoverCollectionService.start()
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		nextAllowedCollectionByPlayerPart[player] = nil
+		lastRootPositionByPlayer[player] = nil
 	end)
 end
 

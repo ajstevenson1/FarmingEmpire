@@ -75,25 +75,13 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV"
+local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV2"
 local CURRENT_SCHEMA_VERSION = 11
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
 local dataStore = DataStoreService:GetDataStore(DATA_STORE_NAME)
 local PLAYTIME_REWARDS_CYCLE_LENGTH = PlaytimeRewardsConfig.getCycleLength()
-local LEGACY_ITEM_ID_ALIASES: { [string]: ItemId } = {
-	BasicTree = "OakTree",
-	RubyAppleTree = "CherryTree",
-	GoldenAppleTree = "GoldenTree",
-	CrystalAppleTree = "SapphireTree",
-}
-local LEGACY_BUILDING_ID_ALIASES: { [string]: BuildingId } = {
-	BasicTree = "OakTree",
-	RubyAppleTree = "CherryTree",
-	GoldenAppleTree = "GoldenTree",
-	CrystalAppleTree = "SapphireTree",
-}
 
 local function getPlayerKey(userId: number): string
 	return `Player_{userId}`
@@ -167,12 +155,11 @@ local function sanitizeItemId(value: unknown): ItemId?
 		return nil
 	end
 
-	local canonicalItemId = LEGACY_ITEM_ID_ALIASES[value] or value
-	if not ItemCatalog.hasItemDefinition(canonicalItemId) then
+	if not ItemCatalog.hasItemDefinition(value) then
 		return nil
 	end
 
-	return canonicalItemId :: ItemId
+	return value :: ItemId
 end
 
 local function sanitizeBuildingId(value: unknown): BuildingId?
@@ -180,12 +167,11 @@ local function sanitizeBuildingId(value: unknown): BuildingId?
 		return nil
 	end
 
-	local canonicalBuildingId = LEGACY_BUILDING_ID_ALIASES[value] or value
-	if not BuildingCatalog.hasBuildingDefinition(canonicalBuildingId) then
+	if not BuildingCatalog.hasBuildingDefinition(value) then
 		return nil
 	end
 
-	return canonicalBuildingId :: BuildingId
+	return value :: BuildingId
 end
 
 local function sanitizeClaimedRewardIndexes(rawClaimedRewardIndexes: unknown): { [number]: boolean }

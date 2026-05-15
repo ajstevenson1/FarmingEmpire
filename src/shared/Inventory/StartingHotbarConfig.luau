@@ -1,8 +1,5 @@
 --!strict
 
-local startingHotbarSlots: { [number]: string } = {
-	[2] = "OakTree",
-	[3] = "CiderMill",
-}
+local startingHotbarSlots: { [number]: string } = {}
 
 return table.freeze(startingHotbarSlots)

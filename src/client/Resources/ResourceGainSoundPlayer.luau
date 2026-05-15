@@ -51,7 +51,10 @@ end
 
 local function playSound(soundKey: SoundKey)
 	local sound = getOrCreateSound(soundKey)
-	sound:Stop()
+	if sound.IsPlaying then
+		return
+	end
+
 	sound.TimePosition = 0
 	sound:Play()
 end

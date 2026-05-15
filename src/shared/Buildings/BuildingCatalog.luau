@@ -81,7 +81,7 @@ local function createAppleTreeDefinition(treeDefinition: TreeTierDefinition): Bu
 		placementSize = Vector3.new(6, 6, 6),
 		productionConfig = table.freeze({
 			behaviorId = "TimedStorageProducer",
-			produceIntervalSeconds = 5,
+			produceIntervalSeconds = ProgressionConfig.getTreeProduceIntervalSeconds(),
 			outputResourceId = "Apple",
 			outputAmountPerInterval = treeDefinition.fruitPerInterval,
 			storageCap = treeDefinition.storageCap,

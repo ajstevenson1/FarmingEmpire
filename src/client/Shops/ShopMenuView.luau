@@ -18,8 +18,6 @@ export type RenderProduct = {
 	displayName: string,
 	stockRemaining: number,
 	canAfford: boolean,
-	isUnlocked: boolean,
-	unlockLifetimeCash: number,
 }
 
 type Widgets = {
@@ -224,9 +222,8 @@ end
 
 local function createRow(parent: Instance, renderProduct: RenderProduct, callbacks: { (ShopProductId) -> () }): Frame
 	local productDefinition = renderProduct.productDefinition
-	local isUnlocked = renderProduct.isUnlocked
 	local isInStock = renderProduct.stockRemaining > 0
-	local canBuy = isUnlocked and isInStock and renderProduct.canAfford
+	local canBuy = isInStock and renderProduct.canAfford
 
 	local row = Instance.new("Frame")
 	row.Name = productDefinition.id
@@ -261,10 +258,8 @@ local function createRow(parent: Instance, renderProduct: RenderProduct, callbac
 	stockLabel.Position = UDim2.new(1, 0, 0, 0)
 	stockLabel.Size = UDim2.fromOffset(120, 20)
 	stockLabel.TextXAlignment = Enum.TextXAlignment.Right
-	stockLabel.TextColor3 = if not isUnlocked then MUTED_TEXT_COLOR elseif isInStock then MUTED_TEXT_COLOR else WARNING_COLOR
-	stockLabel.Text = if not isUnlocked
-		then string.format("Unlock: %s", formatCash(renderProduct.unlockLifetimeCash))
-		else string.format("Stock: %d", renderProduct.stockRemaining)
+	stockLabel.TextColor3 = if isInStock then MUTED_TEXT_COLOR else WARNING_COLOR
+	stockLabel.Text = string.format("Stock: %d", renderProduct.stockRemaining)
 
 	local buyButton = Instance.new("TextButton")
 	buyButton.Name = "BuyButton"
@@ -278,15 +273,13 @@ local function createRow(parent: Instance, renderProduct: RenderProduct, callbac
 	buyButton.Font = Enum.Font.GothamBold
 	buyButton.TextColor3 = TEXT_COLOR
 	buyButton.TextSize = 14
-	buyButton.Text = if not isUnlocked
-		then "Locked"
-		elseif isInStock
+	buyButton.Text = if isInStock
 		then string.format("Buy %s", formatCash(productDefinition.price))
 		else "Sold Out"
 	buyButton.Parent = row
 	applyCorner(buyButton, 8)
 
-	if isUnlocked and not canBuy and isInStock then
+	if not canBuy and isInStock then
 		buyButton.Text = string.format("Need %s", formatCash(productDefinition.price))
 	end
 
