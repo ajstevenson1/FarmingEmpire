@@ -57,12 +57,12 @@ local function getPromptPartName(row: number, column: number): string
 end
 
 local function getModifierLabel(modifierId: PlotModifierId?): string?
-	if modifierId == "DoubleApple" then
-		return "2x Apple"
+	if modifierId == "DoubleProduction" then
+		return "2x Production"
 	end
 
-	if modifierId == "DoubleCider" then
-		return "2x Cider"
+	if modifierId == "TripleProduction" then
+		return "3x Production"
 	end
 
 	return nil

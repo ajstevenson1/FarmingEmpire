@@ -127,11 +127,16 @@ local function getProductionDuration(productionConfig: ProductionConfig): number
 	return productionConfig.cycleDurationSeconds
 end
 
+local function scaleWholeNumber(value: number, multiplier: number): number
+	return math.max(0, math.floor(value * multiplier))
+end
+
 local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: BuildingDefinition): ProductionConfig
 	local baseProductionConfig = buildingDefinition.productionConfig
 	local outputResourceId = getOutputResourceId(baseProductionConfig)
 	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId)
-	if outputMultiplier <= 1 then
+	local storageCapMultiplier = PlotExpansionService.getStorageCapMultiplierForPlacedPart(part, outputResourceId)
+	if outputMultiplier <= 1 and storageCapMultiplier <= 1 then
 		return baseProductionConfig
 	end
 
@@ -140,16 +145,16 @@ local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: 
 			behaviorId = "GrowAndHarvest",
 			cycleDurationSeconds = baseProductionConfig.cycleDurationSeconds,
 			outputResourceId = baseProductionConfig.outputResourceId,
-			outputAmount = math.max(0, math.floor(baseProductionConfig.outputAmount * outputMultiplier)),
-			storageCap = baseProductionConfig.storageCap,
+			outputAmount = scaleWholeNumber(baseProductionConfig.outputAmount, outputMultiplier),
+			storageCap = scaleWholeNumber(baseProductionConfig.storageCap, storageCapMultiplier),
 		}
 	elseif baseProductionConfig.behaviorId == "TimedStorageProducer" then
 		return {
 			behaviorId = "TimedStorageProducer",
 			produceIntervalSeconds = baseProductionConfig.produceIntervalSeconds,
 			outputResourceId = baseProductionConfig.outputResourceId,
-			outputAmountPerInterval = math.max(0, math.floor(baseProductionConfig.outputAmountPerInterval * outputMultiplier)),
-			storageCap = baseProductionConfig.storageCap,
+			outputAmountPerInterval = scaleWholeNumber(baseProductionConfig.outputAmountPerInterval, outputMultiplier),
+			storageCap = scaleWholeNumber(baseProductionConfig.storageCap, storageCapMultiplier),
 		}
 	end
 
@@ -159,7 +164,7 @@ local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: 
 		inputResourceId = baseProductionConfig.inputResourceId,
 		inputAmount = baseProductionConfig.inputAmount,
 		outputResourceId = baseProductionConfig.outputResourceId,
-		outputAmount = math.max(0, math.floor(baseProductionConfig.outputAmount * outputMultiplier)),
+		outputAmount = scaleWholeNumber(baseProductionConfig.outputAmount, outputMultiplier),
 		outputStorageMode = baseProductionConfig.outputStorageMode,
 		idleStatusText = baseProductionConfig.idleStatusText,
 		blockedStatusText = baseProductionConfig.blockedStatusText,
@@ -173,6 +178,10 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	local runtimeState = trackedBuilding.runtimeState
 	local currentGrowthStage = BuildingCatalog.getGrowthStageForProgress(buildingDefinition, runtimeState.progress)
 
+	part:SetAttribute(
+		BuildingAttributeNames.productionMultiplier,
+		PlotExpansionService.getBuildingProductionMultiplierForPlacedPart(part, buildingDefinition.id)
+	)
 	part:SetAttribute(BuildingAttributeNames.buildingId, buildingDefinition.id)
 	part:SetAttribute(BuildingAttributeNames.buildingDisplayName, buildingDefinition.displayName)
 	part:SetAttribute(BuildingAttributeNames.productionBehaviorId, productionConfig.behaviorId)

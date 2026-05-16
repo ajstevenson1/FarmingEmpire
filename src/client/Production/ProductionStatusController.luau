@@ -93,6 +93,9 @@ local function trackPart(part: BasePart)
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionStorageCap):Connect(function()
 			view:refresh()
 		end),
+		part:GetAttributeChangedSignal(BuildingAttributeNames.productionMultiplier):Connect(function()
+			view:refresh()
+		end),
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionProgress):Connect(function()
 			view:refresh()
 		end),
@@ -114,6 +117,12 @@ local function trackPart(part: BasePart)
 		refreshConnections = refreshConnections,
 		ancestryConnection = ancestryConnection,
 	}
+
+	task.defer(function()
+		if trackedViewsByPart[part] == view then
+			view:refresh()
+		end
+	end)
 end
 
 local function connectPartForDeferredTracking(part: BasePart)

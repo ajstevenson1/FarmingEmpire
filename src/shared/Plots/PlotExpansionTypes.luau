@@ -1,6 +1,6 @@
 --!strict
 
-export type PlotModifierId = "DoubleApple" | "DoubleCider"
+export type PlotModifierId = "DoubleProduction" | "TripleProduction"
 
 export type PlotTileCoordinate = {
 	row: number,

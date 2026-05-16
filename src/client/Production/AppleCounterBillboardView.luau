@@ -14,6 +14,7 @@ local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter")
 type AppleCounterWidgets = {
 	rootGui: BillboardGui,
 	countLabel: TextLabel,
+	multiplierLabel: TextLabel,
 	stroke: UIStroke,
 }
 
@@ -26,6 +27,7 @@ export type AppleCounterBillboardView = {
 
 local TEMPLATE_NAME = "AppleCounter"
 local COUNT_LABEL_NAME = "Count"
+local MULTIPLIER_LABEL_NAME = "Multiplier"
 local STROKE_NAME = "Stroke"
 
 local EMPTY_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
@@ -52,6 +54,10 @@ local function getClampedCounterValues(part: BasePart): (number, number)
 	return storedAmount, storageCap
 end
 
+local function getProductionMultiplier(part: BasePart): number
+	return math.max(1, math.floor(getNumberAttribute(part, BuildingAttributeNames.productionMultiplier)))
+end
+
 local function createWidgets(part: BasePart): AppleCounterWidgets
 	local localPlayer = Players.LocalPlayer
 	assert(localPlayer ~= nil, "LocalPlayer must exist before creating apple counter billboards")
@@ -72,6 +78,12 @@ local function createWidgets(part: BasePart): AppleCounterWidgets
 	)
 
 	local countLabel = countLabelInstance :: TextLabel
+	local multiplierLabelInstance = rootGui:FindFirstChild(MULTIPLIER_LABEL_NAME, true)
+	assert(
+		multiplierLabelInstance ~= nil and multiplierLabelInstance:IsA("TextLabel"),
+		string.format("Templates.%s must contain a TextLabel named %s", TEMPLATE_NAME, MULTIPLIER_LABEL_NAME)
+	)
+
 	local strokeInstance = countLabel:FindFirstChild(STROKE_NAME)
 	assert(
 		strokeInstance ~= nil and strokeInstance:IsA("UIStroke"),
@@ -81,6 +93,7 @@ local function createWidgets(part: BasePart): AppleCounterWidgets
 	return {
 		rootGui = rootGui,
 		countLabel = countLabel,
+		multiplierLabel = multiplierLabelInstance :: TextLabel,
 		stroke = strokeInstance :: UIStroke,
 	}
 end
@@ -98,6 +111,7 @@ end
 
 function AppleCounterBillboardView:refresh()
 	local storedAmount, storageCap = getClampedCounterValues(self._part)
+	local productionMultiplier = getProductionMultiplier(self._part)
 	local isFull = storageCap > 0 and storedAmount >= storageCap
 
 	self._widgets.countLabel.Text = string.format(
@@ -107,6 +121,8 @@ function AppleCounterBillboardView:refresh()
 	)
 	self._widgets.countLabel.TextColor3 = if isFull then FULL_TEXT_COLOR else EMPTY_TEXT_COLOR
 	self._widgets.stroke.Color = if isFull then FULL_STROKE_COLOR else EMPTY_STROKE_COLOR
+	self._widgets.multiplierLabel.Text = string.format("%dx", productionMultiplier)
+	self._widgets.multiplierLabel.Visible = productionMultiplier > 1
 end
 
 function AppleCounterBillboardView:destroy()

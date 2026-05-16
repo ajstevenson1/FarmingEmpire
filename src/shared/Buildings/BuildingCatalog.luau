@@ -102,7 +102,7 @@ local function createCiderMillDefinition(millDefinition: MillTierDefinition): Bu
 		id = millDefinition.id,
 		displayName = millDefinition.displayName,
 		sellPrice = millDefinition.sellPrice,
-		placementSize = Vector3.new(8, 6, 8),
+		placementSize = Vector3.new(4, 6, 4),
 		productionConfig = table.freeze({
 			behaviorId = "InputProcessor",
 			cycleDurationSeconds = 1,

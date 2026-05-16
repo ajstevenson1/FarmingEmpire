@@ -30,6 +30,7 @@ type PlotTilePurchaseStatus = PlotExpansionTypes.PlotTilePurchaseStatus
 type PlotTileSnapshot = PlotExpansionTypes.PlotTileSnapshot
 type ResourceId = ResourceTypes.ResourceId
 type PlotExpansionChangedListener = (Player) -> ()
+type ModifierMultiplierResolver = (PlotModifierId?) -> number
 
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
@@ -174,6 +175,54 @@ local function getTileCoordinateForPlacedPart(part: BasePart): PlotTileCoordinat
 	end
 
 	return PlotExpansionUtils.getTileCoordinateForGridPosition(plotBase, spawnPart, gridX, gridZ)
+end
+
+local function getCoveredTileCoordinatesForPlacedPart(part: BasePart): { PlotTileCoordinate }
+	local gridX = part:GetAttribute(GRID_X_ATTRIBUTE)
+	local gridZ = part:GetAttribute(GRID_Z_ATTRIBUTE)
+	if type(gridX) ~= "number" or type(gridZ) ~= "number" then
+		return {}
+	end
+
+	local _, plotBase, spawnPart = resolvePlotForPlacedPart(part)
+	if plotBase == nil or spawnPart == nil then
+		return {}
+	end
+
+	local coveredTiles = PlotExpansionUtils.getCoveredTilesForFootprint(plotBase, spawnPart, gridX, gridZ, part.Size)
+	if #coveredTiles > 0 then
+		return coveredTiles
+	end
+
+	local centerTile = PlotExpansionUtils.getTileCoordinateForGridPosition(plotBase, spawnPart, gridX, gridZ)
+	if centerTile == nil then
+		return {}
+	end
+
+	return { centerTile }
+end
+
+local function getWholeFootprintMultiplier(part: BasePart, resolveMultiplier: ModifierMultiplierResolver): number
+	local coveredTiles = getCoveredTileCoordinatesForPlacedPart(part)
+	if #coveredTiles == 0 then
+		return 1
+	end
+
+	local multiplier: number? = nil
+	for _, tileCoordinate in ipairs(coveredTiles) do
+		local tileMultiplier = resolveMultiplier(getModifierIdForTileCoordinate(tileCoordinate))
+		if tileMultiplier <= 1 then
+			return 1
+		end
+
+		if multiplier ~= nil and tileMultiplier ~= multiplier then
+			return 1
+		end
+
+		multiplier = tileMultiplier
+	end
+
+	return multiplier or 1
 end
 
 local function getTileCoordinateForAssignedPlot(player: Player, gridX: number, gridZ: number): PlotTileCoordinate?
@@ -348,7 +397,21 @@ function PlotExpansionService.getModifierIdForPlacedPart(part: BasePart): PlotMo
 end
 
 function PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part: BasePart, resourceId: ResourceId): number
-	return PlotExpansionRules.getResourceOutputMultiplier(PlotExpansionService.getModifierIdForPlacedPart(part), resourceId)
+	return getWholeFootprintMultiplier(part, function(modifierId: PlotModifierId?): number
+		return PlotExpansionRules.getResourceOutputMultiplier(modifierId, resourceId)
+	end)
+end
+
+function PlotExpansionService.getStorageCapMultiplierForPlacedPart(part: BasePart, resourceId: ResourceId): number
+	return getWholeFootprintMultiplier(part, function(modifierId: PlotModifierId?): number
+		return PlotExpansionRules.getStorageCapMultiplier(modifierId, resourceId)
+	end)
+end
+
+function PlotExpansionService.getBuildingProductionMultiplierForPlacedPart(part: BasePart, buildingId: BuildingId): number
+	return getWholeFootprintMultiplier(part, function(modifierId: PlotModifierId?): number
+		return PlotExpansionRules.getBuildingProductionMultiplier(modifierId, buildingId)
+	end)
 end
 
 function PlotExpansionService.getOfflineCiderRateMultiplierForPlacedBuilding(

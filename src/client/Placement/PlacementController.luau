@@ -23,6 +23,8 @@ local InventoryUtils = require(inventoryFolder:WaitForChild("InventoryUtils") ::
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
+local PlotExpansionTypes = require(plotsCodeFolder:WaitForChild("PlotExpansionTypes") :: ModuleScript)
+local PlotExpansionUtils = require(plotsCodeFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
 local HudTooltip = require(script.Parent.Parent.UI.HudTooltip)
@@ -33,10 +35,12 @@ type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
 type InventorySnapshot = InventoryTypes.InventorySnapshot
 type GridCoordinate = PlotMath.GridCoordinate
+type PlotExpansionSnapshot = PlotExpansionTypes.PlotExpansionSnapshot
 
 type PreviewState = {
 	gridX: number,
 	gridZ: number,
+	isValid: boolean,
 }
 
 local PLOTS_FOLDER_NAME = "Plots"
@@ -58,6 +62,11 @@ type PlacementRemotes = {
 	requestPickup: RemoteEvent,
 }
 
+type PlotExpansionRemotes = {
+	plotExpansionUpdated: RemoteEvent,
+	getPlotExpansionSnapshot: RemoteFunction,
+}
+
 local function getPlacementRemotes(): PlacementRemotes
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local placementRemotesFolder = rootFolder:WaitForChild(RemoteNames.placementFolderName) :: Folder
@@ -65,6 +74,16 @@ local function getPlacementRemotes(): PlacementRemotes
 	return {
 		requestPlacement = placementRemotesFolder:WaitForChild(RemoteNames.requestPlacementEventName) :: RemoteEvent,
 		requestPickup = placementRemotesFolder:WaitForChild(RemoteNames.requestPickupEventName) :: RemoteEvent,
+	}
+end
+
+local function getPlotExpansionRemotes(): PlotExpansionRemotes
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local plotExpansionRemotesFolder = rootFolder:WaitForChild(RemoteNames.plotExpansionFolderName) :: Folder
+
+	return {
+		plotExpansionUpdated = plotExpansionRemotesFolder:WaitForChild(RemoteNames.plotExpansionUpdatedEventName) :: RemoteEvent,
+		getPlotExpansionSnapshot = plotExpansionRemotesFolder:WaitForChild(RemoteNames.getPlotExpansionSnapshotFunctionName) :: RemoteFunction,
 	}
 end
 
@@ -188,6 +207,27 @@ local function isGridOccupied(plotName: string, footprint: Vector3, grid: GridCo
 	return false
 end
 
+local function isFootprintUnlocked(
+	plotBase: BasePart,
+	spawnPart: BasePart,
+	footprint: Vector3,
+	grid: GridCoordinate,
+	plotExpansionSnapshot: PlotExpansionSnapshot?
+): boolean
+	if plotExpansionSnapshot == nil then
+		return false
+	end
+
+	return PlotExpansionUtils.isFootprintUnlockedInSnapshot(
+		plotExpansionSnapshot,
+		plotBase,
+		spawnPart,
+		grid.x,
+		grid.z,
+		footprint
+	)
+end
+
 local PlacementController = {}
 
 function PlacementController.start()
@@ -199,14 +239,20 @@ function PlacementController.start()
 
 	local previewView = PlacementPreviewView.new()
 	local placementRemotes = getPlacementRemotes()
+	local plotExpansionRemotes = getPlotExpansionRemotes()
 	local hudTooltip = HudTooltip.get()
 	local latestSnapshot = InventoryController.getLatestSnapshot()
+	local latestPlotExpansionSnapshot = plotExpansionRemotes.getPlotExpansionSnapshot:InvokeServer() :: PlotExpansionSnapshot
 	local currentPreviewState: PreviewState? = nil
 
 	hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 
 	InventoryController.observeSnapshotChanged(function(snapshot: InventorySnapshot)
 		latestSnapshot = snapshot
+	end)
+
+	plotExpansionRemotes.plotExpansionUpdated.OnClientEvent:Connect(function(snapshot: PlotExpansionSnapshot)
+		latestPlotExpansionSnapshot = snapshot
 	end)
 
 	local function requestCurrentPlacement(): boolean
@@ -232,7 +278,7 @@ function PlacementController.start()
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
 		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 		local previewState = currentPreviewState
-		if previewState == nil then
+		if previewState == nil or not previewState.isValid then
 			return false
 		end
 
@@ -279,7 +325,8 @@ function PlacementController.start()
 
 		local plot = getAssignedPlot()
 		local plotBase = if plot == nil then nil else PlotLocator.getPlacementBase(plot)
-		if plot == nil or plotBase == nil then
+		local spawnPart = if plot == nil then nil else PlotLocator.getSpawnPart(plot)
+		if plot == nil or plotBase == nil or spawnPart == nil then
 			previewView:hide()
 			currentPreviewState = nil
 			return
@@ -319,11 +366,13 @@ function PlacementController.start()
 			return
 		end
 
-		local isValid = not isGridOccupied(plot.Name, placementFootprint, grid)
+		local isValid = isFootprintUnlocked(plotBase, spawnPart, placementFootprint, grid, latestPlotExpansionSnapshot)
+			and not isGridOccupied(plot.Name, placementFootprint, grid)
 		previewView:show(buildingDefinition, itemDefinition, placementCFrame, isValid)
 		currentPreviewState = {
 			gridX = grid.x,
 			gridZ = grid.z,
+			isValid = isValid,
 		}
 	end)
 

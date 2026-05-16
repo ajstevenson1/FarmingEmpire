@@ -4,6 +4,7 @@ local PlotExpansionConfig = require(script.Parent.PlotExpansionConfig)
 local PlotExpansionTypes = require(script.Parent.PlotExpansionTypes)
 
 type PlotTileCoordinate = PlotExpansionTypes.PlotTileCoordinate
+type PlotExpansionSnapshot = PlotExpansionTypes.PlotExpansionSnapshot
 
 local EDGE_EPSILON = 0.001
 
@@ -161,6 +162,35 @@ function PlotExpansionUtils.getCoveredTilesForFootprint(
 	end
 
 	return tiles
+end
+
+function PlotExpansionUtils.isFootprintUnlockedInSnapshot(
+	snapshot: PlotExpansionSnapshot,
+	plotBase: BasePart,
+	spawnPart: BasePart,
+	gridX: number,
+	gridZ: number,
+	footprint: Vector3
+): boolean
+	local coveredTiles = PlotExpansionUtils.getCoveredTilesForFootprint(plotBase, spawnPart, gridX, gridZ, footprint)
+	if #coveredTiles == 0 then
+		return false
+	end
+
+	local unlockedTileKeys: { [string]: boolean } = {}
+	for _, tileSnapshot in ipairs(snapshot.tiles) do
+		if tileSnapshot.isUnlocked then
+			unlockedTileKeys[PlotExpansionUtils.getTileKey(tileSnapshot.row, tileSnapshot.column)] = true
+		end
+	end
+
+	for _, coveredTile in ipairs(coveredTiles) do
+		if unlockedTileKeys[PlotExpansionUtils.getTileKey(coveredTile.row, coveredTile.column)] ~= true then
+			return false
+		end
+	end
+
+	return true
 end
 
 function PlotExpansionUtils.getTileCenterCFrame(

@@ -31,12 +31,12 @@ local tileDefinitions: { PlotTileDefinition } = table.freeze({
 	createTileDefinition(2, 1, 2500, nil),
 	createTileDefinition(2, 2, 2500, nil),
 	createTileDefinition(2, 3, 2500, nil),
-	createTileDefinition(3, 1, 8500, "DoubleApple"),
-	createTileDefinition(3, 2, 8500, "DoubleApple"),
-	createTileDefinition(3, 3, 8500, "DoubleApple"),
-	createTileDefinition(4, 1, 25000, "DoubleCider"),
-	createTileDefinition(4, 2, 25000, "DoubleCider"),
-	createTileDefinition(4, 3, 25000, "DoubleCider"),
+	createTileDefinition(3, 1, 8500, "DoubleProduction"),
+	createTileDefinition(3, 2, 8500, "DoubleProduction"),
+	createTileDefinition(3, 3, 8500, "DoubleProduction"),
+	createTileDefinition(4, 1, 25000, "TripleProduction"),
+	createTileDefinition(4, 2, 25000, "TripleProduction"),
+	createTileDefinition(4, 3, 25000, "TripleProduction"),
 })
 
 local tileDefinitionsByKey: { [string]: PlotTileDefinition } = {}
