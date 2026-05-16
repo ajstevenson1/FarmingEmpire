@@ -215,11 +215,7 @@ local function getWholeFootprintMultiplier(part: BasePart, resolveMultiplier: Mo
 			return 1
 		end
 
-		if multiplier ~= nil and tileMultiplier ~= multiplier then
-			return 1
-		end
-
-		multiplier = tileMultiplier
+		multiplier = if multiplier == nil then tileMultiplier else math.min(multiplier, tileMultiplier)
 	end
 
 	return multiplier or 1
