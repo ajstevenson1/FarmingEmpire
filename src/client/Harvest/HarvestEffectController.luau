@@ -41,6 +41,7 @@ local LEAVES_RUSTLE_OFFSET_STUDS = 0.18
 local LEAVES_RUSTLE_FREQUENCY = 24
 local MAX_APPLES_PER_PAYLOAD = 3
 local MAX_PAYLOADS_PER_EVENT = 12
+local BASE_APPLE_SCALE = 1.6
 local MIN_SCALE = 0.06
 local SHRINK_START_ALPHA = 0.74
 
@@ -315,7 +316,7 @@ local function animateApple(sourceModel: Model, sourcePosition: Vector3, appleIn
 		end
 
 		local elapsed = now - startedAt
-		model:ScaleTo(scale)
+		model:ScaleTo(BASE_APPLE_SCALE * scale)
 		model:PivotTo(CFrame.new(position) * popSpin * CFrame.Angles(
 			spinVelocity.X * elapsed,
 			spinVelocity.Y * elapsed,
