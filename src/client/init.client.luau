@@ -3,6 +3,7 @@
 local ButtonHoverController = require(script.UI.ButtonHoverController)
 local CloseButtonController = require(script.UI.CloseButtonController)
 local BottomNavController = require(script.UI.BottomNavController)
+local ResetButtonController = require(script.UI.ResetButtonController)
 local AudioService = require(script.Audio.AudioService)
 local CmdrClientController = require(script.Admin.CmdrClientController)
 local MusicController = require(script.Audio.MusicController)
@@ -27,6 +28,7 @@ local PlaytimeRewardsController = require(script.PlaytimeRewards.PlaytimeRewards
 
 ButtonHoverController.start()
 CloseButtonController.start()
+ResetButtonController.start()
 AudioService.start()
 CmdrClientController.start()
 MusicController.start()

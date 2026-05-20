@@ -1,6 +1,7 @@
 --!strict
 
 local CmdrService = require(script.Admin.CmdrService)
+local CharacterLifecycleService = require(script.Characters.CharacterLifecycleService)
 local EconomyService = require(script.Economy.EconomyService)
 local ApplesEarnedLeaderboardService = require(script.Leaderboards.ApplesEarnedLeaderboardService)
 local CiderSellService = require(script.Market.CiderSellService)
@@ -29,6 +30,7 @@ local SettingsService = require(script.Settings.SettingsService)
 local PlaytimeRewardsService = require(script.PlaytimeRewards.PlaytimeRewardsService)
 
 CmdrService.start()
+CharacterLifecycleService.start()
 PlayerDataService.start()
 SettingsService.start()
 PlotService.start()
