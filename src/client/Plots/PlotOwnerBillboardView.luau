@@ -291,7 +291,7 @@ function PlotOwnerBillboardView:refresh()
 
 	self._widgets.rootGui.Enabled = true
 	self._widgets.avatarImage.Visible = true
-	self._widgets.playerNameLabel.Text = playerName
+	self._widgets.playerNameLabel.Text = string.format("%s's Orchard", playerName)
 	self._widgets.playerNameLabel.Visible = true
 	if self._widgets.ownerLabel ~= nil then
 		self._widgets.ownerLabel.Text = OWNER_LABEL_TEXT

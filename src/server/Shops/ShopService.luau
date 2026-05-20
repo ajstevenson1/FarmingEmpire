@@ -26,7 +26,8 @@ local TOUCH_OPEN_DEBOUNCE_SECONDS = 1
 local MAX_PURCHASE_DISTANCE_STUDS = 40
 
 local hasStarted = false
-local nextRestockAtByPlayer: { [Player]: { [ShopId]: number } } = {}
+local nextRestockAtByShopId: { [ShopId]: number } = {}
+local syncedRestockAtByPlayer: { [Player]: { [ShopId]: number } } = {}
 local stockRemainingByPlayer: { [Player]: { [ShopId]: { [ShopProductId]: number } } } = {}
 local nextAllowedOpenAtByPlayer: { [Player]: { [ShopId]: number } } = {}
 
@@ -34,11 +35,11 @@ local function getCurrentTime(): number
 	return Workspace:GetServerTimeNow()
 end
 
-local function getPlayerRestockState(player: Player): { [ShopId]: number }
-	local state = nextRestockAtByPlayer[player]
+local function getPlayerRestockSyncState(player: Player): { [ShopId]: number }
+	local state = syncedRestockAtByPlayer[player]
 	if state == nil then
 		state = {}
-		nextRestockAtByPlayer[player] = state
+		syncedRestockAtByPlayer[player] = state
 	end
 
 	return state
@@ -113,28 +114,33 @@ local function fillMissingShopStock(shopId: ShopId, stockState: { [ShopProductId
 	end
 end
 
-local function getNormalizedNextRestockAt(player: Player, definition: ShopDefinition, currentTime: number): number
-	local playerState = getPlayerRestockState(player)
-	local shopStockState = getShopStockState(player, definition.id)
-	local nextRestockAt = playerState[definition.id]
-	local shouldResetStock = false
+local function getNormalizedNextRestockAt(definition: ShopDefinition, currentTime: number): number
+	local nextRestockAt = nextRestockAtByShopId[definition.id]
 	if nextRestockAt == nil then
 		nextRestockAt = currentTime + definition.restockIntervalSeconds
-		shouldResetStock = true
 	end
 
 	while nextRestockAt <= currentTime do
 		nextRestockAt += definition.restockIntervalSeconds
-		shouldResetStock = true
 	end
 
-	playerState[definition.id] = nextRestockAt
+	nextRestockAtByShopId[definition.id] = nextRestockAt
+	return nextRestockAt
+end
+
+local function synchronizePlayerShopStock(player: Player, definition: ShopDefinition, currentTime: number): number
+	local nextRestockAt = getNormalizedNextRestockAt(definition, currentTime)
+	local syncedState = getPlayerRestockSyncState(player)
+	local shopStockState = getShopStockState(player, definition.id)
+	local shouldResetStock = syncedState[definition.id] ~= nextRestockAt
+
 	if shouldResetStock or not hasAnyStockEntry(shopStockState) then
 		setFullShopStock(definition.id, shopStockState)
 	else
 		fillMissingShopStock(definition.id, shopStockState)
 	end
 
+	syncedState[definition.id] = nextRestockAt
 	return nextRestockAt
 end
 
@@ -154,7 +160,7 @@ local function buildSnapshot(player: Player): ShopSnapshot
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
 		local definition = ShopCatalog.getShopDefinition(shopId)
 		shopsById[shopId] = {
-			nextRestockAt = getNormalizedNextRestockAt(player, definition, currentTime),
+			nextRestockAt = synchronizePlayerShopStock(player, definition, currentTime),
 			stockRemainingByProductId = cloneShopStockState(getShopStockState(player, shopId)),
 		}
 	end
@@ -266,7 +272,7 @@ end
 
 local function getStockRemaining(player: Player, shopId: ShopId, productDefinition: ShopProductDefinition): number
 	local shopDefinition = ShopCatalog.getShopDefinition(shopId)
-	getNormalizedNextRestockAt(player, shopDefinition, getCurrentTime())
+	synchronizePlayerShopStock(player, shopDefinition, getCurrentTime())
 
 	local stockState = getShopStockState(player, shopId)
 	return stockState[productDefinition.id] or 0
@@ -354,12 +360,15 @@ function ShopService.start()
 	end
 	shopRemotes.requestShopPurchase.OnServerInvoke = handlePurchaseRequest
 
+	local currentTime = getCurrentTime()
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
-		connectShopTouch(ShopCatalog.getShopDefinition(shopId))
+		local definition = ShopCatalog.getShopDefinition(shopId)
+		nextRestockAtByShopId[shopId] = currentTime + definition.restockIntervalSeconds
+		connectShopTouch(definition)
 	end
 
 	Players.PlayerRemoving:Connect(function(player: Player)
-		nextRestockAtByPlayer[player] = nil
+		syncedRestockAtByPlayer[player] = nil
 		stockRemainingByPlayer[player] = nil
 		nextAllowedOpenAtByPlayer[player] = nil
 	end)
