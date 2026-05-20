@@ -37,8 +37,8 @@ local ANCHOR_NAME = "OwnerBillboardAnchor"
 local FALLBACK_STUDS_OFFSET = Vector3.new(0, 5, 0)
 local OWNER_LABEL_TEXT = "OWNER"
 local UNCLAIMED_LABEL_TEXT = "UNCLAIMED"
-local BILLBOARD_SIZE = UDim2.fromOffset(320, 185)
-local BILLBOARD_MAX_DISTANCE = 150
+local BILLBOARD_SIZE = UDim2.fromScale(16, 16)
+local BILLBOARD_MAX_DISTANCE = 250
 local OWNER_LABEL_TEXT_COLOR = Color3.fromRGB(190, 255, 190)
 local OWNER_LABEL_TEXT_TRANSPARENCY = 0.05
 local PLAYER_NAME_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
@@ -124,8 +124,6 @@ local function styleAvatarImage(avatarImage: ImageLabel)
 	avatarImage.BackgroundTransparency = 1
 	avatarImage.BorderSizePixel = 0
 	avatarImage.Visible = true
-	avatarImage.Size = UDim2.fromOffset(96, 96)
-	avatarImage.Position = UDim2.new(0.5, -48, 0, 32)
 	avatarImage.ScaleType = Enum.ScaleType.Fit
 
 	ensureCorner(avatarImage, "RuntimeCorner", UDim.new(1, 0))
@@ -135,8 +133,6 @@ local function stylePlayerNameLabel(playerNameLabel: TextLabel)
 	playerNameLabel.BackgroundTransparency = 1
 	playerNameLabel.BorderSizePixel = 0
 	playerNameLabel.Visible = true
-	playerNameLabel.Size = UDim2.new(1, -32, 0, 40)
-	playerNameLabel.Position = UDim2.new(0, 16, 0, 136)
 	playerNameLabel.Font = Enum.Font.GothamBold
 	playerNameLabel.TextColor3 = PLAYER_NAME_TEXT_COLOR
 	playerNameLabel.TextScaled = true
@@ -155,8 +151,6 @@ local function styleOwnerLabel(ownerLabel: TextLabel)
 	ownerLabel.BackgroundTransparency = 1
 	ownerLabel.BorderSizePixel = 0
 	ownerLabel.Visible = true
-	ownerLabel.Size = UDim2.new(1, -28, 0, 24)
-	ownerLabel.Position = UDim2.new(0, 14, 0, 9)
 	ownerLabel.Font = Enum.Font.GothamMedium
 	ownerLabel.TextColor3 = OWNER_LABEL_TEXT_COLOR
 	ownerLabel.TextTransparency = OWNER_LABEL_TEXT_TRANSPARENCY
