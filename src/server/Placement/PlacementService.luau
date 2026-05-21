@@ -8,6 +8,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
+local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
@@ -15,6 +16,7 @@ local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: M
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
@@ -26,12 +28,14 @@ local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type BuildingId = BuildingTypes.BuildingId
 type ItemId = InventoryTypes.ItemId
+type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
 type SavedProductionState = BuildingTypes.SavedProductionState
 
 type PlacedBuildingData = {
 	buildingId: BuildingId,
 	gridX: number,
 	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns,
 	production: SavedProductionState?,
 }
 
@@ -47,6 +51,7 @@ local PLOT_SLOT_ATTRIBUTE = "PlotSlot"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
+local ROTATION_QUARTER_TURNS_ATTRIBUTE = "RotationQuarterTurns"
 local MAX_PICKUP_DISTANCE_STUDS = 40
 
 local hasStarted = false
@@ -71,6 +76,10 @@ local function isWholeNumber(value: number): boolean
 	return value == math.floor(value)
 end
 
+local function isRotatableBuildingId(buildingId: string): boolean
+	return ProgressionConfig.isTreeBuildingId(buildingId) or ProgressionConfig.isMillBuildingId(buildingId)
+end
+
 local function getPlacedBuildingDataFromPart(player: Player, part: BasePart): PlacedBuildingData?
 	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= player.UserId then
 		return nil
@@ -79,6 +88,7 @@ local function getPlacedBuildingDataFromPart(player: Player, part: BasePart): Pl
 	local rawBuildingId = part:GetAttribute(ITEM_ID_ATTRIBUTE)
 	local rawGridX = part:GetAttribute(GRID_X_ATTRIBUTE)
 	local rawGridZ = part:GetAttribute(GRID_Z_ATTRIBUTE)
+	local rawRotationQuarterTurns = part:GetAttribute(ROTATION_QUARTER_TURNS_ATTRIBUTE)
 
 	if type(rawBuildingId) ~= "string"
 		or not BuildingCatalog.hasBuildingDefinition(rawBuildingId)
@@ -90,10 +100,16 @@ local function getPlacedBuildingDataFromPart(player: Player, part: BasePart): Pl
 		return nil
 	end
 
+	local rotationQuarterTurns: PlacementRotationQuarterTurns = 0
+	if type(rawRotationQuarterTurns) == "number" and isWholeNumber(rawRotationQuarterTurns) then
+		rotationQuarterTurns = PlotMath.normalizeRotationQuarterTurns(rawRotationQuarterTurns)
+	end
+
 	return {
 		buildingId = rawBuildingId :: BuildingId,
 		gridX = rawGridX,
 		gridZ = rawGridZ,
+		rotationQuarterTurns = rotationQuarterTurns,
 		production = ProductionService.getSavedProductionState(part),
 	}
 end
@@ -176,11 +192,22 @@ local function createPlacedPart(
 	plotSlot: number?,
 	buildingId: BuildingId,
 	gridX: number,
-	gridZ: number
+	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns
 ): BasePart?
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
-	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
-	local placementCFrame = PlotMath.gridToWorldCFrame(plotBase.CFrame, plotBase.Size, placementFootprint, gridX, gridZ)
+	local placementFootprint = PlotMath.getRotatedFootprint(
+		BuildingAssetUtils.getPlacementFootprint(buildingDefinition),
+		rotationQuarterTurns
+	)
+	local placementCFrame = PlotMath.gridToWorldCFrame(
+		plotBase.CFrame,
+		plotBase.Size,
+		placementFootprint,
+		gridX,
+		gridZ,
+		rotationQuarterTurns
+	)
 	if placementCFrame == nil then
 		return nil
 	end
@@ -205,6 +232,7 @@ local function createPlacedPart(
 	placedPart:SetAttribute(ITEM_ID_ATTRIBUTE, buildingId)
 	placedPart:SetAttribute(GRID_X_ATTRIBUTE, gridX)
 	placedPart:SetAttribute(GRID_Z_ATTRIBUTE, gridZ)
+	placedPart:SetAttribute(ROTATION_QUARTER_TURNS_ATTRIBUTE, rotationQuarterTurns)
 	placedPart.Parent = getPlacedObjectsFolder()
 
 	return placedPart
@@ -217,10 +245,14 @@ local function canPlaceBuildingOnPlot(
 	buildingId: BuildingId,
 	gridX: number,
 	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns,
 	requireUnlockedTiles: boolean
 ): boolean
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
-	local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+	local placementFootprint = PlotMath.getRotatedFootprint(
+		BuildingAssetUtils.getPlacementFootprint(buildingDefinition),
+		rotationQuarterTurns
+	)
 
 	if not PlotMath.isGridWithinPlot(plotBase.Size, placementFootprint, gridX, gridZ) then
 		return false
@@ -257,11 +289,32 @@ local function loadPlayerPlacedBuildings(player: Player)
 	local loadedCount = 0
 	for _, placedBuilding in ipairs(savedPlacedBuildings) do
 		local buildingId = placedBuilding.buildingId
-		if canPlaceBuildingOnPlot(player, plotBase, plotName, buildingId, placedBuilding.gridX, placedBuilding.gridZ, false) then
-			local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, placedBuilding.gridX, placedBuilding.gridZ)
+		if canPlaceBuildingOnPlot(
+			player,
+			plotBase,
+			plotName,
+			buildingId,
+			placedBuilding.gridX,
+			placedBuilding.gridZ,
+			placedBuilding.rotationQuarterTurns,
+			false
+		) then
+			local placedPart = createPlacedPart(
+				player,
+				plotBase,
+				plotName,
+				plotSlot,
+				buildingId,
+				placedBuilding.gridX,
+				placedBuilding.gridZ,
+				placedBuilding.rotationQuarterTurns
+			)
 			if placedPart ~= nil then
 				ProductionService.registerPlacedBuilding(placedPart, buildingId, placedBuilding.production)
-				local placementFootprint = BuildingAssetUtils.getPlacementFootprint(BuildingCatalog.getBuildingDefinition(buildingId))
+				local placementFootprint = PlotMath.getRotatedFootprint(
+					BuildingAssetUtils.getPlacementFootprint(BuildingCatalog.getBuildingDefinition(buildingId)),
+					placedBuilding.rotationQuarterTurns
+				)
 				PlotExpansionService.ensureFootprintUnlockedForAssignedPlot(
 					player,
 					plotBase,
@@ -292,7 +345,12 @@ local function cleanupPlayerPlacedBuildings(player: Player)
 	end
 end
 
-local function handlePlacementRequest(player: Player, requestedGridX: unknown, requestedGridZ: unknown)
+local function handlePlacementRequest(
+	player: Player,
+	requestedGridX: unknown,
+	requestedGridZ: unknown,
+	requestedRotationQuarterTurns: unknown
+)
 	if type(requestedGridX) ~= "number" or type(requestedGridZ) ~= "number" then
 		return
 	end
@@ -303,6 +361,14 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 
 	local gridX = requestedGridX
 	local gridZ = requestedGridZ
+	local rotationQuarterTurns: PlacementRotationQuarterTurns = 0
+	if requestedRotationQuarterTurns ~= nil then
+		if type(requestedRotationQuarterTurns) ~= "number" or not isWholeNumber(requestedRotationQuarterTurns) then
+			return
+		end
+
+		rotationQuarterTurns = PlotMath.normalizeRotationQuarterTurns(requestedRotationQuarterTurns)
+	end
 	local plotBase = PlotService.getAssignedPlotBase(player)
 	local plotName = PlotService.getAssignedPlotName(player)
 	if plotBase == nil or plotName == nil then
@@ -321,7 +387,11 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 	end
 
 	local buildingId = itemId :: BuildingId
-	if not canPlaceBuildingOnPlot(player, plotBase, plotName, buildingId, gridX, gridZ, true) then
+	if not isRotatableBuildingId(buildingId) then
+		rotationQuarterTurns = 0
+	end
+
+	if not canPlaceBuildingOnPlot(player, plotBase, plotName, buildingId, gridX, gridZ, rotationQuarterTurns, true) then
 		return
 	end
 
@@ -329,13 +399,13 @@ local function handlePlacementRequest(player: Player, requestedGridX: unknown, r
 		return
 	end
 
-	local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, gridX, gridZ)
+	local placedPart = createPlacedPart(player, plotBase, plotName, plotSlot, buildingId, gridX, gridZ, rotationQuarterTurns)
 	if placedPart == nil then
 		return
 	end
 
 	ProductionService.registerPlacedBuilding(placedPart, buildingId, nil)
-	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ)
+	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ, rotationQuarterTurns)
 end
 
 local function resolveOwnedPlacedBuildingOnAssignedPlot(player: Player, placedPart: BasePart): ValidatedPlacedBuildingTarget?

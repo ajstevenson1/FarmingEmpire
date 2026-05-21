@@ -41,6 +41,8 @@ export type BuildingId =
 	| "DyingForgeMill"
 	| "DeepSpaceMill"
 
+export type PlacementRotationQuarterTurns = number
+
 export type ProductionBehaviorId = "GrowAndHarvest" | "TimedStorageProducer" | "InputProcessor"
 
 export type ProductionState = "Growing" | "Ready" | "Idle" | "Processing" | "Blocked"

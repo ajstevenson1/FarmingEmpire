@@ -14,15 +14,18 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
+local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 local plotsCodeFolder = sharedFolder:WaitForChild("Plots") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local InventoryUtils = require(inventoryFolder:WaitForChild("InventoryUtils") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local PlotExpansionTypes = require(plotsCodeFolder:WaitForChild("PlotExpansionTypes") :: ModuleScript)
 local PlotExpansionUtils = require(plotsCodeFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
@@ -35,11 +38,13 @@ type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
 type InventorySnapshot = InventoryTypes.InventorySnapshot
 type GridCoordinate = PlotMath.GridCoordinate
+type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
 type PlotExpansionSnapshot = PlotExpansionTypes.PlotExpansionSnapshot
 
 type PreviewState = {
 	gridX: number,
 	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns,
 	isValid: boolean,
 }
 
@@ -50,6 +55,7 @@ local GRID_X_ATTRIBUTE = "GridX"
 local GRID_Z_ATTRIBUTE = "GridZ"
 local PLACEMENT_TOOLTIP_OWNER_ID = "Placement"
 local DESKTOP_PLACEMENT_TOOLTIP_TEXT = "Click to place"
+local DESKTOP_ROTATABLE_PLACEMENT_TOOLTIP_TEXT = "Click to place, press R to rotate"
 local MOBILE_PLACEMENT_TOOLTIP_TEXT = "Move and drag to position, tap to place"
 local GAMEPAD_PLACEMENT_TOOLTIP_TEXT = "Press right trigger to place"
 local MOBILE_MAX_PLACEMENT_DISTANCE_STUDS = 18
@@ -118,13 +124,17 @@ local function isGamepadPlacementInput(): boolean
 	return UserInputService.GamepadEnabled and not isMobilePlacementInput()
 end
 
-local function getPlacementTooltipText(): string
+local function getPlacementTooltipTextForItem(itemDefinition: ItemDefinition): string
 	if isMobilePlacementInput() then
 		return MOBILE_PLACEMENT_TOOLTIP_TEXT
 	end
 
 	if isGamepadPlacementInput() then
 		return GAMEPAD_PLACEMENT_TOOLTIP_TEXT
+	end
+
+	if ProgressionConfig.isTreeBuildingId(itemDefinition.id) or ProgressionConfig.isMillBuildingId(itemDefinition.id) then
+		return DESKTOP_ROTATABLE_PLACEMENT_TOOLTIP_TEXT
 	end
 
 	return DESKTOP_PLACEMENT_TOOLTIP_TEXT
@@ -228,6 +238,14 @@ local function isFootprintUnlocked(
 	)
 end
 
+local function isRotatablePlaceableItem(itemDefinition: ItemDefinition?): boolean
+	if itemDefinition == nil or itemDefinition.kind ~= "Placeable" then
+		return false
+	end
+
+	return ProgressionConfig.isTreeBuildingId(itemDefinition.id) or ProgressionConfig.isMillBuildingId(itemDefinition.id)
+end
+
 local PlacementController = {}
 
 function PlacementController.start()
@@ -244,8 +262,15 @@ function PlacementController.start()
 	local latestSnapshot = InventoryController.getLatestSnapshot()
 	local latestPlotExpansionSnapshot = plotExpansionRemotes.getPlotExpansionSnapshot:InvokeServer() :: PlotExpansionSnapshot
 	local currentPreviewState: PreviewState? = nil
+	local currentRotationQuarterTurns: PlacementRotationQuarterTurns = 0
+	local currentRotationItemId: ItemId? = nil
 
 	hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
+
+	local function resetRotationState()
+		currentRotationQuarterTurns = 0
+		currentRotationItemId = nil
+	end
 
 	InventoryController.observeSnapshotChanged(function(snapshot: InventorySnapshot)
 		latestSnapshot = snapshot
@@ -275,12 +300,16 @@ function PlacementController.start()
 			return false
 		end
 
-		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
-		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
 		local previewState = currentPreviewState
 		if previewState == nil or not previewState.isValid then
 			return false
 		end
+
+		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
+		local placementFootprint = PlotMath.getRotatedFootprint(
+			BuildingAssetUtils.getPlacementFootprint(buildingDefinition),
+			previewState.rotationQuarterTurns
+		)
 
 		local placementGrid = {
 			x = previewState.gridX,
@@ -291,7 +320,7 @@ function PlacementController.start()
 			return false
 		end
 
-		placementRemotes.requestPlacement:FireServer(placementGrid.x, placementGrid.z)
+		placementRemotes.requestPlacement:FireServer(placementGrid.x, placementGrid.z, previewState.rotationQuarterTurns)
 		return true
 	end
 
@@ -299,6 +328,7 @@ function PlacementController.start()
 		if StructureActionMode.getMode() ~= "None" then
 			previewView:hide()
 			currentPreviewState = nil
+			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
@@ -307,6 +337,7 @@ function PlacementController.start()
 		if snapshot == nil then
 			previewView:hide()
 			currentPreviewState = nil
+			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
@@ -315,13 +346,25 @@ function PlacementController.start()
 		if itemDefinition == nil then
 			previewView:hide()
 			currentPreviewState = nil
+			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
 			return
 		end
-		hudTooltip:show(getPlacementTooltipText(), false, PLACEMENT_TOOLTIP_OWNER_ID)
+		if isRotatablePlaceableItem(itemDefinition) then
+			if currentRotationItemId ~= itemDefinition.id then
+				currentRotationQuarterTurns = 0
+				currentRotationItemId = itemDefinition.id
+			end
+		else
+			resetRotationState()
+		end
+		hudTooltip:show(getPlacementTooltipTextForItem(itemDefinition), false, PLACEMENT_TOOLTIP_OWNER_ID)
 
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
-		local placementFootprint = BuildingAssetUtils.getPlacementFootprint(buildingDefinition)
+		local placementFootprint = PlotMath.getRotatedFootprint(
+			BuildingAssetUtils.getPlacementFootprint(buildingDefinition),
+			currentRotationQuarterTurns
+		)
 
 		local plot = getAssignedPlot()
 		local plotBase = if plot == nil then nil else PlotLocator.getPlacementBase(plot)
@@ -359,7 +402,14 @@ function PlacementController.start()
 			return
 		end
 
-		local placementCFrame = PlotMath.gridToWorldCFrame(plotBase.CFrame, plotBase.Size, placementFootprint, grid.x, grid.z)
+		local placementCFrame = PlotMath.gridToWorldCFrame(
+			plotBase.CFrame,
+			plotBase.Size,
+			placementFootprint,
+			grid.x,
+			grid.z,
+			currentRotationQuarterTurns
+		)
 		if placementCFrame == nil then
 			previewView:hide()
 			currentPreviewState = nil
@@ -372,6 +422,7 @@ function PlacementController.start()
 		currentPreviewState = {
 			gridX = grid.x,
 			gridZ = grid.z,
+			rotationQuarterTurns = currentRotationQuarterTurns,
 			isValid = isValid,
 		}
 	end)
@@ -386,6 +437,22 @@ function PlacementController.start()
 		end
 
 		if UserInputService:GetFocusedTextBox() ~= nil then
+			return
+		end
+
+		if inputObject.KeyCode == Enum.KeyCode.R then
+			local snapshot = latestSnapshot
+			if snapshot == nil then
+				return
+			end
+
+			local _, itemDefinition = getEquippedPlaceableItem(snapshot)
+			if not isRotatablePlaceableItem(itemDefinition) then
+				return
+			end
+
+			currentRotationQuarterTurns = PlotMath.normalizeRotationQuarterTurns(currentRotationQuarterTurns + 1)
+			currentRotationItemId = itemDefinition.id
 			return
 		end
 

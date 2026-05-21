@@ -31,6 +31,7 @@ export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
 export type UnlockedPlotTileData = PlotExpansionTypes.PlotTileCoordinate
 type BuildingId = BuildingTypes.BuildingId
+type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
@@ -80,6 +81,20 @@ local function sanitizeGridCoordinate(coordinate: number): number
 	end
 
 	return math.floor(coordinate)
+end
+
+local function sanitizePlacementRotationQuarterTurns(rotationQuarterTurns: number): PlacementRotationQuarterTurns
+	local sanitizedRotation = sanitizeGridCoordinate(rotationQuarterTurns)
+	local normalizedRotation = ((sanitizedRotation % 4) + 4) % 4
+	if normalizedRotation == 0 then
+		return 0
+	elseif normalizedRotation == 1 then
+		return 1
+	elseif normalizedRotation == 2 then
+		return 2
+	end
+
+	return 3
 end
 
 local function sanitizeDuration(duration: number): number
@@ -176,6 +191,7 @@ local function clonePlacedBuildings(placedBuildings: { PlacedBuildingData }): { 
 			buildingId = placedBuilding.buildingId,
 			gridX = sanitizeGridCoordinate(placedBuilding.gridX),
 			gridZ = sanitizeGridCoordinate(placedBuilding.gridZ),
+			rotationQuarterTurns = sanitizePlacementRotationQuarterTurns(placedBuilding.rotationQuarterTurns),
 			production = cloneSavedProductionState(placedBuilding.production),
 		})
 	end
@@ -183,6 +199,10 @@ local function clonePlacedBuildings(placedBuildings: { PlacedBuildingData }): { 
 	table.sort(clone, function(leftBuilding, rightBuilding)
 		if leftBuilding.gridX == rightBuilding.gridX then
 			if leftBuilding.gridZ == rightBuilding.gridZ then
+				if leftBuilding.buildingId == rightBuilding.buildingId then
+					return leftBuilding.rotationQuarterTurns < rightBuilding.rotationQuarterTurns
+				end
+
 				return leftBuilding.buildingId < rightBuilding.buildingId
 			end
 
@@ -245,6 +265,7 @@ local function arePlacedBuildingsEqual(leftBuildings: { PlacedBuildingData }, ri
 			or leftBuilding.buildingId ~= rightBuilding.buildingId
 			or sanitizeGridCoordinate(leftBuilding.gridX) ~= sanitizeGridCoordinate(rightBuilding.gridX)
 			or sanitizeGridCoordinate(leftBuilding.gridZ) ~= sanitizeGridCoordinate(rightBuilding.gridZ)
+			or sanitizePlacementRotationQuarterTurns(leftBuilding.rotationQuarterTurns) ~= sanitizePlacementRotationQuarterTurns(rightBuilding.rotationQuarterTurns)
 			or not areSavedProductionStatesEqual(leftBuilding.production, rightBuilding.production)
 		then
 			return false
@@ -661,12 +682,13 @@ function PlayerDataService.getPlacedBuildings(player: Player): { PlacedBuildingD
 	return clonePlacedBuildings(record.data.placedBuildings)
 end
 
-function PlayerDataService.addPlacedBuilding(player: Player, buildingId: BuildingId, gridX: number, gridZ: number)
+function PlayerDataService.addPlacedBuilding(player: Player, buildingId: BuildingId, gridX: number, gridZ: number, rotationQuarterTurns: number)
 	local record = loadPlayerData(player)
 	table.insert(record.data.placedBuildings, {
 		buildingId = buildingId,
 		gridX = sanitizeGridCoordinate(gridX),
 		gridZ = sanitizeGridCoordinate(gridZ),
+		rotationQuarterTurns = sanitizePlacementRotationQuarterTurns(rotationQuarterTurns),
 		production = nil,
 	})
 	markDirty(record)

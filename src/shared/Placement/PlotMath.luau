@@ -1,5 +1,11 @@
 --!strict
 
+local buildingsFolder = script.Parent.Parent:WaitForChild("Buildings") :: Folder
+
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+
+export type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
+
 export type GridCoordinate = {
 	x: number,
 	z: number,
@@ -11,6 +17,31 @@ local function getMaxCenterOffsets(plotSize: Vector3, footprint: Vector3): (numb
 	local maxOffsetX = math.floor((plotSize.X - footprint.X) * 0.5)
 	local maxOffsetZ = math.floor((plotSize.Z - footprint.Z) * 0.5)
 	return maxOffsetX, maxOffsetZ
+end
+
+function PlotMath.normalizeRotationQuarterTurns(rotationQuarterTurns: number): PlacementRotationQuarterTurns
+	local normalizedRotation = ((math.floor(rotationQuarterTurns) % 4) + 4) % 4
+
+	if normalizedRotation == 0 then
+		return 0
+	elseif normalizedRotation == 1 then
+		return 1
+	elseif normalizedRotation == 2 then
+		return 2
+	end
+
+	return 3
+end
+
+function PlotMath.getRotatedFootprint(
+	footprint: Vector3,
+	rotationQuarterTurns: PlacementRotationQuarterTurns
+): Vector3
+	if rotationQuarterTurns % 2 == 0 then
+		return footprint
+	end
+
+	return Vector3.new(footprint.Z, footprint.Y, footprint.X)
 end
 
 function PlotMath.isGridWithinPlot(plotSize: Vector3, footprint: Vector3, gridX: number, gridZ: number): boolean
@@ -41,14 +72,26 @@ function PlotMath.worldPositionToGrid(plotCFrame: CFrame, plotSize: Vector3, foo
 	}
 end
 
-function PlotMath.gridToWorldCFrame(plotCFrame: CFrame, plotSize: Vector3, footprint: Vector3, gridX: number, gridZ: number): CFrame?
+function PlotMath.gridToWorldCFrame(
+	plotCFrame: CFrame,
+	plotSize: Vector3,
+	footprint: Vector3,
+	gridX: number,
+	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns?
+): CFrame?
 	if not PlotMath.isGridWithinPlot(plotSize, footprint, gridX, gridZ) then
 		return nil
 	end
 
 	local localY = (plotSize.Y * 0.5) + (footprint.Y * 0.5)
+	local placementCFrame = plotCFrame * CFrame.new(gridX, localY, gridZ)
+	local normalizedRotation = if rotationQuarterTurns == nil then 0 else PlotMath.normalizeRotationQuarterTurns(rotationQuarterTurns)
+	if normalizedRotation == 0 then
+		return placementCFrame
+	end
 
-	return plotCFrame * CFrame.new(gridX, localY, gridZ)
+	return placementCFrame * CFrame.Angles(0, math.rad(90 * normalizedRotation), 0)
 end
 
 function PlotMath.doFootprintsOverlap(

@@ -26,6 +26,7 @@ local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: M
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 
 type BuildingId = BuildingTypes.BuildingId
+type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
 type InventoryEntry = InventoryTypes.InventoryEntry
 type ItemId = InventoryTypes.ItemId
 type ProductionState = BuildingTypes.ProductionState
@@ -50,6 +51,7 @@ export type PlacedBuildingData = {
 	buildingId: BuildingId,
 	gridX: number,
 	gridZ: number,
+	rotationQuarterTurns: PlacementRotationQuarterTurns,
 	production: SavedProductionState?,
 }
 
@@ -119,6 +121,24 @@ local function sanitizeGridCoordinate(value: unknown): number?
 	end
 
 	return value
+end
+
+local function sanitizePlacementRotationQuarterTurns(value: unknown): PlacementRotationQuarterTurns?
+	local gridCoordinate = sanitizeGridCoordinate(value)
+	if gridCoordinate == nil then
+		return nil
+	end
+
+	local normalizedRotation = ((gridCoordinate % 4) + 4) % 4
+	if normalizedRotation == 0 then
+		return 0
+	elseif normalizedRotation == 1 then
+		return 1
+	elseif normalizedRotation == 2 then
+		return 2
+	end
+
+	return 3
 end
 
 local function sanitizeDuration(value: unknown): number
@@ -443,12 +463,14 @@ local function sanitizePlacedBuildings(rawPlacedBuildings: unknown): { PlacedBui
 			local buildingId = sanitizeBuildingId(rawPlacedBuildingValues.buildingId)
 			local gridX = sanitizeGridCoordinate(rawPlacedBuildingValues.gridX)
 			local gridZ = sanitizeGridCoordinate(rawPlacedBuildingValues.gridZ)
+			local rotationQuarterTurns = sanitizePlacementRotationQuarterTurns(rawPlacedBuildingValues.rotationQuarterTurns) or 0
 
 			if buildingId ~= nil and gridX ~= nil and gridZ ~= nil then
 				table.insert(placedBuildings, {
 					buildingId = buildingId,
 					gridX = gridX,
 					gridZ = gridZ,
+					rotationQuarterTurns = rotationQuarterTurns,
 					production = sanitizeSavedProductionState(rawPlacedBuildingValues.production),
 				})
 			end
@@ -607,6 +629,7 @@ local function cloneData(data: PlayerData): PlayerData
 			buildingId = placedBuilding.buildingId,
 			gridX = placedBuilding.gridX,
 			gridZ = placedBuilding.gridZ,
+			rotationQuarterTurns = sanitizePlacementRotationQuarterTurns(placedBuilding.rotationQuarterTurns) or 0,
 			production = cloneSavedProductionState(placedBuilding.production),
 		})
 	end
