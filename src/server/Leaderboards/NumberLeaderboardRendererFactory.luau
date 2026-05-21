@@ -3,9 +3,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local leaderboardsFolder = sharedFolder:WaitForChild("Leaderboards") :: Folder
 
 local LeaderboardTypes = require(leaderboardsFolder:WaitForChild("LeaderboardTypes") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local LeaderboardTemplateRenderer = require(script.Parent.LeaderboardTemplateRenderer)
 
 type NumberLeaderboardEntry = LeaderboardTypes.NumberLeaderboardEntry
@@ -23,28 +25,6 @@ export type NumberLeaderboardConfig = {
 export type NumberLeaderboardRenderer = {
 	render: (self: NumberLeaderboardRenderer, entries: { NumberLeaderboardEntry }, updatedAtUnix: number) -> (),
 }
-
-local function formatCompactNumber(value: number): string
-	local sanitizedValue = math.max(0, math.floor(value))
-	local suffixes = {
-		{ value = 1000000000, suffix = "B" },
-		{ value = 1000000, suffix = "M" },
-		{ value = 1000, suffix = "K" },
-	}
-
-	for _, suffixInfo in ipairs(suffixes) do
-		if sanitizedValue >= suffixInfo.value then
-			local compactValue = sanitizedValue / suffixInfo.value
-			if compactValue >= 100 then
-				return string.format("%d%s", math.floor(compactValue), suffixInfo.suffix)
-			end
-
-			return string.format("%.1f%s", compactValue, suffixInfo.suffix)
-		end
-	end
-
-	return tostring(sanitizedValue)
-end
 
 local Renderer = {}
 Renderer.__index = Renderer
@@ -66,7 +46,10 @@ local function buildTemplateEntries(entries: { NumberLeaderboardEntry }, scorePr
 		table.insert(templateEntries, {
 			userId = entry.userId,
 			playerName = entry.playerName,
-			scoreText = scorePrefix .. formatCompactNumber(entry.value),
+			scoreText = scorePrefix .. NumberFormatter.formatAbbreviated(entry.value, {
+				decimalPlaces = 1,
+				trimTrailingZeros = true,
+			}),
 		})
 	end
 

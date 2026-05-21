@@ -3,37 +3,17 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local leaderboardsFolder = sharedFolder:WaitForChild("Leaderboards") :: Folder
 
 local CashLeaderboardConfig = require(leaderboardsFolder:WaitForChild("CashLeaderboardConfig") :: ModuleScript)
 local LeaderboardTypes = require(leaderboardsFolder:WaitForChild("LeaderboardTypes") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local LeaderboardTemplateRenderer = require(script.Parent.LeaderboardTemplateRenderer)
 
 type CashLeaderboardEntry = LeaderboardTypes.CashLeaderboardEntry
 type TemplateLeaderboardEntry = LeaderboardTemplateRenderer.TemplateLeaderboardEntry
 type TemplateLeaderboardRenderConfig = LeaderboardTemplateRenderer.TemplateLeaderboardRenderConfig
-
-local function formatCash(cash: number): string
-	local sanitizedCash = math.max(0, math.floor(cash))
-	local suffixes = {
-		{ value = 1000000000, suffix = "B" },
-		{ value = 1000000, suffix = "M" },
-		{ value = 1000, suffix = "K" },
-	}
-
-	for _, suffixInfo in ipairs(suffixes) do
-		if sanitizedCash >= suffixInfo.value then
-			local compactValue = sanitizedCash / suffixInfo.value
-			if compactValue >= 100 then
-				return string.format("$%d%s", math.floor(compactValue), suffixInfo.suffix)
-			end
-
-			return string.format("$%.1f%s", compactValue, suffixInfo.suffix)
-		end
-	end
-
-	return string.format("$%d", sanitizedCash)
-end
 
 local function buildRenderConfig(): TemplateLeaderboardRenderConfig
 	return {
@@ -52,7 +32,10 @@ local function buildTemplateEntries(entries: { CashLeaderboardEntry }): { Templa
 		table.insert(templateEntries, {
 			userId = entry.userId,
 			playerName = entry.playerName,
-			scoreText = formatCash(entry.cash),
+			scoreText = "$" .. NumberFormatter.formatAbbreviated(entry.cash, {
+				decimalPlaces = 1,
+				trimTrailingZeros = true,
+			}),
 		})
 	end
 

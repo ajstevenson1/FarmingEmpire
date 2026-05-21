@@ -81,8 +81,8 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "FarmingEmpire_PlayerData_DEV2"
-local CURRENT_SCHEMA_VERSION = 12
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV1"
+local CURRENT_SCHEMA_VERSION = 1
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
