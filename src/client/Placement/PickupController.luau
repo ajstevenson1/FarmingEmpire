@@ -221,11 +221,11 @@ local function getPickupAllButton(): TextButton
 	local hud = rootGui:WaitForChild("HUD")
 	assert(hud:IsA("Frame"), "GUI.HUD must be a Frame")
 
-	local bottomRightFrame = hud:WaitForChild("BottomRight")
-	assert(bottomRightFrame:IsA("Frame"), "GUI.HUD.BottomRight must be a Frame")
+	local rightFrame = hud:WaitForChild("Right")
+	assert(rightFrame:IsA("Frame"), "GUI.HUD.Right must be a Frame")
 
-	local button = bottomRightFrame:WaitForChild("PickupAll")
-	assert(button:IsA("TextButton"), "GUI.HUD.BottomRight.PickupAll must be a TextButton")
+	local button = rightFrame:WaitForChild("PickupAll")
+	assert(button:IsA("TextButton"), "GUI.HUD.Right.PickupAll must be a TextButton")
 	button.Visible = isPickupModeEnabled()
 	return button
 end

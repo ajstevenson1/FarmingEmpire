@@ -38,25 +38,25 @@ end
 local function findStroke(button: TextButton): UIStroke
 	local designFrame = button:FindFirstChild("Design")
 	if designFrame ~= nil then
-		assert(designFrame:IsA("GuiObject"), "GUI.HUD.BottomRight.AutoScythe.Design must be a GuiObject")
+		assert(designFrame:IsA("GuiObject"), "GUI.HUD.Right.AutoScythe.Design must be a GuiObject")
 
 		local designStroke = designFrame:FindFirstChild("Stroke")
-		assert(designStroke ~= nil, "GUI.HUD.BottomRight.AutoScythe.Design must contain a Stroke child")
-		assert(designStroke:IsA("UIStroke"), "GUI.HUD.BottomRight.AutoScythe.Design.Stroke must be a UIStroke")
+		assert(designStroke ~= nil, "GUI.HUD.Right.AutoScythe.Design must contain a Stroke child")
+		assert(designStroke:IsA("UIStroke"), "GUI.HUD.Right.AutoScythe.Design.Stroke must be a UIStroke")
 		return designStroke
 	end
 
 	local directStroke = button:FindFirstChildWhichIsA("UIStroke")
-	assert(directStroke ~= nil, "GUI.HUD.BottomRight.AutoScythe must contain a UIStroke")
+	assert(directStroke ~= nil, "GUI.HUD.Right.AutoScythe must contain a UIStroke")
 	return directStroke
 end
 
 local function getAutoScytheButton(hud: GuiObject): (TextButton, UIStroke)
-	local bottomRight = hud:WaitForChild("BottomRight")
-	assert(bottomRight:IsA("GuiObject"), "GUI.HUD.BottomRight must be a GuiObject")
+	local rightFrame = hud:WaitForChild("Right")
+	assert(rightFrame:IsA("GuiObject"), "GUI.HUD.Right must be a GuiObject")
 
-	local button = bottomRight:WaitForChild("AutoScythe")
-	assert(button:IsA("TextButton"), "GUI.HUD.BottomRight.AutoScythe must be a TextButton")
+	local button = rightFrame:WaitForChild("AutoScythe")
+	assert(button:IsA("TextButton"), "GUI.HUD.Right.AutoScythe must be a TextButton")
 
 	return button, findStroke(button)
 end

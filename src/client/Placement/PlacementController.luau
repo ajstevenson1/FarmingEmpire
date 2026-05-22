@@ -83,6 +83,23 @@ local function getPlacementRemotes(): PlacementRemotes
 	}
 end
 
+local function getMobileRotateButton(): GuiButton
+	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
+	local rootGui = playerGui:WaitForChild("GUI")
+	assert(rootGui:IsA("ScreenGui"), "PlayerGui.GUI must be a ScreenGui")
+
+	local hud = rootGui:WaitForChild("HUD")
+	assert(hud:IsA("Frame"), "GUI.HUD must be a Frame")
+
+	local rightFrame = hud:WaitForChild("Right")
+	assert(rightFrame:IsA("Frame"), "GUI.HUD.Right must be a Frame")
+
+	local button = rightFrame:WaitForChild("Rotate")
+	assert(button:IsA("GuiButton"), "GUI.HUD.Right.Rotate must be an ImageButton or TextButton")
+
+	return button
+end
+
 local function getPlotExpansionRemotes(): PlotExpansionRemotes
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local plotExpansionRemotesFolder = rootFolder:WaitForChild(RemoteNames.plotExpansionFolderName) :: Folder
@@ -259,6 +276,7 @@ function PlacementController.start()
 	local placementRemotes = getPlacementRemotes()
 	local plotExpansionRemotes = getPlotExpansionRemotes()
 	local hudTooltip = HudTooltip.get()
+	local mobileRotateButton = getMobileRotateButton()
 	local latestSnapshot = InventoryController.getLatestSnapshot()
 	local latestPlotExpansionSnapshot = plotExpansionRemotes.getPlotExpansionSnapshot:InvokeServer() :: PlotExpansionSnapshot
 	local currentPreviewState: PreviewState? = nil
@@ -266,10 +284,35 @@ function PlacementController.start()
 	local currentRotationItemId: ItemId? = nil
 
 	hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
+	mobileRotateButton.Visible = false
 
 	local function resetRotationState()
 		currentRotationQuarterTurns = 0
 		currentRotationItemId = nil
+	end
+
+	local function rotateCurrentPlaceable(): boolean
+		if StructureActionMode.getMode() ~= "None" then
+			return false
+		end
+
+		if UserInputService:GetFocusedTextBox() ~= nil then
+			return false
+		end
+
+		local snapshot = latestSnapshot
+		if snapshot == nil then
+			return false
+		end
+
+		local _, itemDefinition = getEquippedPlaceableItem(snapshot)
+		if not isRotatablePlaceableItem(itemDefinition) then
+			return false
+		end
+
+		currentRotationQuarterTurns = PlotMath.normalizeRotationQuarterTurns(currentRotationQuarterTurns + 1)
+		currentRotationItemId = itemDefinition.id
+		return true
 	end
 
 	InventoryController.observeSnapshotChanged(function(snapshot: InventorySnapshot)
@@ -330,6 +373,7 @@ function PlacementController.start()
 			currentPreviewState = nil
 			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
+			mobileRotateButton.Visible = false
 			return
 		end
 
@@ -339,6 +383,7 @@ function PlacementController.start()
 			currentPreviewState = nil
 			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
+			mobileRotateButton.Visible = false
 			return
 		end
 
@@ -348,6 +393,7 @@ function PlacementController.start()
 			currentPreviewState = nil
 			resetRotationState()
 			hudTooltip:hide(PLACEMENT_TOOLTIP_OWNER_ID)
+			mobileRotateButton.Visible = false
 			return
 		end
 		if isRotatablePlaceableItem(itemDefinition) then
@@ -358,6 +404,7 @@ function PlacementController.start()
 		else
 			resetRotationState()
 		end
+		mobileRotateButton.Visible = isMobilePlacementInput() and isRotatablePlaceableItem(itemDefinition)
 		hudTooltip:show(getPlacementTooltipTextForItem(itemDefinition), false, PLACEMENT_TOOLTIP_OWNER_ID)
 
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
@@ -441,18 +488,7 @@ function PlacementController.start()
 		end
 
 		if inputObject.KeyCode == Enum.KeyCode.R then
-			local snapshot = latestSnapshot
-			if snapshot == nil then
-				return
-			end
-
-			local _, itemDefinition = getEquippedPlaceableItem(snapshot)
-			if not isRotatablePlaceableItem(itemDefinition) then
-				return
-			end
-
-			currentRotationQuarterTurns = PlotMath.normalizeRotationQuarterTurns(currentRotationQuarterTurns + 1)
-			currentRotationItemId = itemDefinition.id
+			rotateCurrentPlaceable()
 			return
 		end
 
@@ -462,6 +498,10 @@ function PlacementController.start()
 		end
 
 		requestCurrentPlacement()
+	end)
+
+	mobileRotateButton.Activated:Connect(function()
+		rotateCurrentPlaceable()
 	end)
 
 	UserInputService.TouchTap:Connect(function(_touchPositions: { Vector2 }, gameProcessedEvent: boolean)
