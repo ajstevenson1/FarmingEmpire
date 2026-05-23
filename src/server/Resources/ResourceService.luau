@@ -13,6 +13,7 @@ local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
 type ResourceId = ResourceTypes.ResourceId
 type ResourceSnapshot = ResourceTypes.ResourceSnapshot
+type ResourceUpdateContext = ResourceTypes.ResourceUpdateContext
 type ResourceAddedListener = (Player, ResourceId, number) -> ()
 
 local hasStarted = false
@@ -33,9 +34,9 @@ local function buildSnapshot(player: Player): ResourceSnapshot
 	}
 end
 
-local function pushResourceUpdate(player: Player)
+local function pushResourceUpdate(player: Player, context: ResourceUpdateContext?)
 	local resourceRemotes = Remotes.getResourceRemotes()
-	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(player))
+	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(player), context)
 end
 
 local function notifyResourceAdded(player: Player, resourceId: ResourceId, amount: number)
@@ -52,7 +53,7 @@ end
 
 local function initializePlayer(player: Player)
 	PlayerDataService.waitForData(player)
-	pushResourceUpdate(player)
+	pushResourceUpdate(player, nil)
 end
 
 local ResourceService = {}
@@ -91,18 +92,27 @@ function ResourceService.tryConsumeResource(player: Player, resourceId: Resource
 	end
 
 	PlayerDataService.setResourceAmount(player, resourceId, currentAmount - amount)
-	pushResourceUpdate(player)
+	pushResourceUpdate(player, nil)
 	return true
 end
 
-function ResourceService.addResource(player: Player, resourceId: ResourceId, amount: number)
+function ResourceService.addResourceWithContext(
+	player: Player,
+	resourceId: ResourceId,
+	amount: number,
+	context: ResourceUpdateContext?
+)
 	if amount <= 0 then
 		return
 	end
 
 	PlayerDataService.setResourceAmount(player, resourceId, PlayerDataService.getResourceAmount(player, resourceId) + amount)
-	pushResourceUpdate(player)
+	pushResourceUpdate(player, context)
 	notifyResourceAdded(player, resourceId, amount)
+end
+
+function ResourceService.addResource(player: Player, resourceId: ResourceId, amount: number)
+	ResourceService.addResourceWithContext(player, resourceId, amount, nil)
 end
 
 function ResourceService.observeResourceAdded(listener: ResourceAddedListener)

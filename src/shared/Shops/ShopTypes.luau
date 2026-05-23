@@ -27,6 +27,8 @@ export type ShopProductDefinition = {
 	id: ShopProductId,
 	shopId: ShopId,
 	itemId: ItemId,
+	imageAssetId: string,
+	developerProductId: string,
 	price: number,
 	quantityPerPurchase: number,
 	stockPerRestock: number,

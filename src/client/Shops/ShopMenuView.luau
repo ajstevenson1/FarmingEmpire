@@ -1,5 +1,6 @@
 --!strict
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -10,6 +11,7 @@ local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 
+type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
 
@@ -20,47 +22,42 @@ export type RenderProduct = {
 	canAfford: boolean,
 }
 
-type Widgets = {
-	rootGui: ScreenGui,
+type ShopWidgets = {
 	frame: Frame,
-	headerFrame: Frame,
-	titleLabel: TextLabel,
+	template: GuiObject,
+	scrollingFrame: ScrollingFrame,
 	timerLabel: TextLabel,
-	cashLabel: TextLabel,
-	productList: ScrollingFrame,
-	statusLabel: TextLabel,
-	closeButton: TextButton,
+	closeButton: GuiButton,
 }
 
 export type ShopMenuView = {
-	_widgets: Widgets,
+	_widgetsByShopId: { [ShopId]: ShopWidgets },
 	_purchaseCallbacks: { (ShopProductId) -> () },
-	_rowFrames: { Frame },
-	getFrame: (self: ShopMenuView) -> Frame,
-	render: (
-		self: ShopMenuView,
-		shopName: string,
-		secondsUntilRestock: number,
-		cash: number,
-		products: { RenderProduct },
-		statusText: string?
-	) -> (),
-	connectCloseRequested: (self: ShopMenuView, listener: () -> ()) -> RBXScriptConnection,
+	_closeCallbacks: { (ShopId) -> () },
+	_rowFramesByShopId: { [ShopId]: { GuiObject } },
+	_robuxPriceTextByDeveloperProductId: { [string]: string },
+	_pendingRobuxPriceFetchByDeveloperProductId: { [string]: boolean },
+	getFrame: (self: ShopMenuView, shopId: ShopId) -> Frame,
+	render: (self: ShopMenuView, shopId: ShopId, secondsUntilRestock: number, products: { RenderProduct }) -> (),
+	connectCloseRequested: (self: ShopMenuView, listener: (ShopId) -> ()) -> (),
 	connectPurchaseRequested: (self: ShopMenuView, listener: (ShopProductId) -> ()) -> (),
 	destroy: (self: ShopMenuView) -> (),
 }
 
-local FRAME_SIZE = UDim2.fromOffset(560, 430)
-local PANEL_COLOR = Color3.fromRGB(32, 28, 22)
-local ROW_COLOR = Color3.fromRGB(44, 38, 30)
-local ROW_MUTED_COLOR = Color3.fromRGB(38, 34, 29)
-local PANEL_STROKE_COLOR = Color3.fromRGB(158, 126, 69)
-local TEXT_COLOR = Color3.fromRGB(250, 244, 232)
-local MUTED_TEXT_COLOR = Color3.fromRGB(219, 205, 180)
-local BUTTON_COLOR = Color3.fromRGB(176, 113, 51)
-local BUTTON_DISABLED_COLOR = Color3.fromRGB(92, 80, 68)
-local SUCCESS_COLOR = Color3.fromRGB(136, 218, 135)
-local WARNING_COLOR = Color3.fromRGB(237, 177, 93)
+local SHOP_FRAME_NAMES: { [ShopId]: string } = {
+	TreesShop = "TreesShop",
+	MillsShop = "MillsShop",
+}
+
+local TEMPLATE_NAMES: { [ShopId]: string } = {
+	TreesShop = "TreesTemplate",
+	MillsShop = "MillsTemplate",
+}
+
+local PRODUCT_IMAGE_PREFIX = "rbxassetid://"
+local PRODUCT_THUMBNAIL_PREFIX = "rbxthumb://"
+local ROBUX_PRICE_UNAVAILABLE_TEXT = "N/A"
+local ROBUX_PRICE_LOADING_TEXT = "..."
 
 local ShopMenuView = {}
 ShopMenuView.__index = ShopMenuView
@@ -75,13 +72,63 @@ local function getRootGui(): ScreenGui
 	return rootGui
 end
 
-local function getFrameParent(rootGui: ScreenGui): Instance
-	local frames = rootGui:WaitForChild("Frames", 10)
-	if frames ~= nil and frames:IsA("GuiObject") then
-		return frames
+local function getFramesFolder(rootGui: ScreenGui): Instance
+	local frames = rootGui:WaitForChild("Frames")
+	assert(frames:IsA("GuiObject") or frames:IsA("Folder"), "PlayerGui.GUI.Frames must be a GuiObject or Folder")
+	return frames
+end
+
+local function getTemplatesFolder(): Folder
+	local templatesFolder = ReplicatedStorage:WaitForChild("Templates")
+	assert(templatesFolder:IsA("Folder"), "ReplicatedStorage.Templates must be a Folder")
+	return templatesFolder
+end
+
+local function findRequiredChild(parent: Instance, childName: string): Instance
+	local child = parent:FindFirstChild(childName)
+	assert(child ~= nil, string.format("%s.%s is required", parent:GetFullName(), childName))
+	return child
+end
+
+local function findRequiredDescendant(parent: Instance, descendantName: string): Instance
+	local descendant = parent:FindFirstChild(descendantName, true)
+	assert(descendant ~= nil, string.format("%s must contain %s", parent:GetFullName(), descendantName))
+	return descendant
+end
+
+local function findTextLabel(parent: Instance, name: string): TextLabel?
+	local child = parent:FindFirstChild(name, true)
+	if child ~= nil and child:IsA("TextLabel") then
+		return child
 	end
 
-	return rootGui
+	return nil
+end
+
+local function setText(instance: Instance, text: string)
+	if instance:IsA("TextLabel") then
+		instance.Text = text
+	elseif instance:IsA("TextButton") then
+		instance.Text = text
+	end
+end
+
+local function setRequiredNamedText(parent: Instance, name: string, text: string)
+	setText(findRequiredDescendant(parent, name), text)
+end
+
+local function setButtonText(button: GuiButton, text: string)
+	local mainText = findTextLabel(button, "Text")
+	if mainText ~= nil then
+		mainText.Text = text
+	else
+		setText(button, text)
+	end
+
+	local tripleText = findTextLabel(button, "TripleText")
+	if tripleText ~= nil then
+		tripleText.Text = text
+	end
 end
 
 local function formatCash(cash: number): string
@@ -91,253 +138,213 @@ local function formatCash(cash: number): string
 	})
 end
 
-local function createLabel(parent: Instance, name: string, textSize: number, font: Enum.Font): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.BackgroundTransparency = 1
-	label.Font = font
-	label.Text = ""
-	label.TextColor3 = TEXT_COLOR
-	label.TextSize = textSize
-	label.TextWrapped = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = parent
-	return label
+local function formatStock(stockRemaining: number): string
+	return string.format("Stock: %d", math.max(0, math.floor(stockRemaining)))
 end
 
-local function applyCorner(parent: GuiObject, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
+local function getImageAssetText(imageAssetId: string): string
+	if imageAssetId == "" then
+		return ""
+	end
+
+	if string.sub(imageAssetId, 1, #PRODUCT_IMAGE_PREFIX) == PRODUCT_IMAGE_PREFIX then
+		return imageAssetId
+	end
+
+	if string.sub(imageAssetId, 1, #PRODUCT_THUMBNAIL_PREFIX) == PRODUCT_THUMBNAIL_PREFIX then
+		return imageAssetId
+	end
+
+	return string.format("rbxthumb://type=Asset&id=%s&w=420&h=420", imageAssetId)
 end
 
-local function applyStroke(parent: GuiObject, color: Color3, transparency: number)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
-	stroke.Thickness = 1
-	stroke.Transparency = transparency
-	stroke.Parent = parent
+local function getDeveloperProductPriceText(developerProductId: string, priceCache: { [string]: string }): string
+	if developerProductId == "" then
+		return ROBUX_PRICE_UNAVAILABLE_TEXT
+	end
+
+	return priceCache[developerProductId] or ROBUX_PRICE_LOADING_TEXT
 end
 
-local function createWidgets(): Widgets
-	local rootGui = getRootGui()
-	local frameParent = getFrameParent(rootGui)
+local function createShopWidgets(framesFolder: Instance, templatesFolder: Folder, shopId: ShopId): ShopWidgets
+	local frame = findRequiredChild(framesFolder, SHOP_FRAME_NAMES[shopId])
+	assert(frame:IsA("Frame"), string.format("%s must be a Frame", frame:GetFullName()))
 
-	local frame = Instance.new("Frame")
-	frame.Name = "ShopMenu"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = FRAME_SIZE
-	frame.BackgroundColor3 = PANEL_COLOR
-	frame.BorderSizePixel = 0
-	frame.Visible = false
-	frame.Parent = frameParent
-	applyCorner(frame, 8)
-	applyStroke(frame, PANEL_STROKE_COLOR, 0.12)
+	local template = findRequiredChild(templatesFolder, TEMPLATE_NAMES[shopId])
+	assert(template:IsA("GuiObject"), string.format("%s must be a GuiObject", template:GetFullName()))
+	template.Visible = false
 
-	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 16)
-	padding.PaddingBottom = UDim.new(0, 16)
-	padding.PaddingLeft = UDim.new(0, 18)
-	padding.PaddingRight = UDim.new(0, 18)
-	padding.Parent = frame
+	local design = findRequiredChild(frame, "Design")
+	local timerLabel = findRequiredChild(design, "Timer")
+	assert(timerLabel:IsA("TextLabel"), string.format("%s must be a TextLabel", timerLabel:GetFullName()))
 
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.Padding = UDim.new(0, 12)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = frame
+	local scrollingFrame = findRequiredChild(frame, "ScrollingFrame")
+	assert(scrollingFrame:IsA("ScrollingFrame"), string.format("%s must be a ScrollingFrame", scrollingFrame:GetFullName()))
 
-	local headerFrame = Instance.new("Frame")
-	headerFrame.Name = "Header"
-	headerFrame.BackgroundTransparency = 1
-	headerFrame.LayoutOrder = 0
-	headerFrame.Size = UDim2.new(1, 0, 0, 54)
-	headerFrame.Parent = frame
-
-	local titleLabel = createLabel(headerFrame, "TitleLabel", 24, Enum.Font.GothamBold)
-	titleLabel.Position = UDim2.fromOffset(0, 0)
-	titleLabel.Size = UDim2.new(1, -160, 0, 30)
-
-	local timerLabel = createLabel(headerFrame, "TimerLabel", 15, Enum.Font.GothamMedium)
-	timerLabel.Position = UDim2.fromOffset(0, 31)
-	timerLabel.Size = UDim2.new(1, -160, 0, 22)
-	timerLabel.TextColor3 = MUTED_TEXT_COLOR
-
-	local cashLabel = createLabel(headerFrame, "CashLabel", 18, Enum.Font.GothamBold)
-	cashLabel.AnchorPoint = Vector2.new(1, 0)
-	cashLabel.Position = UDim2.new(1, 0, 0, 5)
-	cashLabel.Size = UDim2.fromOffset(150, 26)
-	cashLabel.TextXAlignment = Enum.TextXAlignment.Right
-
-	local productList = Instance.new("ScrollingFrame")
-	productList.Name = "ProductList"
-	productList.LayoutOrder = 1
-	productList.Size = UDim2.new(1, 0, 0, 246)
-	productList.BackgroundTransparency = 1
-	productList.BorderSizePixel = 0
-	productList.ScrollBarThickness = 5
-	productList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	productList.CanvasSize = UDim2.fromOffset(0, 0)
-	productList.Parent = frame
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.FillDirection = Enum.FillDirection.Vertical
-	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	listLayout.Padding = UDim.new(0, 8)
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Parent = productList
-
-	local statusLabel = createLabel(frame, "StatusLabel", 14, Enum.Font.GothamMedium)
-	statusLabel.LayoutOrder = 2
-	statusLabel.Size = UDim2.new(1, 0, 0, 20)
-	statusLabel.TextColor3 = MUTED_TEXT_COLOR
-
-	local closeButton = Instance.new("TextButton")
-	closeButton.Name = "CloseButton"
-	closeButton.LayoutOrder = 3
-	closeButton.Size = UDim2.new(1, 0, 0, 42)
-	closeButton.BackgroundColor3 = BUTTON_COLOR
-	closeButton.BorderSizePixel = 0
-	closeButton.Font = Enum.Font.GothamBold
-	closeButton.Text = "Close"
-	closeButton.TextColor3 = TEXT_COLOR
-	closeButton.TextSize = 18
-	closeButton.Parent = frame
-	applyCorner(closeButton, 8)
+	local closeButton = findRequiredChild(frame, "Close")
+	assert(closeButton:IsA("GuiButton"), string.format("%s must be a GuiButton", closeButton:GetFullName()))
 
 	return {
-		rootGui = rootGui,
 		frame = frame,
-		headerFrame = headerFrame,
-		titleLabel = titleLabel,
+		template = template,
+		scrollingFrame = scrollingFrame,
 		timerLabel = timerLabel,
-		cashLabel = cashLabel,
-		productList = productList,
-		statusLabel = statusLabel,
 		closeButton = closeButton,
 	}
 end
 
-local function createRow(parent: Instance, renderProduct: RenderProduct, callbacks: { (ShopProductId) -> () }): Frame
+local function fetchDeveloperProductPriceAsync(self: ShopMenuView, developerProductId: string)
+	if developerProductId == "" then
+		return
+	end
+
+	if self._robuxPriceTextByDeveloperProductId[developerProductId] ~= nil then
+		return
+	end
+
+	if self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] == true then
+		return
+	end
+
+	local productId = tonumber(developerProductId)
+	if productId == nil then
+		self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
+		return
+	end
+
+	self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] = true
+	task.spawn(function()
+		local success, productInfo = pcall(function()
+			return MarketplaceService:GetProductInfo(productId, Enum.InfoType.Product)
+		end)
+
+		self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] = nil
+		if not success or type(productInfo) ~= "table" then
+			self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
+			return
+		end
+
+		local productInfoTable = productInfo :: { [string]: unknown }
+		local priceInRobux = productInfoTable.PriceInRobux
+		if type(priceInRobux) ~= "number" then
+			self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
+			return
+		end
+
+		self._robuxPriceTextByDeveloperProductId[developerProductId] = NumberFormatter.formatFull(priceInRobux)
+	end)
+end
+
+local function createProductRow(
+	self: ShopMenuView,
+	shopWidgets: ShopWidgets,
+	renderProduct: RenderProduct
+): GuiObject
 	local productDefinition = renderProduct.productDefinition
+	local row = shopWidgets.template:Clone()
+	row.Name = productDefinition.id
+	row.LayoutOrder = productDefinition.sortOrder
+	row.Visible = true
+	row.Parent = shopWidgets.scrollingFrame
+
+	local itemImage = findRequiredDescendant(row, "ItemImage")
+	if itemImage:IsA("ImageLabel") then
+		itemImage.Image = getImageAssetText(productDefinition.imageAssetId)
+	elseif itemImage:IsA("ImageButton") then
+		itemImage.Image = getImageAssetText(productDefinition.imageAssetId)
+	else
+		error(string.format("%s must be an ImageLabel or ImageButton", itemImage:GetFullName()))
+	end
+
+	setRequiredNamedText(row, "ItemName", renderProduct.displayName)
+	setRequiredNamedText(row, "ItemStock", formatStock(renderProduct.stockRemaining))
+	setRequiredNamedText(row, "ItemPrice", formatCash(productDefinition.price))
+
+	local buyButton = findRequiredDescendant(row, "BuyButton")
+	assert(buyButton:IsA("GuiButton"), string.format("%s must be a GuiButton", buyButton:GetFullName()))
+
 	local isInStock = renderProduct.stockRemaining > 0
 	local canBuy = isInStock and renderProduct.canAfford
-
-	local row = Instance.new("Frame")
-	row.Name = productDefinition.id
-	row.BackgroundColor3 = if canBuy then ROW_COLOR else ROW_MUTED_COLOR
-	row.BorderSizePixel = 0
-	row.Size = UDim2.new(1, -8, 0, 82)
-	row.Parent = parent
-	applyCorner(row, 8)
-	applyStroke(row, PANEL_STROKE_COLOR, 0.7)
-
-	local rowPadding = Instance.new("UIPadding")
-	rowPadding.PaddingTop = UDim.new(0, 10)
-	rowPadding.PaddingBottom = UDim.new(0, 10)
-	rowPadding.PaddingLeft = UDim.new(0, 12)
-	rowPadding.PaddingRight = UDim.new(0, 12)
-	rowPadding.Parent = row
-
-	local nameLabel = createLabel(row, "NameLabel", 17, Enum.Font.GothamBold)
-	nameLabel.Position = UDim2.fromOffset(0, 0)
-	nameLabel.Size = UDim2.new(1, -132, 0, 22)
-	nameLabel.Text = renderProduct.displayName
-
-	local descriptionLabel = createLabel(row, "DescriptionLabel", 13, Enum.Font.GothamMedium)
-	descriptionLabel.Position = UDim2.fromOffset(0, 25)
-	descriptionLabel.Size = UDim2.new(1, -132, 0, 36)
-	descriptionLabel.Text = productDefinition.description
-	descriptionLabel.TextColor3 = MUTED_TEXT_COLOR
-	descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
-
-	local stockLabel = createLabel(row, "StockLabel", 13, Enum.Font.GothamBold)
-	stockLabel.AnchorPoint = Vector2.new(1, 0)
-	stockLabel.Position = UDim2.new(1, 0, 0, 0)
-	stockLabel.Size = UDim2.fromOffset(120, 20)
-	stockLabel.TextXAlignment = Enum.TextXAlignment.Right
-	stockLabel.TextColor3 = if isInStock then MUTED_TEXT_COLOR else WARNING_COLOR
-	stockLabel.Text = string.format("Stock: %d", renderProduct.stockRemaining)
-
-	local buyButton = Instance.new("TextButton")
-	buyButton.Name = "BuyButton"
-	buyButton.AnchorPoint = Vector2.new(1, 1)
-	buyButton.Position = UDim2.new(1, 0, 1, 0)
-	buyButton.Size = UDim2.fromOffset(118, 34)
-	buyButton.BackgroundColor3 = if canBuy then BUTTON_COLOR else BUTTON_DISABLED_COLOR
-	buyButton.BorderSizePixel = 0
-	buyButton.AutoButtonColor = canBuy
 	buyButton.Active = canBuy
-	buyButton.Font = Enum.Font.GothamBold
-	buyButton.TextColor3 = TEXT_COLOR
-	buyButton.TextSize = 14
-	buyButton.Text = if isInStock
-		then string.format("Buy %s", formatCash(productDefinition.price))
-		else "Sold Out"
-	buyButton.Parent = row
-	applyCorner(buyButton, 8)
-
-	if not canBuy and isInStock then
-		buyButton.Text = string.format("Need %s", formatCash(productDefinition.price))
-	end
+	buyButton.AutoButtonColor = canBuy
+	setButtonText(buyButton, formatCash(productDefinition.price))
 
 	buyButton.Activated:Connect(function()
 		if not canBuy then
 			return
 		end
 
-		for _, callback in ipairs(callbacks) do
+		for _, callback in ipairs(self._purchaseCallbacks) do
 			callback(productDefinition.id)
 		end
 	end)
+
+	local robuxButton = findRequiredDescendant(row, "RobuxButton")
+	assert(robuxButton:IsA("GuiButton"), string.format("%s must be a GuiButton", robuxButton:GetFullName()))
+	setButtonText(
+		robuxButton,
+		getDeveloperProductPriceText(productDefinition.developerProductId, self._robuxPriceTextByDeveloperProductId)
+	)
+	fetchDeveloperProductPriceAsync(self, productDefinition.developerProductId)
 
 	return row
 end
 
 function ShopMenuView.new(): ShopMenuView
+	local rootGui = getRootGui()
+	local framesFolder = getFramesFolder(rootGui)
+	local templatesFolder = getTemplatesFolder()
+	local widgetsByShopId: { [ShopId]: ShopWidgets } = {
+		TreesShop = createShopWidgets(framesFolder, templatesFolder, "TreesShop"),
+		MillsShop = createShopWidgets(framesFolder, templatesFolder, "MillsShop"),
+	}
+
 	local self = setmetatable({
-		_widgets = createWidgets(),
+		_widgetsByShopId = widgetsByShopId,
 		_purchaseCallbacks = {},
-		_rowFrames = {},
+		_closeCallbacks = {},
+		_rowFramesByShopId = {
+			TreesShop = {},
+			MillsShop = {},
+		},
+		_robuxPriceTextByDeveloperProductId = {},
+		_pendingRobuxPriceFetchByDeveloperProductId = {},
 	}, ShopMenuView) :: ShopMenuView
+
+	for shopId, shopWidgets in pairs(widgetsByShopId) do
+		shopWidgets.closeButton.Activated:Connect(function()
+			for _, callback in ipairs(self._closeCallbacks) do
+				callback(shopId)
+			end
+		end)
+	end
 
 	return self
 end
 
-function ShopMenuView:getFrame(): Frame
-	return self._widgets.frame
+function ShopMenuView:getFrame(shopId: ShopId): Frame
+	return self._widgetsByShopId[shopId].frame
 end
 
-function ShopMenuView:render(
-	shopName: string,
-	secondsUntilRestock: number,
-	cash: number,
-	products: { RenderProduct },
-	statusText: string?
-)
+function ShopMenuView:render(shopId: ShopId, secondsUntilRestock: number, products: { RenderProduct })
+	local shopWidgets = self._widgetsByShopId[shopId]
 	local minutes = math.floor(secondsUntilRestock / 60)
 	local seconds = secondsUntilRestock % 60
+	shopWidgets.timerLabel.Text = string.format("%02d:%02d", minutes, seconds)
 
-	self._widgets.titleLabel.Text = shopName
-	self._widgets.timerLabel.Text = string.format("Restock: %02d:%02d", minutes, seconds)
-	self._widgets.cashLabel.Text = formatCash(cash)
-	self._widgets.statusLabel.Text = statusText or ""
-	self._widgets.statusLabel.TextColor3 = if statusText == "Purchased" then SUCCESS_COLOR else MUTED_TEXT_COLOR
-
-	for _, rowFrame in ipairs(self._rowFrames) do
+	local rowFrames = self._rowFramesByShopId[shopId]
+	for _, rowFrame in ipairs(rowFrames) do
 		rowFrame:Destroy()
 	end
-	table.clear(self._rowFrames)
+	table.clear(rowFrames)
 
 	for _, renderProduct in ipairs(products) do
-		table.insert(self._rowFrames, createRow(self._widgets.productList, renderProduct, self._purchaseCallbacks))
+		table.insert(rowFrames, createProductRow(self, shopWidgets, renderProduct))
 	end
 end
 
-function ShopMenuView:connectCloseRequested(listener: () -> ()): RBXScriptConnection
-	return self._widgets.closeButton.Activated:Connect(listener)
+function ShopMenuView:connectCloseRequested(listener: (ShopId) -> ())
+	table.insert(self._closeCallbacks, listener)
 end
 
 function ShopMenuView:connectPurchaseRequested(listener: (ShopProductId) -> ())
@@ -345,7 +352,12 @@ function ShopMenuView:connectPurchaseRequested(listener: (ShopProductId) -> ())
 end
 
 function ShopMenuView:destroy()
-	self._widgets.frame:Destroy()
+	for _, rowFrames in pairs(self._rowFramesByShopId) do
+		for _, rowFrame in ipairs(rowFrames) do
+			rowFrame:Destroy()
+		end
+		table.clear(rowFrames)
+	end
 end
 
 return ShopMenuView

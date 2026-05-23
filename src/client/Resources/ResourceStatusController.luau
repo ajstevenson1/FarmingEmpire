@@ -1,5 +1,6 @@
 --!strict
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
@@ -13,9 +14,11 @@ local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: M
 local ResourceGainToastView = require(script.Parent.ResourceGainToastView)
 local ResourceGainSoundPlayer = require(script.Parent.ResourceGainSoundPlayer)
 local ResourceStatusView = require(script.Parent.ResourceStatusView)
+local RewardClaimEffects = require(script.Parent.Parent.PlaytimeRewards.RewardClaimEffects)
 
 type EconomySnapshot = EconomyTypes.EconomySnapshot
 type ResourceSnapshot = ResourceTypes.ResourceSnapshot
+type ResourceUpdateContext = ResourceTypes.ResourceUpdateContext
 type ResourceGainSoundPlayerInstance = ResourceGainSoundPlayer.ResourceGainSoundPlayer
 type ResourceGainToastViewInstance = ResourceGainToastView.ResourceGainToastView
 type ResourceStatusViewInstance = ResourceStatusView.ResourceStatusView
@@ -27,6 +30,17 @@ local pendingAppleGain = 0
 local pendingAppleFlushToken = 0
 
 local APPLE_GAIN_FALLBACK_FLUSH_DELAY_SECONDS = 0.12
+local OFFLINE_EARNINGS_CLAIM_REASON: ResourceTypes.ResourceUpdateReason = "OfflineEarningsClaim"
+
+local function getRootGui(): ScreenGui
+	local localPlayer = Players.LocalPlayer
+	assert(localPlayer ~= nil, "LocalPlayer must exist before using ResourceStatusController")
+
+	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
+	local rootGui = playerGui:WaitForChild("GUI")
+	assert(rootGui:IsA("ScreenGui"), "PlayerGui.GUI must be a ScreenGui")
+	return rootGui
+end
 
 local function getResourceRemotes(): (RemoteEvent, RemoteFunction)
 	local remotesFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
@@ -90,11 +104,12 @@ local function schedulePendingAppleGainFlush(toastView: ResourceGainToastViewIns
 	end)
 end
 
-local function showResourceGainToastsIfNeeded(
+local function showResourceChangeToastsIfNeeded(
 	toastView: ResourceGainToastViewInstance,
 	soundPlayer: ResourceGainSoundPlayerInstance,
 	previousSnapshot: ResourceSnapshot?,
-	nextSnapshot: ResourceSnapshot
+	nextSnapshot: ResourceSnapshot,
+	context: ResourceUpdateContext?
 )
 	if previousSnapshot == nil then
 		return
@@ -109,11 +124,17 @@ local function showResourceGainToastsIfNeeded(
 	local ciderGain = getResourceAmount(nextSnapshot, "Cider") - getResourceAmount(previousSnapshot, "Cider")
 	if ciderGain > 0 then
 		toastView:showCiderGain(ciderGain)
-		soundPlayer:playCiderCollected()
+		if context ~= nil and context.reason == OFFLINE_EARNINGS_CLAIM_REASON then
+			RewardClaimEffects.playCiderBottleClaim(getRootGui())
+		else
+			soundPlayer:playCiderCollected()
+		end
+	elseif ciderGain < 0 then
+		toastView:showCiderUsed(math.abs(ciderGain))
 	end
 end
 
-local function showCashGainToastIfNeeded(
+local function showCashChangeToastIfNeeded(
 	toastView: ResourceGainToastViewInstance,
 	soundPlayer: ResourceGainSoundPlayerInstance,
 	previousSnapshot: EconomySnapshot?,
@@ -127,6 +148,8 @@ local function showCashGainToastIfNeeded(
 	if cashGain > 0 then
 		toastView:showCashGain(cashGain)
 		soundPlayer:playCashEarned()
+	elseif cashGain < 0 then
+		toastView:showCashUsed(math.abs(cashGain))
 	end
 end
 
@@ -150,14 +173,14 @@ function ResourceStatusController.start()
 	latestEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 	renderIfReady(view)
 
-	resourceUpdated.OnClientEvent:Connect(function(resourceSnapshot: ResourceSnapshot)
-		showResourceGainToastsIfNeeded(toastView, soundPlayer, latestResourceSnapshot, resourceSnapshot)
+	resourceUpdated.OnClientEvent:Connect(function(resourceSnapshot: ResourceSnapshot, context: ResourceUpdateContext?)
+		showResourceChangeToastsIfNeeded(toastView, soundPlayer, latestResourceSnapshot, resourceSnapshot, context)
 		latestResourceSnapshot = resourceSnapshot
 		renderIfReady(view)
 	end)
 
 	economyUpdated.OnClientEvent:Connect(function(economySnapshot: EconomySnapshot)
-		showCashGainToastIfNeeded(toastView, soundPlayer, latestEconomySnapshot, economySnapshot)
+		showCashChangeToastIfNeeded(toastView, soundPlayer, latestEconomySnapshot, economySnapshot)
 		latestEconomySnapshot = economySnapshot
 		renderIfReady(view)
 	end)

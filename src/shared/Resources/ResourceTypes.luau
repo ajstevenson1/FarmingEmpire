@@ -12,4 +12,10 @@ export type ResourceSnapshot = {
 	amountsByResourceId: { [ResourceId]: number },
 }
 
+export type ResourceUpdateReason = "OfflineEarningsClaim"
+
+export type ResourceUpdateContext = {
+	reason: ResourceUpdateReason,
+}
+
 return {}

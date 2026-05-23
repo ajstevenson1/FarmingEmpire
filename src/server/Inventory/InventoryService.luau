@@ -135,6 +135,16 @@ local function applyAssignedHotbarItems(state: PlayerInventoryState, assignedIte
 	state.selectedSlotIndex = nil
 end
 
+local function getFirstAssignedHotbarSlotIndex(state: PlayerInventoryState): number?
+	for slotIndex = HotbarConfig.firstAssignableSlotIndex, HotbarConfig.lastSlotIndex do
+		if state.hotbarSlots[slotIndex] ~= nil then
+			return slotIndex
+		end
+	end
+
+	return nil
+end
+
 local function sanitizeState(state: PlayerInventoryState)
 	if getItemQuantity(state, "Scythe") <= 0 then
 		state.quantitiesByItemId.Scythe = 1
@@ -181,7 +191,11 @@ local function removeItem(state: PlayerInventoryState, itemId: ItemId, quantity:
 		state.quantitiesByItemId[itemId] = nil
 	end
 
+	local wasSelectedItem = getSelectedItemIdFromState(state) == itemId
 	sanitizeState(state)
+	if wasSelectedItem and not playerHasItem(state, itemId) and state.selectedSlotIndex == nil then
+		state.selectedSlotIndex = getFirstAssignedHotbarSlotIndex(state)
+	end
 	return true
 end
 

@@ -8,22 +8,28 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local offlineEarningsFolder = sharedFolder:WaitForChild("OfflineEarnings") :: Folder
 local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local OfflineCiderRateCalculator = require(offlineEarningsFolder:WaitForChild("OfflineCiderRateCalculator") :: ModuleScript)
 local OfflineEarningsConfig = require(offlineEarningsFolder:WaitForChild("OfflineEarningsConfig") :: ModuleScript)
 local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type OfflineRateBuilding = OfflineCiderRateCalculator.OfflineRateBuilding
+type ResourceUpdateContext = ResourceTypes.ResourceUpdateContext
 
 local CIDER_RESOURCE_ID = "Cider"
 local CHARACTER_ROOT_NAME = "HumanoidRootPart"
 local CLAIM_DEBOUNCE_SECONDS = 1
 local OWNER_USER_ID_ATTRIBUTE = PlotLocator.Attributes.ownerUserId
+local OFFLINE_EARNINGS_CLAIM_CONTEXT: ResourceUpdateContext = table.freeze({
+	reason = "OfflineEarningsClaim",
+})
 
 local workspacePlotsFolder = Workspace:WaitForChild(PlotLocator.PLOTS_FOLDER_NAME) :: Folder
 local nextAllowedClaimAtByPlayer: { [Player]: number } = {}
@@ -256,7 +262,7 @@ local function claimPendingCider(player: Player)
 		return
 	end
 
-	ResourceService.addResource(player, CIDER_RESOURCE_ID, pendingCider)
+	ResourceService.addResourceWithContext(player, CIDER_RESOURCE_ID, pendingCider, OFFLINE_EARNINGS_CLAIM_CONTEXT)
 	updatePlayerPlotDisplay(player)
 end
 

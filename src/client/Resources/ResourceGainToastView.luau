@@ -10,6 +10,7 @@ local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 
 type ToastAnchorId = "Money" | "Apple" | "Cider"
+type ToastTemplateId = "Collected" | "Used"
 
 type Widgets = {
 	moneyText: TextLabel,
@@ -26,8 +27,10 @@ export type ResourceGainToastView = {
 	_widgets: Widgets,
 	_activeToastCountsByAnchorId: { [ToastAnchorId]: number },
 	showCashGain: (self: ResourceGainToastView, amount: number) -> (),
+	showCashUsed: (self: ResourceGainToastView, amount: number) -> (),
 	showAppleGain: (self: ResourceGainToastView, amount: number) -> (),
 	showCiderGain: (self: ResourceGainToastView, amount: number) -> (),
+	showCiderUsed: (self: ResourceGainToastView, amount: number) -> (),
 	destroy: (self: ResourceGainToastView) -> (),
 }
 
@@ -35,14 +38,20 @@ local HUD_NAME = "HUD"
 local BOTTOM_LEFT_NAME = "BottomLeft"
 local TEMPLATES_FOLDER_NAME = "Templates"
 local ITEM_COLLECTED_TEMPLATE_NAME = "ItemCollected"
+local ITEM_USED_TEMPLATE_NAME = "ItemUsed"
 
 local FLOAT_DISTANCE = 28
 local START_ROTATION_DEGREES = -30
 local TOAST_TWEEN_INFO = TweenInfo.new(1.02, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local templateInstance = ReplicatedStorage:WaitForChild(TEMPLATES_FOLDER_NAME):WaitForChild(ITEM_COLLECTED_TEMPLATE_NAME)
-assert(templateInstance:IsA("TextLabel"), "ReplicatedStorage.Templates.ItemCollected must be a TextLabel")
-local itemCollectedTemplate = templateInstance :: TextLabel
+local templatesFolder = ReplicatedStorage:WaitForChild(TEMPLATES_FOLDER_NAME)
+local itemCollectedTemplateInstance = templatesFolder:WaitForChild(ITEM_COLLECTED_TEMPLATE_NAME)
+assert(itemCollectedTemplateInstance:IsA("TextLabel"), "ReplicatedStorage.Templates.ItemCollected must be a TextLabel")
+local itemCollectedTemplate = itemCollectedTemplateInstance :: TextLabel
+
+local itemUsedTemplateInstance = templatesFolder:WaitForChild(ITEM_USED_TEMPLATE_NAME)
+assert(itemUsedTemplateInstance:IsA("TextLabel"), "ReplicatedStorage.Templates.ItemUsed must be a TextLabel")
+local itemUsedTemplate = itemUsedTemplateInstance :: TextLabel
 
 local ResourceGainToastView = {}
 ResourceGainToastView.__index = ResourceGainToastView
@@ -125,13 +134,21 @@ local function collectTransparencyTargets(instance: Instance, transparencyTarget
 	end
 end
 
-local function playToast(self: ResourceGainToastView, anchorId: ToastAnchorId, text: string)
+local function getToastTemplate(templateId: ToastTemplateId): TextLabel
+	if templateId == "Collected" then
+		return itemCollectedTemplate
+	end
+
+	return itemUsedTemplate
+end
+
+local function playToast(self: ResourceGainToastView, anchorId: ToastAnchorId, templateId: ToastTemplateId, text: string)
 	local anchorLabel = getAnchorLabel(self._widgets, anchorId)
-	local toast = itemCollectedTemplate:Clone()
+	local toast = getToastTemplate(templateId):Clone()
 	local stackIndex = (self._activeToastCountsByAnchorId[anchorId] or 0) + 1
 	self._activeToastCountsByAnchorId[anchorId] = stackIndex
 
-	toast.Name = string.format("%sGainToast", anchorId)
+	toast.Name = string.format("%s%sToast", anchorId, templateId)
 	toast.Text = text
 	toast.Visible = true
 	toast.Rotation = START_ROTATION_DEGREES
@@ -187,7 +204,15 @@ function ResourceGainToastView:showCashGain(amount: number)
 		return
 	end
 
-	playToast(self, "Money", string.format("+$%s", NumberFormatter.formatAbbreviated(amount)))
+	playToast(self, "Money", "Collected", string.format("+$%s", NumberFormatter.formatAbbreviated(amount)))
+end
+
+function ResourceGainToastView:showCashUsed(amount: number)
+	if amount <= 0 then
+		return
+	end
+
+	playToast(self, "Money", "Used", string.format("-$%s", NumberFormatter.formatAbbreviated(amount)))
 end
 
 function ResourceGainToastView:showAppleGain(amount: number)
@@ -195,7 +220,7 @@ function ResourceGainToastView:showAppleGain(amount: number)
 		return
 	end
 
-	playToast(self, "Apple", string.format("+%s", NumberFormatter.formatAbbreviated(amount)))
+	playToast(self, "Apple", "Collected", string.format("+%s", NumberFormatter.formatAbbreviated(amount)))
 end
 
 function ResourceGainToastView:showCiderGain(amount: number)
@@ -203,7 +228,15 @@ function ResourceGainToastView:showCiderGain(amount: number)
 		return
 	end
 
-	playToast(self, "Cider", string.format("+%s", NumberFormatter.formatAbbreviated(amount)))
+	playToast(self, "Cider", "Collected", string.format("+%s", NumberFormatter.formatAbbreviated(amount)))
+end
+
+function ResourceGainToastView:showCiderUsed(amount: number)
+	if amount <= 0 then
+		return
+	end
+
+	playToast(self, "Cider", "Used", string.format("-%s", NumberFormatter.formatAbbreviated(amount)))
 end
 
 function ResourceGainToastView:destroy()

@@ -26,24 +26,12 @@ type ShopSnapshot = ShopTypes.ShopSnapshot
 type RenderProduct = ShopMenuView.RenderProduct
 type ShopMenuViewInstance = ShopMenuView.ShopMenuView
 
-local SHOP_FRAME_ID = "ShopMenu"
 local MENU_FRAME_GROUP = "Menu"
 local hasStarted = false
 local activeShopId: ShopId? = nil
 local latestSnapshot: ShopSnapshot? = nil
 local latestCash = 0
-local latestStatusText: string? = nil
 local isPurchasePending = false
-
-local PURCHASE_STATUS_TEXT: { [string]: string } = {
-	Purchased = "Purchased",
-	InvalidShop = "That shop is not available.",
-	InvalidProduct = "That item is not sold here.",
-	OutOfStock = "Sold out until the next restock.",
-	InsufficientCash = "Not enough cash.",
-	TooFar = "Move closer to the shop.",
-	InvalidQuantity = "That item cannot be purchased right now.",
-}
 
 local function getShopRemotes(): (RemoteEvent, RemoteFunction, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
@@ -150,16 +138,10 @@ local function renderIfReady(view: ShopMenuViewInstance)
 
 	local definition = ShopCatalog.getShopDefinition(shopId)
 	view:render(
-		definition.displayName,
+		definition.id,
 		getSecondsUntilRestock(snapshot, shopId),
-		latestCash,
-		buildRenderProducts(shopId, snapshot, latestCash),
-		latestStatusText
+		buildRenderProducts(shopId, snapshot, latestCash)
 	)
-end
-
-local function getPurchaseStatusText(result: ShopPurchaseResult): string
-	return PURCHASE_STATUS_TEXT[result.status] or "Purchase failed."
 end
 
 local ShopController = {}
@@ -172,14 +154,16 @@ function ShopController.start()
 	hasStarted = true
 
 	local view = ShopMenuView.new()
-	local panel = view:getFrame()
-	FrameManager.registerFrame({
-		id = SHOP_FRAME_ID,
-		frame = panel,
-		group = MENU_FRAME_GROUP,
-		defaultOpen = false,
-		closedPosition = getClosedPanelPosition(panel),
-	})
+	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
+		local panel = view:getFrame(shopId)
+		FrameManager.registerFrame({
+			id = shopId,
+			frame = panel,
+			group = MENU_FRAME_GROUP,
+			defaultOpen = false,
+			closedPosition = getClosedPanelPosition(panel),
+		})
+	end
 
 	local shopOpened, getShopSnapshot, requestShopPurchase = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
@@ -187,8 +171,8 @@ function ShopController.start()
 	local initialEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 	latestCash = initialEconomySnapshot.cash
 
-	view:connectCloseRequested(function()
-		FrameManager.close(SHOP_FRAME_ID)
+	view:connectCloseRequested(function(shopId: ShopId)
+		FrameManager.close(shopId)
 	end)
 
 	view:connectPurchaseRequested(function(productId: ShopProductId)
@@ -198,7 +182,6 @@ function ShopController.start()
 		end
 
 		isPurchasePending = true
-		latestStatusText = nil
 		renderIfReady(view)
 
 		local result = requestShopPurchase:InvokeServer({
@@ -206,7 +189,6 @@ function ShopController.start()
 			productId = productId,
 		}) :: ShopPurchaseResult
 		latestSnapshot = result.snapshot
-		latestStatusText = getPurchaseStatusText(result)
 		local refreshedEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 		latestCash = refreshedEconomySnapshot.cash
 		isPurchasePending = false
@@ -216,9 +198,8 @@ function ShopController.start()
 	shopOpened.OnClientEvent:Connect(function(payload: ShopOpenedPayload)
 		activeShopId = payload.shopId
 		latestSnapshot = payload.snapshot
-		latestStatusText = nil
 		renderIfReady(view)
-		FrameManager.open(SHOP_FRAME_ID)
+		FrameManager.open(payload.shopId)
 	end)
 
 	economyUpdated.OnClientEvent:Connect(function(economySnapshot: EconomySnapshot)

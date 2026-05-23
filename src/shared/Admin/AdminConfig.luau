@@ -6,6 +6,7 @@ export type AdminConfig = {
 
 local ADMIN_USER_IDS: { [number]: boolean } = {
 	[5204470675] = true,
+	[343304069] = true,
 }
 
 local AdminConfig = {}

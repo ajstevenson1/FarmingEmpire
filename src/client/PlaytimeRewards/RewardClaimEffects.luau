@@ -9,6 +9,7 @@ local AudioService = require(script.Parent.Parent.Audio.AudioService)
 
 export type RewardClaimEffects = {
 	play: (rootGui: ScreenGui) -> (),
+	playCiderBottleClaim: (rootGui: ScreenGui) -> (),
 }
 
 local CLAIM_SOUND_NAME = "RewardClaimSound"
@@ -30,6 +31,16 @@ local CONFETTI_MIN_DURATION_SECONDS = 1.1
 local CONFETTI_MAX_DURATION_SECONDS = 1.9
 local CONFETTI_MAX_DRIFT_PIXELS = 180
 local CONFETTI_Z_INDEX = 1000
+
+local CIDER_BOTTLE_OVERLAY_NAME = "CiderBottleClaimOverlay"
+local CIDER_BOTTLE_IMAGE = "rbxassetid://130907709287217"
+local CIDER_BOTTLE_PIECE_COUNT = 44
+local CIDER_BOTTLE_MIN_SIZE_PIXELS = 24
+local CIDER_BOTTLE_MAX_SIZE_PIXELS = 44
+local CIDER_BOTTLE_MIN_DURATION_SECONDS = 1.05
+local CIDER_BOTTLE_MAX_DURATION_SECONDS = 1.75
+local CIDER_BOTTLE_MAX_DRIFT_PIXELS = 170
+local CIDER_BOTTLE_Z_INDEX = 1000
 
 local CONFETTI_COLORS: { Color3 } = {
 	Color3.fromRGB(255, 69, 97),
@@ -215,12 +226,94 @@ local function playConfetti(rootGui: ScreenGui)
 	end)
 end
 
+local function createCiderBottlePiece(overlay: Frame): ImageLabel
+	local size = random:NextInteger(CIDER_BOTTLE_MIN_SIZE_PIXELS, CIDER_BOTTLE_MAX_SIZE_PIXELS)
+	local piece = Instance.new("ImageLabel")
+	piece.Name = "CiderBottle"
+	piece.AnchorPoint = Vector2.new(0.5, 0.5)
+	piece.BackgroundTransparency = 1
+	piece.BorderSizePixel = 0
+	piece.Image = CIDER_BOTTLE_IMAGE
+	piece.ImageTransparency = 0
+	piece.Position = UDim2.new(random:NextNumber(0, 1), 0, 0, random:NextInteger(-120, -12))
+	piece.Rotation = random:NextNumber(-35, 35)
+	piece.Size = UDim2.fromOffset(size, size)
+	piece.ZIndex = CIDER_BOTTLE_Z_INDEX
+	piece.Parent = overlay
+
+	local aspectRatio = Instance.new("UIAspectRatioConstraint")
+	aspectRatio.AspectRatio = 1
+	aspectRatio.DominantAxis = Enum.DominantAxis.Width
+	aspectRatio.Parent = piece
+
+	return piece
+end
+
+local function playCiderBottleRain(rootGui: ScreenGui)
+	local overlay = Instance.new("Frame")
+	overlay.Name = CIDER_BOTTLE_OVERLAY_NAME
+	overlay.Active = false
+	overlay.BackgroundTransparency = 1
+	overlay.BorderSizePixel = 0
+	overlay.ClipsDescendants = false
+	overlay.Position = UDim2.fromScale(0, 0)
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.ZIndex = CIDER_BOTTLE_Z_INDEX
+	overlay.Parent = rootGui
+
+	local remainingPieces = CIDER_BOTTLE_PIECE_COUNT
+	local longestDuration = 0
+
+	for _ = 1, CIDER_BOTTLE_PIECE_COUNT do
+		local piece = createCiderBottlePiece(overlay)
+		local duration = random:NextNumber(CIDER_BOTTLE_MIN_DURATION_SECONDS, CIDER_BOTTLE_MAX_DURATION_SECONDS)
+		longestDuration = math.max(longestDuration, duration)
+
+		local drift = random:NextInteger(-CIDER_BOTTLE_MAX_DRIFT_PIXELS, CIDER_BOTTLE_MAX_DRIFT_PIXELS)
+		local spinDirection = if random:NextNumber() > 0.5 then 1 else -1
+		local targetRotation = piece.Rotation + random:NextNumber(240, 680) * spinDirection
+		local targetPosition = UDim2.new(piece.Position.X.Scale, piece.Position.X.Offset + drift, 1, random:NextInteger(42, 180))
+		local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+		local tween = TweenService:Create(piece, tweenInfo, {
+			ImageTransparency = 0.2,
+			Position = targetPosition,
+			Rotation = targetRotation,
+		})
+
+		tween.Completed:Connect(function()
+			if piece.Parent ~= nil then
+				piece:Destroy()
+			end
+
+			remainingPieces -= 1
+			if remainingPieces <= 0 and overlay.Parent ~= nil then
+				overlay:Destroy()
+			end
+		end)
+
+		tween:Play()
+	end
+
+	task.delay(longestDuration + 0.25, function()
+		if overlay.Parent ~= nil then
+			overlay:Destroy()
+		end
+	end)
+end
+
 local RewardClaimEffects = {} :: RewardClaimEffects
 
 function RewardClaimEffects.play(rootGui: ScreenGui)
 	playClaimSound()
 	playCameraShake()
 	playConfetti(rootGui)
+end
+
+function RewardClaimEffects.playCiderBottleClaim(rootGui: ScreenGui)
+	playClaimSound()
+	playCameraShake()
+	playCiderBottleRain(rootGui)
 end
 
 return table.freeze(RewardClaimEffects)

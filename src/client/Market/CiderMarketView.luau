@@ -2,31 +2,36 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local economyFolder = sharedFolder:WaitForChild("Economy") :: Folder
 
 local MarketPriceRank = require(economyFolder:WaitForChild("MarketPriceRank") :: ModuleScript)
 
+type GuiButtonLike = TextButton | ImageButton
+
 type Widgets = {
 	rootGui: ScreenGui,
 	frame: Frame,
-	titleLabel: TextLabel,
-	countdownLabel: TextLabel,
-	priceLabel: TextLabel,
-	rankLabel: TextLabel,
-	ciderLabel: TextLabel,
-	valueLabel: TextLabel,
-	cashLabel: TextLabel,
-	meterTrack: Frame,
-	meterMarker: Frame,
-	statusLabel: TextLabel,
-	sellButton: TextButton,
-	closeButton: TextButton,
+	pricePanelCurrentLabel: TextLabel,
+	pricePanelNextLabel: TextLabel,
+	barFrame: Frame,
+	priceBar: Frame,
+	arrow: GuiObject,
+	barCurrentLabel: TextLabel,
+	sellButton: GuiButtonLike,
+	closeButton: GuiButtonLike,
 }
 
 export type CiderMarketView = {
 	_widgets: Widgets,
+	_lastPrice: number?,
+	_displayedPrice: number?,
+	_priceAnimationId: number,
+	_activeTweens: { Tween },
+	_arrowBaseXOffset: number,
+	_barCurrentBaseXOffset: number,
 	getFrame: (self: CiderMarketView) -> Frame,
 	render: (
 		self: CiderMarketView,
@@ -39,26 +44,22 @@ export type CiderMarketView = {
 	connectCloseRequested: (self: CiderMarketView, listener: () -> ()) -> RBXScriptConnection,
 	connectSellRequested: (self: CiderMarketView, listener: () -> ()) -> RBXScriptConnection,
 	destroy: (self: CiderMarketView) -> (),
+	_cancelPriceTweens: (self: CiderMarketView) -> (),
+	_applyPricePosition: (self: CiderMarketView, price: number) -> (),
+	_playPricePositionTween: (self: CiderMarketView, targetPrice: number, previousPrice: number) -> (),
+	_animatePriceText: (self: CiderMarketView, targetPrice: number, previousPrice: number) -> (),
 }
 
-local FRAME_SIZE = UDim2.fromOffset(500, 380)
-local PANEL_COLOR = Color3.fromRGB(28, 30, 26)
-local SECTION_COLOR = Color3.fromRGB(38, 42, 35)
-local METER_COLOR = Color3.fromRGB(23, 25, 22)
-local STROKE_COLOR = Color3.fromRGB(142, 173, 94)
-local TEXT_COLOR = Color3.fromRGB(245, 248, 236)
-local MUTED_TEXT_COLOR = Color3.fromRGB(205, 214, 190)
-local PRICE_COLOR = Color3.fromRGB(166, 224, 112)
-local WARNING_COLOR = Color3.fromRGB(239, 174, 91)
-local BUTTON_COLOR = Color3.fromRGB(82, 144, 73)
-local BUTTON_DISABLED_COLOR = Color3.fromRGB(80, 86, 74)
-local CLOSE_BUTTON_COLOR = Color3.fromRGB(112, 95, 75)
-local RANK_COLORS: { [string]: Color3 } = {
-	Low = Color3.fromRGB(104, 134, 92),
-	Average = Color3.fromRGB(143, 166, 89),
-	Good = Color3.fromRGB(176, 171, 78),
-	Insane = Color3.fromRGB(218, 148, 74),
-}
+local ROOT_GUI_NAME = "GUI"
+local FRAMES_NAME = "Frames"
+local SELL_FRAME_NAME = "Sell"
+
+local BAR_OVERSHOOT = 0.055
+local ARROW_LEFT_OFFSET_SCALE = -0.055
+local CURRENT_TEXT_LEFT_OFFSET_SCALE = -0.075
+local SLIDE_OUT_TWEEN_INFO = TweenInfo.new(0.56, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SETTLE_TWEEN_INFO = TweenInfo.new(0.36, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local COUNT_STEP_SECONDS = 0.085
 
 local CiderMarketView = {}
 CiderMarketView.__index = CiderMarketView
@@ -68,275 +69,129 @@ local function getRootGui(): ScreenGui
 	assert(localPlayer ~= nil, "LocalPlayer must exist before creating CiderMarketView")
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
-	local rootGui = playerGui:WaitForChild("GUI")
+	local rootGui = playerGui:WaitForChild(ROOT_GUI_NAME)
 	assert(rootGui:IsA("ScreenGui"), "PlayerGui.GUI must be a ScreenGui")
 	return rootGui
 end
 
-local function getFrameParent(rootGui: ScreenGui): Instance
-	local frames = rootGui:WaitForChild("Frames", 10)
-	if frames ~= nil and frames:IsA("GuiObject") then
-		return frames
-	end
-
-	return rootGui
+local function getGuiObjectChild(parent: Instance, childName: string): GuiObject
+	local child = parent:WaitForChild(childName)
+	assert(child:IsA("GuiObject"), string.format("%s.%s must be a GuiObject", parent:GetFullName(), childName))
+	return child
 end
 
-local function formatCash(cash: number): string
-	return string.format("$%d", math.max(0, math.floor(cash)))
+local function getFrameChild(parent: Instance, childName: string): Frame
+	local child = parent:WaitForChild(childName)
+	assert(child:IsA("Frame"), string.format("%s.%s must be a Frame", parent:GetFullName(), childName))
+	return child
+end
+
+local function getTextLabelChild(parent: Instance, childName: string): TextLabel
+	local child = parent:WaitForChild(childName)
+	assert(child:IsA("TextLabel"), string.format("%s.%s must be a TextLabel", parent:GetFullName(), childName))
+	return child
+end
+
+local function getButtonChild(parent: Instance, childName: string): GuiButtonLike
+	local child = parent:WaitForChild(childName)
+	assert(
+		child:IsA("TextButton") or child:IsA("ImageButton"),
+		string.format("%s.%s must be a TextButton or ImageButton", parent:GetFullName(), childName)
+	)
+	return child :: GuiButtonLike
+end
+
+local function getSellFrame(rootGui: ScreenGui): Frame
+	local frames = rootGui:WaitForChild(FRAMES_NAME)
+	assert(frames:IsA("GuiObject"), "PlayerGui.GUI.Frames must be a GuiObject")
+
+	local sellFrame = frames:WaitForChild(SELL_FRAME_NAME)
+	assert(sellFrame:IsA("Frame"), "PlayerGui.GUI.Frames.Sell must be a Frame")
+	return sellFrame
+end
+
+local function formatCash(value: number): string
+	return string.format("$%d", math.max(0, math.floor(value)))
 end
 
 local function formatSeconds(totalSeconds: number): string
-	local minutes = math.floor(totalSeconds / 60)
-	local seconds = totalSeconds % 60
+	local clampedSeconds = math.max(0, math.floor(totalSeconds))
+	local minutes = math.floor(clampedSeconds / 60)
+	local seconds = clampedSeconds % 60
 	return string.format("%02d:%02d", minutes, seconds)
 end
 
-local function createLabel(parent: Instance, name: string, textSize: number, font: Enum.Font): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.BackgroundTransparency = 1
-	label.Font = font
-	label.Text = ""
-	label.TextColor3 = TEXT_COLOR
-	label.TextSize = textSize
-	label.TextWrapped = true
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Parent = parent
-	return label
+local function getMarkerXScale(ciderSellPrice: number): number
+	return MarketPriceRank.getNormalizedCiderPrice(ciderSellPrice)
 end
 
-local function applyCorner(parent: GuiObject, radius: number)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius)
-	corner.Parent = parent
+local function getPriceBarXScale(markerXScale: number): number
+	return 1 - markerXScale
 end
 
-local function applyStroke(parent: GuiObject, color: Color3, transparency: number)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
-	stroke.Thickness = 1
-	stroke.Transparency = transparency
-	stroke.Parent = parent
-end
+local function setButtonEnabled(button: GuiButtonLike, isEnabled: boolean)
+	button.Active = isEnabled
+	button.AutoButtonColor = isEnabled
 
-local function createStatFrame(parent: Instance, name: string, layoutOrder: number): Frame
-	local frame = Instance.new("Frame")
-	frame.Name = name
-	frame.BackgroundColor3 = SECTION_COLOR
-	frame.BorderSizePixel = 0
-	frame.LayoutOrder = layoutOrder
-	frame.Size = UDim2.new(1, 0, 0, 48)
-	frame.Parent = parent
-	applyCorner(frame, 8)
-	applyStroke(frame, STROKE_COLOR, 0.75)
-	return frame
-end
-
-local function createRankMeter(parent: Instance): (Frame, Frame, TextLabel)
-	local meterFrame = Instance.new("Frame")
-	meterFrame.Name = "PriceRankMeter"
-	meterFrame.BackgroundColor3 = METER_COLOR
-	meterFrame.BorderSizePixel = 0
-	meterFrame.LayoutOrder = 3
-	meterFrame.Size = UDim2.new(1, 0, 0, 116)
-	meterFrame.ClipsDescendants = true
-	meterFrame.Parent = parent
-	applyCorner(meterFrame, 8)
-	applyStroke(meterFrame, STROKE_COLOR, 0.68)
-
-	local rankLabel = createLabel(meterFrame, "RankLabel", 17, Enum.Font.GothamBold)
-	rankLabel.Position = UDim2.fromOffset(12, 8)
-	rankLabel.Size = UDim2.new(1, -24, 0, 24)
-
-	local track = Instance.new("Frame")
-	track.Name = "Track"
-	track.BackgroundColor3 = Color3.fromRGB(31, 35, 29)
-	track.BorderSizePixel = 0
-	track.Position = UDim2.fromOffset(12, 42)
-	track.Size = UDim2.new(1, -24, 0, 50)
-	track.ClipsDescendants = true
-	track.Parent = meterFrame
-	applyCorner(track, 8)
-
-	local segmentsContainer = Instance.new("Frame")
-	segmentsContainer.Name = "Segments"
-	segmentsContainer.BackgroundTransparency = 1
-	segmentsContainer.BorderSizePixel = 0
-	segmentsContainer.Size = UDim2.fromScale(1, 1)
-	segmentsContainer.Parent = track
-
-	local trackLayout = Instance.new("UIListLayout")
-	trackLayout.FillDirection = Enum.FillDirection.Horizontal
-	trackLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	trackLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	trackLayout.Parent = segmentsContainer
-
-	for _, rankDefinition in ipairs(MarketPriceRank.getAllRanks()) do
-		local segment = Instance.new("Frame")
-		segment.Name = rankDefinition.id
-		segment.BackgroundColor3 = RANK_COLORS[rankDefinition.id] or SECTION_COLOR
-		segment.BorderSizePixel = 0
-		segment.LayoutOrder = rankDefinition.sortOrder
-		segment.Size = UDim2.new(0.25, 0, 1, 0)
-		segment.Parent = segmentsContainer
-
-		local segmentLabel = createLabel(segment, "Label", 12, Enum.Font.GothamBold)
-		segmentLabel.Size = UDim2.new(1, -6, 1, 0)
-		segmentLabel.Position = UDim2.fromOffset(3, 0)
-		segmentLabel.Text = rankDefinition.displayName
-		segmentLabel.TextXAlignment = Enum.TextXAlignment.Center
+	if button:IsA("TextButton") then
+		button.TextTransparency = if isEnabled then 0 else 0.35
+	elseif button:IsA("ImageButton") then
+		button.ImageTransparency = if isEnabled then 0 else 0.35
 	end
+end
 
-	local marker = Instance.new("Frame")
-	marker.Name = "Marker"
-	marker.AnchorPoint = Vector2.new(0.5, 0)
-	marker.Position = UDim2.fromScale(0, 0)
-	marker.Size = UDim2.new(0, 6, 1, 0)
-	marker.BackgroundColor3 = TEXT_COLOR
-	marker.BorderSizePixel = 0
-	marker.ZIndex = 3
-	marker.Parent = track
-	applyCorner(marker, 3)
+local function setPositionX(guiObject: GuiObject, xScale: number, xOffset: number, leftOffsetScale: number)
+	local position = guiObject.Position
+	guiObject.Position = UDim2.new(math.clamp(xScale + leftOffsetScale, 0, 1), xOffset, position.Y.Scale, position.Y.Offset)
+end
 
-	return track, marker, rankLabel
+local function setPriceBarSizeX(priceBar: Frame, xScale: number)
+	local size = priceBar.Size
+	priceBar.Size = UDim2.new(xScale, size.X.Offset, size.Y.Scale, size.Y.Offset)
+end
+
+local function setPriceText(widgets: Widgets, price: number)
+	local priceText = formatCash(price)
+	widgets.pricePanelCurrentLabel.Text = string.format("Current Price: %s", priceText)
+	widgets.barCurrentLabel.Text = priceText
 end
 
 local function createWidgets(): Widgets
 	local rootGui = getRootGui()
-	local frameParent = getFrameParent(rootGui)
+	local frame = getSellFrame(rootGui)
 
-	local frame = Instance.new("Frame")
-	frame.Name = "CiderMarket"
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	frame.Size = FRAME_SIZE
-	frame.BackgroundColor3 = PANEL_COLOR
-	frame.BorderSizePixel = 0
-	frame.Visible = false
-	frame.Parent = frameParent
-	applyCorner(frame, 8)
-	applyStroke(frame, STROKE_COLOR, 0.12)
-
-	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0, 16)
-	padding.PaddingBottom = UDim.new(0, 16)
-	padding.PaddingLeft = UDim.new(0, 18)
-	padding.PaddingRight = UDim.new(0, 18)
-	padding.Parent = frame
-
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.Padding = UDim.new(0, 10)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = frame
-
-	local headerFrame = Instance.new("Frame")
-	headerFrame.Name = "Header"
-	headerFrame.BackgroundTransparency = 1
-	headerFrame.LayoutOrder = 0
-	headerFrame.Size = UDim2.new(1, 0, 0, 50)
-	headerFrame.Parent = frame
-
-	local titleLabel = createLabel(headerFrame, "TitleLabel", 24, Enum.Font.GothamBold)
-	titleLabel.Position = UDim2.fromOffset(0, 0)
-	titleLabel.Size = UDim2.new(1, -150, 0, 28)
-	titleLabel.Text = "Cider Market"
-
-	local countdownLabel = createLabel(headerFrame, "CountdownLabel", 14, Enum.Font.GothamMedium)
-	countdownLabel.Position = UDim2.fromOffset(0, 29)
-	countdownLabel.Size = UDim2.new(1, -150, 0, 20)
-	countdownLabel.TextColor3 = MUTED_TEXT_COLOR
-
-	local cashLabel = createLabel(headerFrame, "CashLabel", 17, Enum.Font.GothamBold)
-	cashLabel.AnchorPoint = Vector2.new(1, 0)
-	cashLabel.Position = UDim2.new(1, 0, 0, 5)
-	cashLabel.Size = UDim2.fromOffset(140, 24)
-	cashLabel.TextXAlignment = Enum.TextXAlignment.Right
-
-	local priceFrame = createStatFrame(frame, "PriceFrame", 1)
-	local priceLabel = createLabel(priceFrame, "PriceLabel", 20, Enum.Font.GothamBold)
-	priceLabel.Position = UDim2.fromOffset(12, 6)
-	priceLabel.Size = UDim2.new(1, -24, 0, 34)
-	priceLabel.TextColor3 = PRICE_COLOR
-
-	local stockFrame = createStatFrame(frame, "StockFrame", 2)
-	local ciderLabel = createLabel(stockFrame, "CiderLabel", 16, Enum.Font.GothamBold)
-	ciderLabel.Position = UDim2.fromOffset(12, 5)
-	ciderLabel.Size = UDim2.new(0.5, -16, 0, 36)
-
-	local valueLabel = createLabel(stockFrame, "ValueLabel", 16, Enum.Font.GothamBold)
-	valueLabel.AnchorPoint = Vector2.new(1, 0)
-	valueLabel.Position = UDim2.new(1, -12, 0, 5)
-	valueLabel.Size = UDim2.new(0.5, -16, 0, 36)
-	valueLabel.TextXAlignment = Enum.TextXAlignment.Right
-	valueLabel.TextColor3 = PRICE_COLOR
-
-	local meterTrack, meterMarker, rankLabel = createRankMeter(frame)
-
-	local statusLabel = createLabel(frame, "StatusLabel", 14, Enum.Font.GothamMedium)
-	statusLabel.LayoutOrder = 4
-	statusLabel.Size = UDim2.new(1, 0, 0, 20)
-	statusLabel.TextColor3 = MUTED_TEXT_COLOR
-
-	local buttonRow = Instance.new("Frame")
-	buttonRow.Name = "ButtonRow"
-	buttonRow.BackgroundTransparency = 1
-	buttonRow.LayoutOrder = 5
-	buttonRow.Size = UDim2.new(1, 0, 0, 42)
-	buttonRow.Parent = frame
-
-	local sellButton = Instance.new("TextButton")
-	sellButton.Name = "SellButton"
-	sellButton.Position = UDim2.fromOffset(0, 0)
-	sellButton.Size = UDim2.new(1, -114, 1, 0)
-	sellButton.BackgroundColor3 = BUTTON_COLOR
-	sellButton.BorderSizePixel = 0
-	sellButton.Font = Enum.Font.GothamBold
-	sellButton.Text = "Sell All Cider"
-	sellButton.TextColor3 = TEXT_COLOR
-	sellButton.TextSize = 17
-	sellButton.Parent = buttonRow
-	applyCorner(sellButton, 8)
-
-	local closeButton = Instance.new("TextButton")
-	closeButton.Name = "CloseButton"
-	closeButton.AnchorPoint = Vector2.new(1, 0)
-	closeButton.Position = UDim2.new(1, 0, 0, 0)
-	closeButton.Size = UDim2.fromOffset(104, 42)
-	closeButton.BackgroundColor3 = CLOSE_BUTTON_COLOR
-	closeButton.BorderSizePixel = 0
-	closeButton.Font = Enum.Font.GothamBold
-	closeButton.Text = "Close"
-	closeButton.TextColor3 = TEXT_COLOR
-	closeButton.TextSize = 17
-	closeButton.Parent = buttonRow
-	applyCorner(closeButton, 8)
+	local sellPrice = getFrameChild(frame, "SellPrice")
+	local barFrame = getFrameChild(frame, "Bar")
+	local priceBar = getFrameChild(barFrame, "PriceBar")
+	local arrow = getGuiObjectChild(barFrame, "Arrow")
 
 	return {
 		rootGui = rootGui,
 		frame = frame,
-		titleLabel = titleLabel,
-		countdownLabel = countdownLabel,
-		priceLabel = priceLabel,
-		rankLabel = rankLabel,
-		ciderLabel = ciderLabel,
-		valueLabel = valueLabel,
-		cashLabel = cashLabel,
-		meterTrack = meterTrack,
-		meterMarker = meterMarker,
-		statusLabel = statusLabel,
-		sellButton = sellButton,
-		closeButton = closeButton,
+		pricePanelCurrentLabel = getTextLabelChild(sellPrice, "Current"),
+		pricePanelNextLabel = getTextLabelChild(sellPrice, "Next"),
+		barFrame = barFrame,
+		priceBar = priceBar,
+		arrow = arrow,
+		barCurrentLabel = getTextLabelChild(barFrame, "Current"),
+		sellButton = getButtonChild(frame, "SellButton"),
+		closeButton = getButtonChild(frame, "Close"),
 	}
 end
 
 function CiderMarketView.new(): CiderMarketView
+	local widgets = createWidgets()
 	local self = setmetatable({
-		_widgets = createWidgets(),
+		_widgets = widgets,
+		_lastPrice = nil,
+		_displayedPrice = nil,
+		_priceAnimationId = 0,
+		_activeTweens = {},
+		_arrowBaseXOffset = widgets.arrow.Position.X.Offset,
+		_barCurrentBaseXOffset = widgets.barCurrentLabel.Position.X.Offset,
 	}, CiderMarketView) :: CiderMarketView
 
+	widgets.frame.Visible = false
 	return self
 end
 
@@ -344,31 +199,160 @@ function CiderMarketView:getFrame(): Frame
 	return self._widgets.frame
 end
 
+function CiderMarketView:_cancelPriceTweens()
+	for _, tween in ipairs(self._activeTweens) do
+		tween:Cancel()
+	end
+
+	table.clear(self._activeTweens)
+end
+
+function CiderMarketView:_applyPricePosition(price: number)
+	local markerXScale = getMarkerXScale(price)
+	setPriceBarSizeX(self._widgets.priceBar, getPriceBarXScale(markerXScale))
+	setPositionX(self._widgets.arrow, markerXScale, self._arrowBaseXOffset, ARROW_LEFT_OFFSET_SCALE)
+	setPositionX(self._widgets.barCurrentLabel, markerXScale, self._barCurrentBaseXOffset, CURRENT_TEXT_LEFT_OFFSET_SCALE)
+end
+
+function CiderMarketView:_playPricePositionTween(targetPrice: number, previousPrice: number)
+	self:_cancelPriceTweens()
+
+	local targetMarkerXScale = getMarkerXScale(targetPrice)
+	local previousMarkerXScale = getMarkerXScale(previousPrice)
+	local direction = if targetMarkerXScale >= previousMarkerXScale then 1 else -1
+	local overshootMarkerXScale = math.clamp(targetMarkerXScale + (BAR_OVERSHOOT * direction), 0, 1)
+
+	local overshootBarXScale = getPriceBarXScale(overshootMarkerXScale)
+	local targetBarXScale = getPriceBarXScale(targetMarkerXScale)
+
+	local slideTweens = {
+		TweenService:Create(self._widgets.priceBar, SLIDE_OUT_TWEEN_INFO, {
+			Size = UDim2.new(overshootBarXScale, self._widgets.priceBar.Size.X.Offset, self._widgets.priceBar.Size.Y.Scale, self._widgets.priceBar.Size.Y.Offset),
+		}),
+		TweenService:Create(self._widgets.arrow, SLIDE_OUT_TWEEN_INFO, {
+			Position = UDim2.new(
+				math.clamp(overshootMarkerXScale + ARROW_LEFT_OFFSET_SCALE, 0, 1),
+				self._arrowBaseXOffset,
+				self._widgets.arrow.Position.Y.Scale,
+				self._widgets.arrow.Position.Y.Offset
+			),
+		}),
+		TweenService:Create(self._widgets.barCurrentLabel, SLIDE_OUT_TWEEN_INFO, {
+			Position = UDim2.new(
+				math.clamp(overshootMarkerXScale + CURRENT_TEXT_LEFT_OFFSET_SCALE, 0, 1),
+				self._barCurrentBaseXOffset,
+				self._widgets.barCurrentLabel.Position.Y.Scale,
+				self._widgets.barCurrentLabel.Position.Y.Offset
+			),
+		}),
+	}
+
+	self._activeTweens = slideTweens
+	local completedCount = 0
+	local expectedCount = #slideTweens
+
+	local function playSettleTweens()
+		local settleTweens = {
+			TweenService:Create(self._widgets.priceBar, SETTLE_TWEEN_INFO, {
+				Size = UDim2.new(targetBarXScale, self._widgets.priceBar.Size.X.Offset, self._widgets.priceBar.Size.Y.Scale, self._widgets.priceBar.Size.Y.Offset),
+			}),
+			TweenService:Create(self._widgets.arrow, SETTLE_TWEEN_INFO, {
+				Position = UDim2.new(
+					math.clamp(targetMarkerXScale + ARROW_LEFT_OFFSET_SCALE, 0, 1),
+					self._arrowBaseXOffset,
+					self._widgets.arrow.Position.Y.Scale,
+					self._widgets.arrow.Position.Y.Offset
+				),
+			}),
+			TweenService:Create(self._widgets.barCurrentLabel, SETTLE_TWEEN_INFO, {
+				Position = UDim2.new(
+					math.clamp(targetMarkerXScale + CURRENT_TEXT_LEFT_OFFSET_SCALE, 0, 1),
+					self._barCurrentBaseXOffset,
+					self._widgets.barCurrentLabel.Position.Y.Scale,
+					self._widgets.barCurrentLabel.Position.Y.Offset
+				),
+			}),
+		}
+
+		self._activeTweens = settleTweens
+		for _, tween in ipairs(settleTweens) do
+			tween:Play()
+		end
+	end
+
+	for _, tween in ipairs(slideTweens) do
+		tween.Completed:Connect(function(playbackState: Enum.PlaybackState)
+			if playbackState ~= Enum.PlaybackState.Completed then
+				return
+			end
+
+			completedCount += 1
+			if completedCount == expectedCount then
+				playSettleTweens()
+			end
+		end)
+		tween:Play()
+	end
+end
+
+function CiderMarketView:_animatePriceText(targetPrice: number, previousPrice: number)
+	self._priceAnimationId += 1
+	local animationId = self._priceAnimationId
+	local startPrice = math.floor(previousPrice)
+	local endPrice = math.floor(targetPrice)
+
+	if startPrice == endPrice then
+		self._displayedPrice = endPrice
+		setPriceText(self._widgets, endPrice)
+		return
+	end
+
+	local step = if endPrice > startPrice then 1 else -1
+	task.spawn(function()
+		local displayedPrice = startPrice
+		while animationId == self._priceAnimationId do
+			displayedPrice += step
+			self._displayedPrice = displayedPrice
+			setPriceText(self._widgets, displayedPrice)
+
+			if displayedPrice == endPrice then
+				break
+			end
+
+			task.wait(COUNT_STEP_SECONDS)
+		end
+	end)
+end
+
 function CiderMarketView:render(
 	ciderSellPrice: number,
 	secondsUntilPriceChange: number,
 	ciderAmount: number,
-	cash: number,
-	statusText: string?
+	_cash: number,
+	_statusText: string?
 )
-	local rankDefinition = MarketPriceRank.getCiderPriceRank(ciderSellPrice)
-	local normalizedPrice = MarketPriceRank.getNormalizedCiderPrice(ciderSellPrice)
+	self._widgets.pricePanelNextLabel.Text = string.format("Next Price in: %s", formatSeconds(secondsUntilPriceChange))
+	setButtonEnabled(self._widgets.sellButton, ciderAmount > 0)
 
-	self._widgets.countdownLabel.Text = string.format("Next price change: %s", formatSeconds(secondsUntilPriceChange))
-	self._widgets.priceLabel.Text = string.format("Current price: %s / cider", formatCash(ciderSellPrice))
-	self._widgets.rankLabel.Text = string.format("Market rank: %s", rankDefinition.displayName)
-	self._widgets.rankLabel.TextColor3 = RANK_COLORS[rankDefinition.id] or PRICE_COLOR
-	self._widgets.meterMarker.Position = UDim2.new(normalizedPrice, 0, 0, 0)
-	self._widgets.ciderLabel.Text = string.format("Your cider: %d", math.max(0, math.floor(ciderAmount)))
-	self._widgets.valueLabel.Text = string.format("Estimated sale: %s", formatCash(ciderAmount * ciderSellPrice))
-	self._widgets.cashLabel.Text = formatCash(cash)
-	self._widgets.statusLabel.Text = statusText or ""
-	self._widgets.statusLabel.TextColor3 = if ciderAmount > 0 then MUTED_TEXT_COLOR else WARNING_COLOR
+	local previousPrice = self._lastPrice
+	if previousPrice == nil then
+		self._lastPrice = ciderSellPrice
+		self._displayedPrice = ciderSellPrice
+		setPriceText(self._widgets, ciderSellPrice)
+		self:_applyPricePosition(ciderSellPrice)
+		return
+	end
 
-	local canSell = ciderAmount > 0
-	self._widgets.sellButton.BackgroundColor3 = if canSell then BUTTON_COLOR else BUTTON_DISABLED_COLOR
-	self._widgets.sellButton.AutoButtonColor = canSell
-	self._widgets.sellButton.Active = canSell
+	if previousPrice == ciderSellPrice then
+		if self._displayedPrice == nil then
+			setPriceText(self._widgets, ciderSellPrice)
+		end
+		return
+	end
+
+	self._lastPrice = ciderSellPrice
+	self:_playPricePositionTween(ciderSellPrice, previousPrice)
+	self:_animatePriceText(ciderSellPrice, previousPrice)
 end
 
 function CiderMarketView:connectCloseRequested(listener: () -> ()): RBXScriptConnection
@@ -380,7 +364,8 @@ function CiderMarketView:connectSellRequested(listener: () -> ()): RBXScriptConn
 end
 
 function CiderMarketView:destroy()
-	self._widgets.frame:Destroy()
+	self:_cancelPriceTweens()
+	self._priceAnimationId += 1
 end
 
 return CiderMarketView

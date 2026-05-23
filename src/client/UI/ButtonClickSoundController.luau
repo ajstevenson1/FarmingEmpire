@@ -1,6 +1,7 @@
 --!strict
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 
@@ -11,6 +12,7 @@ local uiFolder = sharedFolder:WaitForChild("UI") :: Folder
 local ButtonSoundConfig = require(uiFolder:WaitForChild("ButtonSoundConfig") :: ModuleScript)
 
 type GuiButtonLike = TextButton | ImageButton
+type ButtonSoundKey = "Click" | "Buy"
 
 export type ButtonClickSoundController = {
 	start: () -> (),
@@ -22,17 +24,39 @@ local ROOT_GUI_NAME = "GUI"
 local hasStarted = false
 local rootConnection: RBXScriptConnection? = nil
 local boundConnectionsByButton: { [GuiButtonLike]: RBXScriptConnection } = {}
-local soundPool: { Sound } = {}
-local nextSoundIndex = 1
+local soundPoolsByKey: { [ButtonSoundKey]: { Sound } } = {
+	Click = {},
+	Buy = {},
+}
+local nextSoundIndexByKey: { [ButtonSoundKey]: number } = {
+	Click = 1,
+	Buy = 1,
+}
 
 local function isGuiButtonLike(instance: Instance): boolean
 	return instance:IsA("TextButton") or instance:IsA("ImageButton")
 end
 
-local function createClickSound(index: number): Sound
+local function getSoundName(soundKey: ButtonSoundKey): string
+	if soundKey == "Buy" then
+		return ButtonSoundConfig.BuySoundName
+	end
+
+	return ButtonSoundConfig.ClickSoundName
+end
+
+local function getSoundId(soundKey: ButtonSoundKey): string
+	if soundKey == "Buy" then
+		return ButtonSoundConfig.BuySoundId
+	end
+
+	return ButtonSoundConfig.ClickSoundId
+end
+
+local function createButtonSound(soundKey: ButtonSoundKey, index: number): Sound
 	local sound = Instance.new("Sound")
-	sound.Name = string.format("%s%d", ButtonSoundConfig.ClickSoundName, index)
-	sound.SoundId = ButtonSoundConfig.ClickSoundId
+	sound.Name = string.format("%s%d", getSoundName(soundKey), index)
+	sound.SoundId = getSoundId(soundKey)
 	sound.Volume = ButtonSoundConfig.Volume
 	sound.PlaybackSpeed = 1
 	sound.Looped = false
@@ -41,25 +65,35 @@ local function createClickSound(index: number): Sound
 	return sound
 end
 
-local function getClickSound(index: number): Sound
+local function getButtonSound(soundKey: ButtonSoundKey, index: number): Sound
+	local soundPool = soundPoolsByKey[soundKey]
 	local existing = soundPool[index]
 	if existing ~= nil then
 		return existing
 	end
 
-	local created = createClickSound(index)
+	local created = createButtonSound(soundKey, index)
 	soundPool[index] = created
 	return created
 end
 
-local function playClickSound()
+local function playButtonSound(soundKey: ButtonSoundKey)
 	local poolSize = math.max(1, ButtonSoundConfig.PoolSize)
-	local sound = getClickSound(nextSoundIndex)
-	nextSoundIndex = (nextSoundIndex % poolSize) + 1
+	local nextSoundIndex = nextSoundIndexByKey[soundKey]
+	local sound = getButtonSound(soundKey, nextSoundIndex)
+	nextSoundIndexByKey[soundKey] = (nextSoundIndex % poolSize) + 1
 
 	sound:Stop()
 	sound.TimePosition = 0
 	sound:Play()
+end
+
+local function getButtonSoundKey(button: GuiButtonLike): ButtonSoundKey
+	if CollectionService:HasTag(button, ButtonSoundConfig.BuyTagName) then
+		return "Buy"
+	end
+
+	return "Click"
 end
 
 local function unbindButton(button: GuiButtonLike)
@@ -78,7 +112,7 @@ local function bindButton(button: GuiButtonLike)
 	end
 
 	boundConnectionsByButton[button] = button.Activated:Connect(function()
-		playClickSound()
+		playButtonSound(getButtonSoundKey(button))
 	end)
 
 	button.Destroying:Connect(function()
@@ -141,10 +175,14 @@ function ButtonClickSoundController.destroy()
 		unbindButton(button)
 	end
 
-	for _, sound in ipairs(soundPool) do
-		sound:Destroy()
+	for _, soundPool in pairs(soundPoolsByKey) do
+		for _, sound in ipairs(soundPool) do
+			sound:Destroy()
+		end
+		table.clear(soundPool)
 	end
-	table.clear(soundPool)
+	nextSoundIndexByKey.Click = 1
+	nextSoundIndexByKey.Buy = 1
 
 	hasStarted = false
 end

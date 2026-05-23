@@ -12,6 +12,9 @@ type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 
 local RESTOCK_INTERVAL_SECONDS = 5 * 60
+local TREE_IMAGE_ASSET_ID = "80078631350858"
+local MILL_IMAGE_ASSET_ID = "120573464445068"
+local EMPTY_DEVELOPER_PRODUCT_ID = ""
 
 local shopIds: { ShopId } = {
 	"TreesShop",
@@ -49,6 +52,8 @@ for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTre
 		id = treeDefinition.id,
 		shopId = "TreesShop",
 		itemId = treeDefinition.id,
+		imageAssetId = TREE_IMAGE_ASSET_ID,
+		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
 		price = treeDefinition.price,
 		quantityPerPurchase = 1,
 		stockPerRestock = treeDefinition.stockPerRestock,
@@ -64,6 +69,8 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 		id = millDefinition.id,
 		shopId = "MillsShop",
 		itemId = millDefinition.id,
+		imageAssetId = MILL_IMAGE_ASSET_ID,
+		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
 		price = millDefinition.price,
 		quantityPerPurchase = 1,
 		stockPerRestock = millDefinition.stockPerRestock,
