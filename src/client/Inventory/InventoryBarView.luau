@@ -12,12 +12,14 @@ local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
 
 type InventoryEntry = InventoryTypes.InventoryEntry
 type InventorySnapshot = InventoryTypes.InventorySnapshot
 type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
 type GuiButtonLike = TextButton | ImageButton
+type HotbarLayoutClass = "Phone" | "Tablet" | "Desktop"
 
 type SlotWidgets = {
 	slotIndex: number,
@@ -63,6 +65,7 @@ export type InventoryBarView = {
 	_slotActivationSuppressUntil: number,
 	_searchText: string,
 	_renderedHotbarSlotCount: number,
+	_disconnectInputProfileObserver: (() -> ())?,
 	_connections: { RBXScriptConnection },
 	_slotConnections: { RBXScriptConnection },
 	_itemConnections: { RBXScriptConnection },
@@ -87,19 +90,26 @@ local PANEL_COLOR = Color3.fromRGB(0, 0, 0)
 local DETAIL_TEXT_COLOR = Color3.fromRGB(219, 205, 180)
 local SCYTHE_ICON_IMAGE = "rbxassetid://86007084151897"
 local MOBILE_VISIBLE_HOTBAR_SLOTS = 4
+local TABLET_VISIBLE_HOTBAR_SLOTS = 7
 local DESKTOP_VISIBLE_HOTBAR_SLOTS = 10
 local MOBILE_MIN_HOTBAR_SLOT_SIZE = 52
 local MOBILE_MAX_HOTBAR_SLOT_SIZE = 64
+local TABLET_MIN_HOTBAR_SLOT_SIZE = 58
+local TABLET_MAX_HOTBAR_SLOT_SIZE = 78
 local DESKTOP_MIN_HOTBAR_SLOT_SIZE = 68
 local DESKTOP_MAX_HOTBAR_SLOT_SIZE = 92
 local MOBILE_HOTBAR_BOTTOM_MARGIN = 20
+local TABLET_HOTBAR_BOTTOM_MARGIN = 24
 local DESKTOP_HOTBAR_BOTTOM_MARGIN = 28
 local MOBILE_HOTBAR_HORIZONTAL_FRACTION = 0.9
+local TABLET_HOTBAR_HORIZONTAL_FRACTION = 0.86
 local DESKTOP_HOTBAR_HORIZONTAL_FRACTION = 0.82
 local MOBILE_MIN_INVENTORY_GRID_CELL_SIZE = 32
 local MOBILE_INVENTORY_GRID_CELL_SIZE = 45
+local TABLET_INVENTORY_GRID_CELL_SIZE = 64
 local DESKTOP_INVENTORY_GRID_CELL_SIZE = 83
 local MOBILE_INVENTORY_GRID_PADDING = 12
+local TABLET_INVENTORY_GRID_PADDING = 12
 local DESKTOP_INVENTORY_GRID_PADDING = 12
 local MOBILE_TOOLTIP_TEXT = "Tap an item, then tap a hotbar slot"
 local MOBILE_ACTIVE_TOOLTIP_TEXT = "Tap a hotbar slot to assign"
@@ -137,12 +147,26 @@ local function getDisplayLabelForSlot(slotIndex: number): string
 	return tostring(slotIndex - 1)
 end
 
-local function isMobileHotbarLayout(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
+local function getHotbarLayoutClass(): HotbarLayoutClass
+	if not ClientInputProfile.usesTouchControls() then
+		return "Desktop"
+	end
+
+	local screenClass = ClientInputProfile.getScreenClass()
+	return if screenClass == "Phone" then "Phone" else "Tablet"
 end
 
 local function getHotbarVisibleCapacity(): number
-	return if isMobileHotbarLayout() then MOBILE_VISIBLE_HOTBAR_SLOTS else DESKTOP_VISIBLE_HOTBAR_SLOTS
+	local layoutClass = getHotbarLayoutClass()
+	if layoutClass == "Phone" then
+		return MOBILE_VISIBLE_HOTBAR_SLOTS
+	end
+
+	if layoutClass == "Tablet" then
+		return TABLET_VISIBLE_HOTBAR_SLOTS
+	end
+
+	return DESKTOP_VISIBLE_HOTBAR_SLOTS
 end
 
 local function isMousePrimaryInput(inputObject: InputObject): boolean
@@ -349,7 +373,7 @@ local function updateTooltipText(tooltipLabel: TextLabel?, activeInventoryItemId
 		return
 	end
 
-	if isMobileHotbarLayout() then
+	if ClientInputProfile.usesTouchControls() then
 		tooltipLabel.Text = if activeInventoryItemId ~= nil then MOBILE_ACTIVE_TOOLTIP_TEXT else MOBILE_TOOLTIP_TEXT
 	else
 		tooltipLabel.Text = DESKTOP_TOOLTIP_TEXT
@@ -402,20 +426,32 @@ local function updateHotbarLayout(rootGui: ScreenGui, hotbarFrame: Frame, hotbar
 	end
 
 	local visibleCapacity = getHotbarVisibleCapacity()
-	local isMobile = isMobileHotbarLayout()
+	local layoutClass = getHotbarLayoutClass()
 	local viewportSize = getViewportSize(rootGui, hotbarFrame)
-	local padding = if isMobile then 6 else 10
+	local padding = if layoutClass == "Phone" then 6 else 10
 	local targetVisibleSlots = math.max(math.min(renderedSlotCount, visibleCapacity), 1)
-	local horizontalFraction = if isMobile then MOBILE_HOTBAR_HORIZONTAL_FRACTION else DESKTOP_HOTBAR_HORIZONTAL_FRACTION
+	local horizontalFraction = if layoutClass == "Phone"
+		then MOBILE_HOTBAR_HORIZONTAL_FRACTION
+		elseif layoutClass == "Tablet" then TABLET_HOTBAR_HORIZONTAL_FRACTION
+		else DESKTOP_HOTBAR_HORIZONTAL_FRACTION
 	local widthLimitedSlotSize = math.floor(
 		(viewportSize.X * horizontalFraction - padding * math.max(visibleCapacity - 1, 0)) / visibleCapacity
 	)
-	local heightLimitedSlotSize = math.floor(viewportSize.Y * (if isMobile then 0.09 else 0.1))
-	local minSlotSize = if isMobile then MOBILE_MIN_HOTBAR_SLOT_SIZE else DESKTOP_MIN_HOTBAR_SLOT_SIZE
-	local maxSlotSize = if isMobile then MOBILE_MAX_HOTBAR_SLOT_SIZE else DESKTOP_MAX_HOTBAR_SLOT_SIZE
+	local heightLimitedSlotSize = math.floor(viewportSize.Y * (if layoutClass == "Phone" then 0.09 else 0.1))
+	local minSlotSize = if layoutClass == "Phone"
+		then MOBILE_MIN_HOTBAR_SLOT_SIZE
+		elseif layoutClass == "Tablet" then TABLET_MIN_HOTBAR_SLOT_SIZE
+		else DESKTOP_MIN_HOTBAR_SLOT_SIZE
+	local maxSlotSize = if layoutClass == "Phone"
+		then MOBILE_MAX_HOTBAR_SLOT_SIZE
+		elseif layoutClass == "Tablet" then TABLET_MAX_HOTBAR_SLOT_SIZE
+		else DESKTOP_MAX_HOTBAR_SLOT_SIZE
 	local slotSize = math.clamp(math.min(widthLimitedSlotSize, heightLimitedSlotSize), minSlotSize, maxSlotSize)
 	local frameWidth = slotSize * targetVisibleSlots + padding * math.max(targetVisibleSlots - 1, 0)
-	local bottomMargin = if isMobile then MOBILE_HOTBAR_BOTTOM_MARGIN else DESKTOP_HOTBAR_BOTTOM_MARGIN
+	local bottomMargin = if layoutClass == "Phone"
+		then MOBILE_HOTBAR_BOTTOM_MARGIN
+		elseif layoutClass == "Tablet" then TABLET_HOTBAR_BOTTOM_MARGIN
+		else DESKTOP_HOTBAR_BOTTOM_MARGIN
 
 	hotbarGrid.CellPadding = UDim2.fromOffset(padding, padding)
 	hotbarGrid.CellSize = UDim2.fromOffset(slotSize, slotSize)
@@ -429,13 +465,19 @@ local function updateInventoryGridLayout(rootGui: ScreenGui, inventoryContentFra
 		return
 	end
 
-	local isMobile = isMobileHotbarLayout()
+	local layoutClass = getHotbarLayoutClass()
 	local viewportSize = getViewportSize(rootGui, inventoryContentFrame)
-	local targetCellSize = if isMobile then MOBILE_INVENTORY_GRID_CELL_SIZE else DESKTOP_INVENTORY_GRID_CELL_SIZE
-	local cellSize = if isMobile
+	local targetCellSize = if layoutClass == "Phone"
+		then MOBILE_INVENTORY_GRID_CELL_SIZE
+		elseif layoutClass == "Tablet" then TABLET_INVENTORY_GRID_CELL_SIZE
+		else DESKTOP_INVENTORY_GRID_CELL_SIZE
+	local cellSize = if layoutClass == "Phone"
 		then math.clamp(math.floor(viewportSize.X * 0.12), MOBILE_MIN_INVENTORY_GRID_CELL_SIZE, targetCellSize)
 		else targetCellSize
-	local padding = if isMobile then MOBILE_INVENTORY_GRID_PADDING else DESKTOP_INVENTORY_GRID_PADDING
+	local padding = if layoutClass == "Phone"
+		then MOBILE_INVENTORY_GRID_PADDING
+		elseif layoutClass == "Tablet" then TABLET_INVENTORY_GRID_PADDING
+		else DESKTOP_INVENTORY_GRID_PADDING
 
 	inventoryGrid.CellPadding = UDim2.fromOffset(padding, padding)
 	inventoryGrid.CellSize = UDim2.fromOffset(cellSize, cellSize)
@@ -545,6 +587,7 @@ function InventoryBarView.new(): InventoryBarView
 		_slotActivationSuppressUntil = 0,
 		_searchText = searchBox.Text,
 		_renderedHotbarSlotCount = 1,
+		_disconnectInputProfileObserver = nil,
 		_connections = {},
 		_slotConnections = {},
 		_itemConnections = {},
@@ -585,6 +628,12 @@ function InventoryBarView.new(): InventoryBarView
 			updateTooltipText(self._tooltipLabel, self._activeInventoryItemId)
 		end))
 	end
+
+	self._disconnectInputProfileObserver = ClientInputProfile.observeChanged(function()
+		updateHotbarLayout(self._rootGui, self._hotbarFrame, self._hotbarGrid, self._renderedHotbarSlotCount)
+		updateInventoryGridLayout(self._rootGui, self._inventoryContentFrame, self._inventoryGrid)
+		updateTooltipText(self._tooltipLabel, self._activeInventoryItemId)
+	end)
 
 	table.insert(self._connections, UserInputService.InputEnded:Connect(function(inputObject: InputObject)
 		if not isPrimaryPointerReleaseInput(inputObject) then
@@ -742,7 +791,7 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 					return
 				end
 
-				if self._isInventoryPanelOpen and isMobileHotbarLayout() then
+				if self._isInventoryPanelOpen and ClientInputProfile.usesTouchControls() then
 					local activeInventoryItemId = self._activeInventoryItemId
 					if activeInventoryItemId == nil then
 						return
@@ -807,7 +856,7 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 
 		if entry.itemId ~= "Scythe" then
 			table.insert(self._itemConnections, itemButton.Activated:Connect(function()
-				if not self._isInventoryPanelOpen or not isMobileHotbarLayout() then
+				if not self._isInventoryPanelOpen or not ClientInputProfile.usesTouchControls() then
 					return
 				end
 
@@ -829,6 +878,11 @@ function InventoryBarView:render(snapshot: InventorySnapshot?)
 end
 
 function InventoryBarView:destroy()
+	if self._disconnectInputProfileObserver ~= nil then
+		self._disconnectInputProfileObserver()
+		self._disconnectInputProfileObserver = nil
+	end
+
 	for _, connection in ipairs(self._connections) do
 		connection:Disconnect()
 	end

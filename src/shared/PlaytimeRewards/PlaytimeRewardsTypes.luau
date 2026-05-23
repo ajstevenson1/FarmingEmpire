@@ -18,21 +18,31 @@ export type PlayerPlaytimeRewardsData = {
 	totalClaims: number,
 }
 
+export type PlayerDailyRewardsData = {
+	claimedRewardIndexes: { [number]: boolean },
+	lastClaimUnixTime: number,
+	nextRewardIndex: number,
+	totalClaims: number,
+}
+
 export type CashRewardEntry = {
 	kind: "Cash",
 	amount: number,
+	imageAssetId: string?,
 }
 
 export type ResourceRewardEntry = {
 	kind: "Resource",
 	resourceId: ResourceId,
 	amount: number,
+	imageAssetId: string?,
 }
 
 export type ItemRewardEntry = {
 	kind: "Item",
 	itemId: ItemId,
 	amount: number,
+	imageAssetId: string?,
 }
 
 export type PlaytimeRewardEntry = CashRewardEntry | ResourceRewardEntry | ItemRewardEntry
@@ -66,12 +76,44 @@ export type PlaytimeRewardsSnapshot = {
 	totalClaims: number,
 }
 
+export type DailyRewardDefinition = {
+	rewardIndex: number,
+	displayName: string,
+	rewards: { PlaytimeRewardEntry },
+}
+
+export type DailyRewardSnapshot = {
+	rewardIndex: number,
+	displayName: string,
+	rewards: { PlaytimeRewardEntry },
+	secondsRemaining: number,
+	state: PlaytimeRewardState,
+}
+
+export type DailyRewardsSnapshot = {
+	canClaim: boolean,
+	claimableRewardIndex: number?,
+	cycleLength: number,
+	nextRewardSecondsRemaining: number?,
+	rewardSnapshots: { DailyRewardSnapshot },
+	snapshotServerTime: number,
+	totalClaims: number,
+}
+
+export type RewardsSnapshot = {
+	playtime: PlaytimeRewardsSnapshot,
+	daily: DailyRewardsSnapshot,
+}
+
+export type RewardCategory = "Playtime" | "Daily"
+
 export type PlaytimeRewardsClaimStatus = "Claimed" | "AlreadyClaimed"
 
 export type PlaytimeRewardsClaimResult = {
 	success: boolean,
 	status: PlaytimeRewardsClaimStatus,
-	snapshot: PlaytimeRewardsSnapshot,
+	snapshot: RewardsSnapshot,
+	category: RewardCategory?,
 	claimedRewardIndex: number?,
 	grantedRewards: { PlaytimeRewardEntry }?,
 }

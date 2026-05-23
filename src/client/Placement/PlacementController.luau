@@ -30,6 +30,7 @@ local PlotExpansionTypes = require(plotsCodeFolder:WaitForChild("PlotExpansionTy
 local PlotExpansionUtils = require(plotsCodeFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local InventoryController = require(script.Parent.Parent.Inventory.InventoryController)
+local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
 local HudTooltip = require(script.Parent.Parent.UI.HudTooltip)
 local StructureActionMode = require(script.Parent.StructureActionMode)
 local PlacementPreviewView = require(script.Parent.PlacementPreviewView)
@@ -133,20 +134,12 @@ local function getEquippedPlaceableItem(snapshot: InventorySnapshot): (ItemId?, 
 	return equippedItemId, itemDefinition
 end
 
-local function isMobilePlacementInput(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
-end
-
-local function isGamepadPlacementInput(): boolean
-	return UserInputService.GamepadEnabled and not isMobilePlacementInput()
-end
-
 local function getPlacementTooltipTextForItem(itemDefinition: ItemDefinition): string
-	if isMobilePlacementInput() then
+	if ClientInputProfile.usesTouchControls() then
 		return MOBILE_PLACEMENT_TOOLTIP_TEXT
 	end
 
-	if isGamepadPlacementInput() then
+	if ClientInputProfile.usesGamepadControls() then
 		return GAMEPAD_PLACEMENT_TOOLTIP_TEXT
 	end
 
@@ -404,7 +397,7 @@ function PlacementController.start()
 		else
 			resetRotationState()
 		end
-		mobileRotateButton.Visible = isMobilePlacementInput() and isRotatablePlaceableItem(itemDefinition)
+		mobileRotateButton.Visible = ClientInputProfile.usesTouchControls() and isRotatablePlaceableItem(itemDefinition)
 		hudTooltip:show(getPlacementTooltipTextForItem(itemDefinition), false, PLACEMENT_TOOLTIP_OWNER_ID)
 
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(itemDefinition.id)
@@ -423,7 +416,7 @@ function PlacementController.start()
 		end
 
 		local placementWorldPosition: Vector3?
-		if isMobilePlacementInput() then
+		if ClientInputProfile.usesTouchControls() then
 			placementWorldPosition = getMobilePlacementWorldPosition()
 		else
 			local raycastResult = getPlotRaycastResult(plotBase)
@@ -509,7 +502,7 @@ function PlacementController.start()
 			return
 		end
 
-		if not isMobilePlacementInput() then
+		if not ClientInputProfile.usesTouchControls() then
 			return
 		end
 

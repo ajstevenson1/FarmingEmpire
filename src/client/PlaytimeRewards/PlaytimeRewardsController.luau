@@ -2,39 +2,67 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
-local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
-local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
-local PlaytimeRewardsView = require(script.Parent.PlaytimeRewardsView)
+local RewardClaimEffects = require(script.Parent.RewardClaimEffects)
 
+type DailyRewardSnapshot = PlaytimeRewardsTypes.DailyRewardSnapshot
+type DailyRewardsSnapshot = PlaytimeRewardsTypes.DailyRewardsSnapshot
+type PlaytimeRewardEntry = PlaytimeRewardsTypes.PlaytimeRewardEntry
 type PlaytimeRewardSnapshot = PlaytimeRewardsTypes.PlaytimeRewardSnapshot
 type PlaytimeRewardState = PlaytimeRewardsTypes.PlaytimeRewardState
-type PlaytimeRewardEntry = PlaytimeRewardsTypes.PlaytimeRewardEntry
 type PlaytimeRewardsClaimResult = PlaytimeRewardsTypes.PlaytimeRewardsClaimResult
 type PlaytimeRewardsSnapshot = PlaytimeRewardsTypes.PlaytimeRewardsSnapshot
+type RewardCategory = PlaytimeRewardsTypes.RewardCategory
+type RewardsSnapshot = PlaytimeRewardsTypes.RewardsSnapshot
 type GuiButtonLike = TextButton | ImageButton
+type RewardSnapshot = PlaytimeRewardSnapshot | DailyRewardSnapshot
 
-local PLAYTIME_REWARDS_FRAME_ID = "PlaytimeRewards"
-local LEGACY_REWARDS_FRAME_ID = "DailyRewards"
+local REWARDS_FRAME_ID = "Rewards"
+local LEGACY_PLAYTIME_FRAME_ID = "PlaytimeRewards"
+local LEGACY_DAILY_FRAME_ID = "DailyRewards"
 local MENU_FRAME_GROUP = "Menu"
+local TEMPLATE_NAME = "PlaytimeRewardTemplate"
 local DEFAULT_PANEL_SIZE = UDim2.fromScale(0.52, 0.62)
 local DEFAULT_PANEL_POSITION = UDim2.fromScale(0.5, 0.5)
+local TAB_TWEEN_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local ACTIVE_TAB_SCALE = 1.2
+local ACTIVE_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
+local CLAIMED_GRADIENT = ColorSequence.new(Color3.fromRGB(62, 238, 34), Color3.fromRGB(20, 185, 47))
+local CLAIMED_STROKE_COLOR = Color3.fromRGB(9, 106, 34)
+local CLAIMED_TEXT_STROKE_COLOR = Color3.fromRGB(5, 72, 24)
+local LOCKED_GRADIENT = ColorSequence.new(Color3.fromRGB(255, 96, 96), Color3.fromRGB(210, 42, 58))
+local LOCKED_STROKE_COLOR = Color3.fromRGB(150, 22, 38)
+local LOCKED_TEXT_STROKE_COLOR = Color3.fromRGB(108, 14, 26)
+local DESKTOP_GRID_CELL_SIZE = 180
+local DESKTOP_GRID_PADDING = 30
+local MOBILE_GRID_CELL_SIZE = 100
+local MOBILE_GRID_PADDING = 15
+local MOBILE_SCROLLER_WIDTH = 520
+
 local hasStarted = false
-local latestSnapshot: PlaytimeRewardsSnapshot? = nil
-local latestStatusText: string? = nil
+local latestSnapshot: RewardsSnapshot? = nil
+local activeCategory: RewardCategory = "Playtime"
 local isClaimPending = false
 local didWarnMissingFrame = false
+local didWarnMissingScroller = false
+local didWarnMissingTemplate = false
 local registeredFrame: Frame? = nil
+local tabBaseSizes: { [GuiObject]: UDim2 } = {}
+local tabBaseStrokeColors: { [UIStroke]: Color3 } = {}
+local renderFrame: ((Frame, ScreenGui, RemoteFunction, boolean) -> ())? = nil
 
 local function getRootGui(): ScreenGui
 	local localPlayer = Players.LocalPlayer
@@ -48,6 +76,24 @@ end
 
 local function findDescendant(parent: Instance, childName: string): Instance?
 	return parent:FindFirstChild(childName, true)
+end
+
+local function findTextLabel(parent: Instance, childName: string): TextLabel?
+	local label = findDescendant(parent, childName)
+	if label == nil or not label:IsA("TextLabel") then
+		return nil
+	end
+
+	return label
+end
+
+local function findGuiButton(parent: Instance, childName: string): GuiButtonLike?
+	local button = findDescendant(parent, childName)
+	if button == nil or not (button:IsA("TextButton") or button:IsA("ImageButton")) then
+		return nil
+	end
+
+	return button :: GuiButtonLike
 end
 
 local function getRequiredGuiButton(parent: Instance, childName: string): GuiButtonLike
@@ -66,16 +112,17 @@ local function getOpenButton(rootGui: ScreenGui): GuiButtonLike
 	local left = hud:WaitForChild("Left")
 	assert(left:IsA("GuiObject"), "PlayerGui.GUI.HUD.Left must be a GuiObject")
 
-	local playtimeRewardsButton = left:FindFirstChild(PLAYTIME_REWARDS_FRAME_ID)
-	if playtimeRewardsButton ~= nil then
-		assert(
-			playtimeRewardsButton:IsA("TextButton") or playtimeRewardsButton:IsA("ImageButton"),
-			string.format("%s.%s must be a TextButton or ImageButton", left:GetFullName(), PLAYTIME_REWARDS_FRAME_ID)
-		)
+	local rewardsButton = left:FindFirstChild(REWARDS_FRAME_ID)
+	if rewardsButton ~= nil and (rewardsButton:IsA("TextButton") or rewardsButton:IsA("ImageButton")) then
+		return rewardsButton :: GuiButtonLike
+	end
+
+	local playtimeRewardsButton = left:FindFirstChild(LEGACY_PLAYTIME_FRAME_ID)
+	if playtimeRewardsButton ~= nil and (playtimeRewardsButton:IsA("TextButton") or playtimeRewardsButton:IsA("ImageButton")) then
 		return playtimeRewardsButton :: GuiButtonLike
 	end
 
-	return getRequiredGuiButton(left, LEGACY_REWARDS_FRAME_ID)
+	return getRequiredGuiButton(left, LEGACY_DAILY_FRAME_ID)
 end
 
 local function getNotificationIndicator(rootGui: ScreenGui): GuiObject?
@@ -93,25 +140,23 @@ local function getNotificationIndicator(rootGui: ScreenGui): GuiObject?
 	return notification
 end
 
-local function getPlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
+local function getRewardsFrame(rootGui: ScreenGui): Frame?
 	local frames = rootGui:FindFirstChild("Frames")
 	if frames == nil then
 		return nil
 	end
 
-	local playtimeRewardsFrame = frames:FindFirstChild(PLAYTIME_REWARDS_FRAME_ID)
-	if playtimeRewardsFrame == nil then
-		playtimeRewardsFrame = frames:FindFirstChild(LEGACY_REWARDS_FRAME_ID)
-	end
-
-	if playtimeRewardsFrame == nil or not playtimeRewardsFrame:IsA("Frame") then
+	local rewardsFrame = frames:FindFirstChild(REWARDS_FRAME_ID)
+		or frames:FindFirstChild(LEGACY_PLAYTIME_FRAME_ID)
+		or frames:FindFirstChild(LEGACY_DAILY_FRAME_ID)
+	if rewardsFrame == nil or not rewardsFrame:IsA("Frame") then
 		return nil
 	end
 
-	return playtimeRewardsFrame
+	return rewardsFrame
 end
 
-local function getOrCreatePlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
+local function getOrCreateRewardsFrame(rootGui: ScreenGui): Frame?
 	local frames = rootGui:FindFirstChild("Frames")
 	if frames == nil then
 		frames = Instance.new("Folder")
@@ -119,13 +164,13 @@ local function getOrCreatePlaytimeRewardsFrame(rootGui: ScreenGui): Frame?
 		frames.Parent = rootGui
 	end
 
-	local existingFrame = getPlaytimeRewardsFrame(rootGui)
+	local existingFrame = getRewardsFrame(rootGui)
 	if existingFrame ~= nil then
 		return existingFrame
 	end
 
 	local frame = Instance.new("Frame")
-	frame.Name = PLAYTIME_REWARDS_FRAME_ID
+	frame.Name = REWARDS_FRAME_ID
 	frame.AnchorPoint = Vector2.new(0.5, 0.5)
 	frame.Position = DEFAULT_PANEL_POSITION
 	frame.Size = DEFAULT_PANEL_SIZE
@@ -150,49 +195,35 @@ local function prepareFrameDefaults(frame: Frame)
 	end
 end
 
-local function getPlaytimeRewardsRemotes(): (RemoteEvent, RemoteFunction, RemoteFunction)
+local function getRewardsRemotes(): (RemoteEvent, RemoteFunction, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local rewardsFolder = rootFolder:WaitForChild(RemoteNames.playtimeRewardsFolderName) :: Folder
-	local playtimeRewardsUpdated = rewardsFolder:WaitForChild(RemoteNames.playtimeRewardsUpdatedEventName)
-	local getPlaytimeRewardsSnapshot = rewardsFolder:WaitForChild(RemoteNames.getPlaytimeRewardsSnapshotFunctionName)
-	local claimPlaytimeReward = rewardsFolder:WaitForChild(RemoteNames.claimPlaytimeRewardFunctionName)
+	local rewardsUpdated = rewardsFolder:WaitForChild(RemoteNames.playtimeRewardsUpdatedEventName)
+	local getRewardsSnapshot = rewardsFolder:WaitForChild(RemoteNames.getPlaytimeRewardsSnapshotFunctionName)
+	local claimReward = rewardsFolder:WaitForChild(RemoteNames.claimPlaytimeRewardFunctionName)
 
-	assert(playtimeRewardsUpdated:IsA("RemoteEvent"), "PlaytimeRewards.PlaytimeRewardsUpdated must be a RemoteEvent")
-	assert(getPlaytimeRewardsSnapshot:IsA("RemoteFunction"), "PlaytimeRewards.GetPlaytimeRewardsSnapshot must be a RemoteFunction")
-	assert(claimPlaytimeReward:IsA("RemoteFunction"), "PlaytimeRewards.ClaimPlaytimeReward must be a RemoteFunction")
+	assert(rewardsUpdated:IsA("RemoteEvent"), "PlaytimeRewards.PlaytimeRewardsUpdated must be a RemoteEvent")
+	assert(getRewardsSnapshot:IsA("RemoteFunction"), "PlaytimeRewards.GetPlaytimeRewardsSnapshot must be a RemoteFunction")
+	assert(claimReward:IsA("RemoteFunction"), "PlaytimeRewards.ClaimPlaytimeReward must be a RemoteFunction")
 
-	return playtimeRewardsUpdated :: RemoteEvent, getPlaytimeRewardsSnapshot :: RemoteFunction, claimPlaytimeReward :: RemoteFunction
+	return rewardsUpdated :: RemoteEvent, getRewardsSnapshot :: RemoteFunction, claimReward :: RemoteFunction
 end
 
-local function findTextLabel(parent: Instance, childName: string): TextLabel?
-	local label = findDescendant(parent, childName)
-	if label == nil or not label:IsA("TextLabel") then
-		return nil
-	end
-
-	return label
+local function scaleUDim2(size: UDim2, scale: number): UDim2
+	return UDim2.new(size.X.Scale * scale, math.floor(size.X.Offset * scale), size.Y.Scale * scale, math.floor(size.Y.Offset * scale))
 end
 
-local function findGuiButton(parent: Instance, childName: string): GuiButtonLike?
-	local button = findDescendant(parent, childName)
-	if button == nil then
-		return nil
+local function formatDuration(seconds: number): string
+	local sanitizedSeconds = math.max(0, math.ceil(seconds))
+	local hours = math.floor(sanitizedSeconds / 3600)
+	local minutes = math.floor((sanitizedSeconds % 3600) / 60)
+	local remainingSeconds = sanitizedSeconds % 60
+
+	if hours > 0 then
+		return string.format("%02d:%02d:%02d", hours, minutes, remainingSeconds)
 	end
 
-	if not (button:IsA("TextButton") or button:IsA("ImageButton")) then
-		return nil
-	end
-
-	return button :: GuiButtonLike
-end
-
-local function findRewardContainer(parent: Instance, rewardIndex: number): GuiObject?
-	local rewardContainer = findDescendant(parent, string.format("Reward%d", rewardIndex))
-	if rewardContainer == nil or not rewardContainer:IsA("GuiObject") then
-		return nil
-	end
-
-	return rewardContainer
+	return string.format("%02d:%02d", minutes, remainingSeconds)
 end
 
 local function formatRewardEntry(rewardEntry: PlaytimeRewardEntry): string
@@ -216,34 +247,22 @@ local function formatRewardEntries(rewardEntries: { PlaytimeRewardEntry }): stri
 	return table.concat(parts, ", ")
 end
 
-local function getRewardStateText(rewardState: PlaytimeRewardState): string
-	if rewardState == "Claimed" then
-		return "Claimed"
-	elseif rewardState == "Claimable" then
-		return "Unclaimed"
+local function getRewardImageAssetId(rewardEntries: { PlaytimeRewardEntry }): string
+	for _, rewardEntry in ipairs(rewardEntries) do
+		local imageAssetId = rewardEntry.imageAssetId
+		if imageAssetId ~= nil and imageAssetId ~= "" then
+			return imageAssetId
+		end
 	end
 
-	return "Not yet unlocked"
-end
-
-local function formatDuration(seconds: number): string
-	local sanitizedSeconds = math.max(0, math.ceil(seconds))
-	local hours = math.floor(sanitizedSeconds / 3600)
-	local minutes = math.floor((sanitizedSeconds % 3600) / 60)
-	local remainingSeconds = sanitizedSeconds % 60
-
-	if hours > 0 then
-		return string.format("%02d:%02d:%02d", hours, minutes, remainingSeconds)
-	end
-
-	return string.format("%02d:%02d", minutes, remainingSeconds)
+	return ""
 end
 
 local function getCurrentPlaytimeSeconds(snapshot: PlaytimeRewardsSnapshot): number
 	return snapshot.currentPlaytimeSeconds + math.max(0, Workspace:GetServerTimeNow() - snapshot.snapshotServerTime)
 end
 
-local function getDynamicRewardState(rewardSnapshot: PlaytimeRewardSnapshot, snapshot: PlaytimeRewardsSnapshot): PlaytimeRewardState
+local function getPlaytimeRewardState(rewardSnapshot: PlaytimeRewardSnapshot, snapshot: PlaytimeRewardsSnapshot): PlaytimeRewardState
 	if rewardSnapshot.state == "Claimed" then
 		return "Claimed"
 	end
@@ -255,116 +274,455 @@ local function getDynamicRewardState(rewardSnapshot: PlaytimeRewardSnapshot, sna
 	return "Locked"
 end
 
-local function getRewardSecondsRemaining(rewardSnapshot: PlaytimeRewardSnapshot, snapshot: PlaytimeRewardsSnapshot): number
-	if getDynamicRewardState(rewardSnapshot, snapshot) ~= "Locked" then
+local function getDailyRewardState(rewardSnapshot: DailyRewardSnapshot, snapshot: DailyRewardsSnapshot): PlaytimeRewardState
+	if rewardSnapshot.state == "Claimed" then
+		return "Claimed"
+	end
+
+	local elapsedSeconds = math.max(0, Workspace:GetServerTimeNow() - snapshot.snapshotServerTime)
+	if rewardSnapshot.rewardIndex == snapshot.claimableRewardIndex
+		or (rewardSnapshot.state == "Locked" and rewardSnapshot.secondsRemaining > 0 and rewardSnapshot.secondsRemaining - elapsedSeconds <= 0)
+	then
+		return "Claimable"
+	end
+
+	return rewardSnapshot.state
+end
+
+local function getPlaytimeRewardSecondsRemaining(rewardSnapshot: PlaytimeRewardSnapshot, snapshot: PlaytimeRewardsSnapshot): number
+	if getPlaytimeRewardState(rewardSnapshot, snapshot) ~= "Locked" then
 		return 0
 	end
 
 	return math.max(0, math.ceil(rewardSnapshot.requiredPlaytimeSeconds - getCurrentPlaytimeSeconds(snapshot)))
 end
 
-local function getClaimableRewardIndex(snapshot: PlaytimeRewardsSnapshot): number?
+local function getDailyRewardSecondsRemaining(rewardSnapshot: DailyRewardSnapshot, snapshot: DailyRewardsSnapshot): number
+	if getDailyRewardState(rewardSnapshot, snapshot) ~= "Locked" then
+		return 0
+	end
+
+	local elapsedSeconds = math.max(0, Workspace:GetServerTimeNow() - snapshot.snapshotServerTime)
+	return math.max(0, math.ceil(rewardSnapshot.secondsRemaining - elapsedSeconds))
+end
+
+local function canClaimPlaytime(snapshot: PlaytimeRewardsSnapshot): boolean
 	for _, rewardSnapshot in ipairs(snapshot.rewardSnapshots) do
-		if getDynamicRewardState(rewardSnapshot, snapshot) == "Claimable" then
-			return rewardSnapshot.rewardIndex
+		if getPlaytimeRewardState(rewardSnapshot, snapshot) == "Claimable" then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function canClaimDaily(snapshot: DailyRewardsSnapshot): boolean
+	if snapshot.canClaim then
+		return true
+	end
+
+	local nextRewardSecondsRemaining = snapshot.nextRewardSecondsRemaining
+	if nextRewardSecondsRemaining == nil then
+		return false
+	end
+
+	local elapsedSeconds = math.max(0, Workspace:GetServerTimeNow() - snapshot.snapshotServerTime)
+	return nextRewardSecondsRemaining - elapsedSeconds <= 0
+end
+
+local function canClaimAny(snapshot: RewardsSnapshot): boolean
+	return canClaimPlaytime(snapshot.playtime) or canClaimDaily(snapshot.daily)
+end
+
+local function getCategorySnapshot(snapshot: RewardsSnapshot, category: RewardCategory): PlaytimeRewardsSnapshot | DailyRewardsSnapshot
+	if category == "Daily" then
+		return snapshot.daily
+	end
+
+	return snapshot.playtime
+end
+
+local function getRewardState(rewardSnapshot: RewardSnapshot, snapshot: PlaytimeRewardsSnapshot | DailyRewardsSnapshot, category: RewardCategory): PlaytimeRewardState
+	if category == "Daily" then
+		return getDailyRewardState(rewardSnapshot :: DailyRewardSnapshot, snapshot :: DailyRewardsSnapshot)
+	end
+
+	return getPlaytimeRewardState(rewardSnapshot :: PlaytimeRewardSnapshot, snapshot :: PlaytimeRewardsSnapshot)
+end
+
+local function getRewardSecondsRemaining(rewardSnapshot: RewardSnapshot, snapshot: PlaytimeRewardsSnapshot | DailyRewardsSnapshot, category: RewardCategory): number
+	if category == "Daily" then
+		return getDailyRewardSecondsRemaining(rewardSnapshot :: DailyRewardSnapshot, snapshot :: DailyRewardsSnapshot)
+	end
+
+	return getPlaytimeRewardSecondsRemaining(rewardSnapshot :: PlaytimeRewardSnapshot, snapshot :: PlaytimeRewardsSnapshot)
+end
+
+local function getRewardSnapshots(snapshot: PlaytimeRewardsSnapshot | DailyRewardsSnapshot, category: RewardCategory): { RewardSnapshot }
+	local rewardSnapshots: { RewardSnapshot } = {}
+	if category == "Daily" then
+		for _, rewardSnapshot in ipairs((snapshot :: DailyRewardsSnapshot).rewardSnapshots) do
+			table.insert(rewardSnapshots, rewardSnapshot)
+		end
+	else
+		for _, rewardSnapshot in ipairs((snapshot :: PlaytimeRewardsSnapshot).rewardSnapshots) do
+			table.insert(rewardSnapshots, rewardSnapshot)
+		end
+	end
+
+	return rewardSnapshots
+end
+
+local function findRewardsDesign(frame: Frame): GuiObject
+	local design = frame:FindFirstChild("Design")
+	if design ~= nil and design:IsA("GuiObject") then
+		return design
+	end
+
+	return frame
+end
+
+local function findTabs(frame: Frame): GuiObject?
+	local design = findRewardsDesign(frame)
+	local tabs = design:FindFirstChild("Tabs")
+	if tabs ~= nil and tabs:IsA("GuiObject") then
+		return tabs
+	end
+
+	return nil
+end
+
+local function findTabButton(frame: Frame, category: RewardCategory): GuiObject?
+	local tabs = findTabs(frame)
+	if tabs == nil then
+		return nil
+	end
+
+	local tab = tabs:FindFirstChild(category)
+	if tab ~= nil and tab:IsA("GuiObject") then
+		return tab
+	end
+
+	return nil
+end
+
+local function findTabStroke(tab: GuiObject): UIStroke?
+	local design = tab:FindFirstChild("Design")
+	local strokeParent = if design ~= nil and design:IsA("GuiObject") then design else tab
+	local stroke = strokeParent:FindFirstChild("Stroke")
+	if stroke ~= nil and stroke:IsA("UIStroke") then
+		return stroke
+	end
+
+	return strokeParent:FindFirstChildOfClass("UIStroke")
+end
+
+local function renderTabs(frame: Frame)
+	for _, category in ipairs({ "Playtime" :: RewardCategory, "Daily" :: RewardCategory }) do
+		local tab = findTabButton(frame, category)
+		if tab ~= nil then
+			if tabBaseSizes[tab] == nil then
+				tabBaseSizes[tab] = tab.Size
+			end
+
+			local stroke = findTabStroke(tab)
+			if stroke ~= nil then
+				if tabBaseStrokeColors[stroke] == nil then
+					tabBaseStrokeColors[stroke] = stroke.Color
+				end
+
+				stroke.Color = if category == activeCategory then ACTIVE_STROKE_COLOR else tabBaseStrokeColors[stroke]
+			end
+
+			local targetSize = if category == activeCategory then scaleUDim2(tabBaseSizes[tab], ACTIVE_TAB_SCALE) else tabBaseSizes[tab]
+			TweenService:Create(tab, TAB_TWEEN_INFO, { Size = targetSize }):Play()
+		end
+	end
+end
+
+local function setClaimText(claim: GuiObject, text: string)
+	if claim:IsA("TextButton") then
+		claim.Text = ""
+	end
+
+	local design = claim:FindFirstChild("Design")
+	local textRoot = if design ~= nil then design else claim
+	local claimLabel = textRoot:FindFirstChild("Claim", true)
+	if claimLabel ~= nil and claimLabel:IsA("TextLabel") then
+		claimLabel.Text = text
+		return
+	end
+
+	local textLabel = textRoot:FindFirstChild("TextLabel", true)
+	if textLabel ~= nil and textLabel:IsA("TextLabel") then
+		textLabel.Text = text
+		return
+	end
+
+	local title = textRoot:FindFirstChild("Title", true)
+	if title ~= nil and title:IsA("TextLabel") then
+		title.Text = text
+	end
+end
+
+local function applyClaimVariant(claim: GuiObject, rewardState: PlaytimeRewardState)
+	local design = claim:FindFirstChild("Design")
+	if design == nil or not design:IsA("GuiObject") then
+		return
+	end
+
+	local gradient = design:FindFirstChild("Gradient")
+	if gradient ~= nil and gradient:IsA("UIGradient") then
+		if rewardState == "Claimed" then
+			gradient.Color = CLAIMED_GRADIENT
+		elseif rewardState == "Locked" then
+			gradient.Color = LOCKED_GRADIENT
+		end
+	end
+
+	local stroke = design:FindFirstChild("Stroke")
+	if stroke ~= nil and stroke:IsA("UIStroke") then
+		if rewardState == "Claimed" then
+			stroke.Color = CLAIMED_STROKE_COLOR
+		elseif rewardState == "Locked" then
+			stroke.Color = LOCKED_STROKE_COLOR
+		end
+	end
+
+	local claimLabel = design:FindFirstChild("Claim", true)
+	if claimLabel ~= nil and claimLabel:IsA("TextLabel") then
+		local textStroke = claimLabel:FindFirstChild("Stroke")
+		if textStroke ~= nil and textStroke:IsA("UIStroke") then
+			if rewardState == "Claimed" then
+				textStroke.Color = CLAIMED_TEXT_STROKE_COLOR
+			elseif rewardState == "Locked" then
+				textStroke.Color = LOCKED_TEXT_STROKE_COLOR
+			end
+		end
+	end
+end
+
+local function setClaimState(tile: GuiObject, rewardState: PlaytimeRewardState, isPending: boolean)
+	local claim = findDescendant(tile, "Claim")
+	if claim == nil or not claim:IsA("GuiObject") then
+		return
+	end
+
+	if rewardState == "Claimed" then
+		setClaimText(claim, "Claimed")
+		applyClaimVariant(claim, "Claimed")
+	elseif rewardState == "Claimable" then
+		setClaimText(claim, if isPending then "Claiming..." else "Claim")
+	else
+		setClaimText(claim, "Locked")
+		applyClaimVariant(claim, "Locked")
+	end
+
+	if claim:IsA("TextButton") or claim:IsA("ImageButton") then
+		local button = claim :: GuiButtonLike
+		button.Active = rewardState == "Claimable" and not isPending
+		button.AutoButtonColor = rewardState == "Claimable" and not isPending
+	end
+end
+
+local function renderRewardTile(tile: GuiObject, rewardSnapshot: RewardSnapshot, categorySnapshot: PlaytimeRewardsSnapshot | DailyRewardsSnapshot, category: RewardCategory, claimReward: RemoteFunction, rootGui: ScreenGui, frame: Frame)
+	local rewardState = getRewardState(rewardSnapshot, categorySnapshot, category)
+	local rewardText = formatRewardEntries(rewardSnapshot.rewards)
+
+	tile.Name = string.format("%sReward%d", category, rewardSnapshot.rewardIndex)
+	tile.Visible = true
+
+	local rewardLabel = findTextLabel(tile, "Reward")
+	if rewardLabel ~= nil then
+		rewardLabel.Text = rewardText
+	end
+
+	local titleLabel = findTextLabel(tile, "Title")
+	if titleLabel ~= nil then
+		titleLabel.Text = rewardSnapshot.displayName
+	end
+
+	local timerLabel = findTextLabel(tile, "Timer")
+	if timerLabel ~= nil then
+		if category == "Daily" then
+			timerLabel.Text = string.format("Day %d", rewardSnapshot.rewardIndex)
+		elseif rewardState == "Claimed" then
+			timerLabel.Text = "Claimed"
+		elseif rewardState == "Claimable" then
+			timerLabel.Text = "Unlocked"
+		else
+			local secondsRemaining = getRewardSecondsRemaining(rewardSnapshot, categorySnapshot, category)
+			if secondsRemaining <= 0 then
+				timerLabel.Text = "Locked"
+			elseif category == "Playtime" then
+				timerLabel.Text = formatDuration(secondsRemaining)
+			end
+		end
+	end
+
+	local icon = findDescendant(tile, "Icon")
+	if icon ~= nil and icon:IsA("ImageLabel") then
+		local imageAssetId = getRewardImageAssetId(rewardSnapshot.rewards)
+		if imageAssetId ~= "" then
+			icon.Image = imageAssetId
+		end
+	end
+
+	setClaimState(tile, rewardState, isClaimPending)
+
+	local claim = findDescendant(tile, "Claim")
+	if claim ~= nil and (claim:IsA("TextButton") or claim:IsA("ImageButton")) then
+		local button = claim :: GuiButtonLike
+		button.Activated:Connect(function()
+			if rewardState ~= "Claimable" or isClaimPending then
+				return
+			end
+
+			isClaimPending = true
+			setClaimState(tile, rewardState, true)
+
+			local success, result = pcall(function(): unknown
+				return claimReward:InvokeServer(category)
+			end)
+
+			isClaimPending = false
+			if not success then
+				warn(string.format("[PlaytimeRewardsController] Failed to claim %s reward: %s", category, tostring(result)))
+				setClaimState(tile, rewardState, false)
+				return
+			end
+
+			local claimResult = result :: PlaytimeRewardsClaimResult
+			latestSnapshot = claimResult.snapshot
+			RewardClaimEffects.play(rootGui)
+			renderTabs(frame)
+			local notification = getNotificationIndicator(rootGui)
+			if notification ~= nil and latestSnapshot ~= nil then
+				notification.Visible = canClaimAny(latestSnapshot :: RewardsSnapshot) and not isClaimPending
+			end
+			local renderFrameCallback = renderFrame
+			if renderFrameCallback ~= nil then
+				renderFrameCallback(frame, rootGui, claimReward, false)
+			end
+		end)
+	end
+end
+
+local function warnMissingTemplate()
+	if didWarnMissingTemplate then
+		return
+	end
+
+	didWarnMissingTemplate = true
+	warn(string.format("[PlaytimeRewardsController] Add a %s GuiObject under Rewards to render reward tiles.", TEMPLATE_NAME))
+end
+
+local function findRewardTemplate(frame: Frame): GuiObject?
+	local templatesFolder = ReplicatedStorage:FindFirstChild("Templates")
+	if templatesFolder ~= nil then
+		local replicatedTemplate = templatesFolder:FindFirstChild(TEMPLATE_NAME)
+		if replicatedTemplate ~= nil and replicatedTemplate:IsA("GuiObject") then
+			return replicatedTemplate
+		end
+
+		local replicatedFallbackTemplate = templatesFolder:FindFirstChild("RewardTemplate")
+		if replicatedFallbackTemplate ~= nil and replicatedFallbackTemplate:IsA("GuiObject") then
+			return replicatedFallbackTemplate
+		end
+	end
+
+	local template = findDescendant(frame, TEMPLATE_NAME)
+	if template ~= nil and template:IsA("GuiObject") then
+		return template
+	end
+
+	local fallbackTemplate = findDescendant(frame, "RewardTemplate")
+	if fallbackTemplate ~= nil and fallbackTemplate:IsA("GuiObject") then
+		return fallbackTemplate
+	end
+
+	return nil
+end
+
+local function findRewardsScroller(frame: Frame): ScrollingFrame?
+	for _, child in ipairs(frame:GetChildren()) do
+		if child:IsA("ScrollingFrame") then
+			return child
 		end
 	end
 
 	return nil
 end
 
-local function canClaim(snapshot: PlaytimeRewardsSnapshot): boolean
-	return getClaimableRewardIndex(snapshot) ~= nil
+local function warnMissingScroller()
+	if didWarnMissingScroller then
+		return
+	end
+
+	didWarnMissingScroller = true
+	warn("[PlaytimeRewardsController] Add a ScrollingFrame directly under Rewards to render reward tiles.")
 end
 
-local function getNextRewardSecondsRemaining(snapshot: PlaytimeRewardsSnapshot): number?
-	local lowestSecondsRemaining: number? = nil
-	for _, rewardSnapshot in ipairs(snapshot.rewardSnapshots) do
-		if getDynamicRewardState(rewardSnapshot, snapshot) == "Locked" then
-			local secondsRemaining = getRewardSecondsRemaining(rewardSnapshot, snapshot)
-			if lowestSecondsRemaining == nil or secondsRemaining < lowestSecondsRemaining then
-				lowestSecondsRemaining = secondsRemaining
-			end
+local function clearRewardTiles(scroller: ScrollingFrame)
+	for _, child in ipairs(scroller:GetChildren()) do
+		if child:IsA("GuiObject") and child:GetAttribute("GeneratedRewardTile") == true then
+			child:Destroy()
 		end
 	end
-
-	return lowestSecondsRemaining
 end
 
-local function getCountdownText(snapshot: PlaytimeRewardsSnapshot): string
-	if canClaim(snapshot) then
-		return "Reward ready"
+local function updateRewardGridLayout(scroller: ScrollingFrame, rootGui: ScreenGui)
+	local layout = scroller:FindFirstChildOfClass("UIGridLayout")
+	if layout == nil then
+		return
 	end
 
-	local secondsRemaining = getNextRewardSecondsRemaining(snapshot)
-	if secondsRemaining == nil then
-		return "All rewards claimed"
-	end
+	local scrollerWidth = scroller.AbsoluteSize.X
+	local isMobile = scrollerWidth > 0 and scrollerWidth <= MOBILE_SCROLLER_WIDTH
+	local cellSize = if isMobile then MOBILE_GRID_CELL_SIZE else DESKTOP_GRID_CELL_SIZE
+	local padding = if isMobile then MOBILE_GRID_PADDING else DESKTOP_GRID_PADDING
 
-	return string.format("Next reward in %s", formatDuration(secondsRemaining))
+	layout.CellSize = UDim2.fromOffset(cellSize, cellSize)
+	layout.CellPadding = UDim2.fromOffset(padding, padding)
 end
 
-local function getStatusText(snapshot: PlaytimeRewardsSnapshot): string
-	if latestStatusText ~= nil then
-		return latestStatusText
-	end
-
-	local claimableRewardIndex = getClaimableRewardIndex(snapshot)
-	if claimableRewardIndex ~= nil then
-		return string.format("Reward %d is ready.", claimableRewardIndex)
-	end
-
-	local secondsRemaining = getNextRewardSecondsRemaining(snapshot)
-	if secondsRemaining ~= nil then
-		return string.format("Play %s more for the next reward.", formatDuration(secondsRemaining))
-	end
-
-	return "All playtime rewards claimed."
-end
-
-local function getRowColors(rewardState: PlaytimeRewardState): (Color3, Color3, Color3)
-	if rewardState == "Claimed" then
-		return Color3.fromRGB(30, 92, 46), Color3.fromRGB(94, 232, 104), Color3.fromRGB(214, 255, 218)
-	elseif rewardState == "Claimable" then
-		return Color3.fromRGB(117, 91, 24), Color3.fromRGB(255, 220, 63), Color3.fromRGB(255, 246, 180)
-	end
-
-	return Color3.fromRGB(42, 45, 48), Color3.fromRGB(106, 112, 118), Color3.fromRGB(218, 222, 226)
-end
-
-local function renderReward(rewardContainer: GuiObject, rewardSnapshot: PlaytimeRewardSnapshot, snapshot: PlaytimeRewardsSnapshot)
-	local dynamicRewardState = getDynamicRewardState(rewardSnapshot, snapshot)
-	local backgroundColor, strokeColor, textColor = getRowColors(dynamicRewardState)
-
-	rewardContainer.BackgroundColor3 = backgroundColor
-	rewardContainer.BackgroundTransparency = 0
-
-	local titleLabel = findTextLabel(rewardContainer, "TitleLabel")
-	if titleLabel ~= nil then
-		titleLabel.Text = rewardSnapshot.displayName
-		titleLabel.TextColor3 = textColor
-	end
-
-	local rewardLabel = findTextLabel(rewardContainer, "RewardLabel")
-	if rewardLabel ~= nil then
-		rewardLabel.Text = formatRewardEntries(rewardSnapshot.rewards)
-		rewardLabel.TextColor3 = textColor
-	end
-
-	local stateLabel = findTextLabel(rewardContainer, "StateLabel")
-	if stateLabel ~= nil then
-		if dynamicRewardState == "Locked" then
-			stateLabel.Text = string.format("%s (%s)", getRewardStateText(dynamicRewardState), formatDuration(getRewardSecondsRemaining(rewardSnapshot, snapshot)))
-		else
-			stateLabel.Text = getRewardStateText(dynamicRewardState)
+local function bindResponsiveGridLayout(frame: Frame, rootGui: ScreenGui)
+	rootGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		local scroller = findRewardsScroller(frame)
+		if scroller ~= nil then
+			updateRewardGridLayout(scroller, rootGui)
 		end
+	end)
+end
 
-		stateLabel.TextColor3 = textColor
+local function renderRewardGrid(frame: Frame, rootGui: ScreenGui, claimReward: RemoteFunction, _animate: boolean)
+	local snapshot = latestSnapshot
+	if snapshot == nil then
+		return
 	end
 
-	local stroke = rewardContainer:FindFirstChildOfClass("UIStroke")
-	if stroke ~= nil then
-		stroke.Color = strokeColor
+	local scroller = findRewardsScroller(frame)
+	if scroller == nil then
+		warnMissingScroller()
+		return
+	end
+
+	local template = findRewardTemplate(frame)
+	if template == nil then
+		warnMissingTemplate()
+		return
+	end
+
+	updateRewardGridLayout(scroller, rootGui)
+	clearRewardTiles(scroller)
+
+	local categorySnapshot = getCategorySnapshot(snapshot, activeCategory)
+	for _, rewardSnapshot in ipairs(getRewardSnapshots(categorySnapshot, activeCategory)) do
+		local tile = template:Clone()
+		tile:SetAttribute("GeneratedRewardTile", true)
+		tile.LayoutOrder = rewardSnapshot.rewardIndex
+		tile.Parent = scroller
+		renderRewardTile(tile, rewardSnapshot, categorySnapshot, activeCategory, claimReward, rootGui, frame)
 	end
 end
 
@@ -375,80 +733,25 @@ local function renderNotificationIndicator(rootGui: ScreenGui)
 	end
 
 	local snapshot = latestSnapshot
-	notification.Visible = snapshot ~= nil and canClaim(snapshot) and not isClaimPending
+	notification.Visible = snapshot ~= nil and canClaimAny(snapshot) and not isClaimPending
 end
 
-local function renderFrame(frame: Frame)
-	local snapshot = latestSnapshot
-	if snapshot == nil then
-		return
-	end
-
-	local contentRoot = PlaytimeRewardsView.ensure(frame)
-
-	local statusLabel = findTextLabel(contentRoot, "StatusLabel")
-	if statusLabel ~= nil then
-		statusLabel.Text = getStatusText(snapshot)
-	end
-
-	local playtimeLabel = findTextLabel(contentRoot, "PlaytimeLabel")
-	if playtimeLabel ~= nil then
-		playtimeLabel.Text = string.format("Playtime: %s", formatDuration(getCurrentPlaytimeSeconds(snapshot)))
-	end
-
-	local nextClaimLabel = findTextLabel(contentRoot, "NextClaimLabel")
-	if nextClaimLabel ~= nil then
-		nextClaimLabel.Text = getCountdownText(snapshot)
-	end
-
-	local claimButton = findGuiButton(contentRoot, "ClaimButton")
-	if claimButton ~= nil then
-		local canClaimReward = canClaim(snapshot)
-		claimButton.Active = not isClaimPending and canClaimReward
-		claimButton.AutoButtonColor = not isClaimPending and canClaimReward
-		if claimButton:IsA("TextButton") then
-			if isClaimPending then
-				claimButton.Text = "Claiming..."
-			elseif canClaimReward then
-				claimButton.Text = "Claim"
-			else
-				claimButton.Text = "Waiting"
-			end
-		end
-	end
-
-	local rewardsList = findDescendant(contentRoot, "RewardsList")
-	if rewardsList ~= nil and rewardsList:IsA("GuiObject") then
-		for _, rewardSnapshot in ipairs(snapshot.rewardSnapshots) do
-			local rewardContainer = findRewardContainer(rewardsList, rewardSnapshot.rewardIndex)
-			if rewardContainer ~= nil then
-				renderReward(rewardContainer, rewardSnapshot, snapshot)
-			end
-		end
-	end
+renderFrame = function(frame: Frame, rootGui: ScreenGui, claimReward: RemoteFunction, animateGrid: boolean)
+	renderTabs(frame)
+	renderRewardGrid(frame, rootGui, claimReward, animateGrid)
 end
 
-local function renderIfPossible(rootGui: ScreenGui)
-	local frame = registeredFrame or getPlaytimeRewardsFrame(rootGui)
-	if frame == nil then
-		return
-	end
-
-	renderFrame(frame)
-end
-
-local function refreshSnapshot(getPlaytimeRewardsSnapshot: RemoteFunction)
+local function refreshSnapshot(getRewardsSnapshot: RemoteFunction)
 	local success, result = pcall(function(): unknown
-		return getPlaytimeRewardsSnapshot:InvokeServer()
+		return getRewardsSnapshot:InvokeServer()
 	end)
 
 	if not success then
-		warn(string.format("[PlaytimeRewardsController] Failed to load playtime rewards snapshot: %s", tostring(result)))
+		warn(string.format("[PlaytimeRewardsController] Failed to load rewards snapshot: %s", tostring(result)))
 		return
 	end
 
-	latestSnapshot = result :: PlaytimeRewardsSnapshot
-	latestStatusText = nil
+	latestSnapshot = result :: RewardsSnapshot
 end
 
 local function warnMissingFrame()
@@ -457,58 +760,35 @@ local function warnMissingFrame()
 	end
 
 	didWarnMissingFrame = true
-	warn("[PlaytimeRewardsController] Create StarterGui.GUI.Frames.PlaytimeRewards in Studio to enable the playtime rewards menu.")
+	warn("[PlaytimeRewardsController] Create StarterGui.GUI.Frames.Rewards in Studio to enable the rewards menu.")
 end
 
-local function bindClaimButton(rootGui: ScreenGui, frame: Frame, claimPlaytimeReward: RemoteFunction)
-	local contentRoot = PlaytimeRewardsView.ensure(frame)
-	local claimButton = findGuiButton(contentRoot, "ClaimButton")
-	if claimButton == nil then
-		return
+local function bindTabs(frame: Frame, rootGui: ScreenGui, claimReward: RemoteFunction)
+	for _, category in ipairs({ "Playtime" :: RewardCategory, "Daily" :: RewardCategory }) do
+		local tab = findTabButton(frame, category)
+		if tab ~= nil and (tab:IsA("TextButton") or tab:IsA("ImageButton")) then
+			local button = tab :: GuiButtonLike
+			button.Activated:Connect(function()
+				if activeCategory == category then
+					return
+				end
+
+				activeCategory = category
+				local renderFrameCallback = renderFrame
+				if renderFrameCallback ~= nil then
+					renderFrameCallback(frame, rootGui, claimReward, true)
+				end
+			end)
+		end
 	end
-
-	claimButton.Activated:Connect(function()
-		local snapshot = latestSnapshot
-		if snapshot == nil or not canClaim(snapshot) or isClaimPending then
-			return
-		end
-
-		isClaimPending = true
-		latestStatusText = nil
-		renderNotificationIndicator(rootGui)
-		renderFrame(frame)
-
-		local success, result = pcall(function(): unknown
-			return claimPlaytimeReward:InvokeServer()
-		end)
-
-		isClaimPending = false
-		if not success then
-			latestStatusText = "Claim failed."
-			warn(string.format("[PlaytimeRewardsController] Failed to claim playtime reward: %s", tostring(result)))
-			renderNotificationIndicator(rootGui)
-			renderFrame(frame)
-			return
-		end
-
-		local claimResult = result :: PlaytimeRewardsClaimResult
-		latestSnapshot = claimResult.snapshot
-		if claimResult.status == "Claimed" and claimResult.claimedRewardIndex ~= nil then
-			latestStatusText = string.format("Claimed Reward %d.", claimResult.claimedRewardIndex)
-		else
-			latestStatusText = "No reward ready yet."
-		end
-		renderNotificationIndicator(rootGui)
-		renderFrame(frame)
-	end)
 end
 
-local function ensureFrameRegistered(rootGui: ScreenGui, claimPlaytimeReward: RemoteFunction): Frame?
+local function ensureFrameRegistered(rootGui: ScreenGui, claimReward: RemoteFunction): Frame?
 	if registeredFrame ~= nil then
 		return registeredFrame
 	end
 
-	local frame = getOrCreatePlaytimeRewardsFrame(rootGui)
+	local frame = getOrCreateRewardsFrame(rootGui)
 	if frame == nil then
 		warnMissingFrame()
 		return nil
@@ -516,22 +796,25 @@ local function ensureFrameRegistered(rootGui: ScreenGui, claimPlaytimeReward: Re
 
 	registeredFrame = frame
 	prepareFrameDefaults(frame)
-	PlaytimeRewardsView.ensure(frame)
 	FrameManager.registerFrame({
-		id = PLAYTIME_REWARDS_FRAME_ID,
+		id = REWARDS_FRAME_ID,
 		frame = frame,
 		group = MENU_FRAME_GROUP,
 		defaultOpen = frame.Visible,
 		closedPosition = getClosedPanelPosition(frame),
 	})
 
-	bindClaimButton(rootGui, frame, claimPlaytimeReward)
+	bindTabs(frame, rootGui, claimReward)
+	bindResponsiveGridLayout(frame, rootGui)
 	frame.Destroying:Connect(function()
 		if registeredFrame == frame then
 			registeredFrame = nil
 		end
 	end)
-	renderFrame(frame)
+	local renderFrameCallback = renderFrame
+	if renderFrameCallback ~= nil then
+		renderFrameCallback(frame, rootGui, claimReward, false)
+	end
 
 	return frame
 end
@@ -547,33 +830,38 @@ function PlaytimeRewardsController.start()
 
 	local rootGui = getRootGui()
 	local openButton = getOpenButton(rootGui)
-	local playtimeRewardsUpdated, getPlaytimeRewardsSnapshot, claimPlaytimeReward = getPlaytimeRewardsRemotes()
+	local rewardsUpdated, getRewardsSnapshot, claimReward = getRewardsRemotes()
 
 	renderNotificationIndicator(rootGui)
-	refreshSnapshot(getPlaytimeRewardsSnapshot)
+	refreshSnapshot(getRewardsSnapshot)
 	renderNotificationIndicator(rootGui)
-	ensureFrameRegistered(rootGui, claimPlaytimeReward)
-	renderIfPossible(rootGui)
+	ensureFrameRegistered(rootGui, claimReward)
 
 	openButton.Activated:Connect(function()
-		local frame = ensureFrameRegistered(rootGui, claimPlaytimeReward)
+		local frame = ensureFrameRegistered(rootGui, claimReward)
 		if frame == nil then
 			return
 		end
 
-		refreshSnapshot(getPlaytimeRewardsSnapshot)
+		refreshSnapshot(getRewardsSnapshot)
 		renderNotificationIndicator(rootGui)
-		renderFrame(frame)
-		FrameManager.toggle(PLAYTIME_REWARDS_FRAME_ID)
+		local renderFrameCallback = renderFrame
+		if renderFrameCallback ~= nil then
+			renderFrameCallback(frame, rootGui, claimReward, false)
+		end
+		FrameManager.toggle(REWARDS_FRAME_ID)
 	end)
 
-	playtimeRewardsUpdated.OnClientEvent:Connect(function(snapshot: PlaytimeRewardsSnapshot)
+	rewardsUpdated.OnClientEvent:Connect(function(snapshot: RewardsSnapshot)
 		latestSnapshot = snapshot
-		if not isClaimPending then
-			latestStatusText = nil
-		end
 		renderNotificationIndicator(rootGui)
-		renderIfPossible(rootGui)
+		local frame = registeredFrame
+		if frame ~= nil then
+			local renderFrameCallback = renderFrame
+			if renderFrameCallback ~= nil then
+				renderFrameCallback(frame, rootGui, claimReward, false)
+			end
+		end
 	end)
 
 	task.spawn(function()
@@ -582,8 +870,11 @@ function PlaytimeRewardsController.start()
 			renderNotificationIndicator(rootGui)
 
 			local frame = registeredFrame
-			if frame ~= nil and FrameManager.isOpen(PLAYTIME_REWARDS_FRAME_ID) then
-				renderFrame(frame)
+			if frame ~= nil and FrameManager.isOpen(REWARDS_FRAME_ID) then
+				local renderFrameCallback = renderFrame
+				if renderFrameCallback ~= nil then
+					renderFrameCallback(frame, rootGui, claimReward, false)
+				end
 			end
 		end
 	end)

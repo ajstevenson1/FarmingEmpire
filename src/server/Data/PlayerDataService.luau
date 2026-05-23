@@ -14,6 +14,7 @@ local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Fo
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local PlaytimeRewardsConfig = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsConfig") :: ModuleScript)
+local DailyRewardsConfig = require(playtimeRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
@@ -38,6 +39,7 @@ type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingId = SettingsConfig.SettingId
 type SettingsValues = SettingsConfig.SettingsValues
 export type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
+export type PlayerDailyRewardsData = PlaytimeRewardsTypes.PlayerDailyRewardsData
 
 type PlayerDataRecord = {
 	data: PlayerData,
@@ -58,6 +60,7 @@ local beforeSaveListeners: { BeforeSaveListener } = {}
 local afterRemoveListeners: { AfterRemoveListener } = {}
 local hasStarted = false
 local PLAYTIME_REWARDS_CYCLE_LENGTH = PlaytimeRewardsConfig.getCycleLength()
+local DAILY_REWARDS_CYCLE_LENGTH = DailyRewardsConfig.getCycleLength()
 
 local function sanitizeAmount(amount: number): number
 	if amount ~= amount or amount == math.huge or amount == -math.huge or amount < 0 then
@@ -349,6 +352,28 @@ local function clonePlaytimeRewardsData(playtimeRewards: PlayerPlaytimeRewardsDa
 	}
 end
 
+local function cloneDailyRewardsData(dailyRewards: PlayerDailyRewardsData): PlayerDailyRewardsData
+	local claimedRewardIndexes: { [number]: boolean } = {}
+	for rewardIndex, isClaimed in pairs(dailyRewards.claimedRewardIndexes) do
+		local sanitizedRewardIndex = sanitizeAmount(rewardIndex)
+		if isClaimed and sanitizedRewardIndex >= 1 and sanitizedRewardIndex <= DAILY_REWARDS_CYCLE_LENGTH then
+			claimedRewardIndexes[sanitizedRewardIndex] = true
+		end
+	end
+
+	local nextRewardIndex = sanitizeAmount(dailyRewards.nextRewardIndex)
+	if nextRewardIndex < 1 or nextRewardIndex > DAILY_REWARDS_CYCLE_LENGTH then
+		nextRewardIndex = 1
+	end
+
+	return {
+		claimedRewardIndexes = claimedRewardIndexes,
+		lastClaimUnixTime = sanitizeDuration(dailyRewards.lastClaimUnixTime),
+		nextRewardIndex = nextRewardIndex,
+		totalClaims = sanitizeAmount(dailyRewards.totalClaims),
+	}
+end
+
 local function arePlaytimeRewardsDataEqual(leftPlaytimeRewards: PlayerPlaytimeRewardsData, rightPlaytimeRewards: PlayerPlaytimeRewardsData): boolean
 	if sanitizeDuration(leftPlaytimeRewards.accumulatedPlaytimeSeconds) ~= sanitizeDuration(rightPlaytimeRewards.accumulatedPlaytimeSeconds)
 		or sanitizeAmount(leftPlaytimeRewards.totalClaims) ~= sanitizeAmount(rightPlaytimeRewards.totalClaims)
@@ -359,6 +384,25 @@ local function arePlaytimeRewardsDataEqual(leftPlaytimeRewards: PlayerPlaytimeRe
 	for rewardIndex = 1, PLAYTIME_REWARDS_CYCLE_LENGTH do
 		local leftIsClaimed = leftPlaytimeRewards.claimedRewardIndexes[rewardIndex] == true
 		local rightIsClaimed = rightPlaytimeRewards.claimedRewardIndexes[rewardIndex] == true
+		if leftIsClaimed ~= rightIsClaimed then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function areDailyRewardsDataEqual(leftDailyRewards: PlayerDailyRewardsData, rightDailyRewards: PlayerDailyRewardsData): boolean
+	if sanitizeDuration(leftDailyRewards.lastClaimUnixTime) ~= sanitizeDuration(rightDailyRewards.lastClaimUnixTime)
+		or sanitizeAmount(leftDailyRewards.nextRewardIndex) ~= sanitizeAmount(rightDailyRewards.nextRewardIndex)
+		or sanitizeAmount(leftDailyRewards.totalClaims) ~= sanitizeAmount(rightDailyRewards.totalClaims)
+	then
+		return false
+	end
+
+	for rewardIndex = 1, DAILY_REWARDS_CYCLE_LENGTH do
+		local leftIsClaimed = leftDailyRewards.claimedRewardIndexes[rewardIndex] == true
+		local rightIsClaimed = rightDailyRewards.claimedRewardIndexes[rewardIndex] == true
 		if leftIsClaimed ~= rightIsClaimed then
 			return false
 		end
@@ -774,6 +818,22 @@ function PlayerDataService.setPlaytimeRewardsData(player: Player, playtimeReward
 	end
 
 	record.data.playtimeRewards = clonedPlaytimeRewardsData
+	markDirty(record)
+end
+
+function PlayerDataService.getDailyRewardsData(player: Player): PlayerDailyRewardsData
+	local record = loadPlayerData(player)
+	return cloneDailyRewardsData(record.data.dailyRewards)
+end
+
+function PlayerDataService.setDailyRewardsData(player: Player, dailyRewardsData: PlayerDailyRewardsData)
+	local record = loadPlayerData(player)
+	local clonedDailyRewardsData = cloneDailyRewardsData(dailyRewardsData)
+	if areDailyRewardsDataEqual(record.data.dailyRewards, clonedDailyRewardsData) then
+		return
+	end
+
+	record.data.dailyRewards = clonedDailyRewardsData
 	markDirty(record)
 end
 

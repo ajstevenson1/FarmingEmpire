@@ -12,6 +12,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
 local HudTooltipModule = require(script.Parent.Parent.UI.HudTooltip)
 local PlacedBuildingTargeting = require(script.Parent.PlacedBuildingTargeting)
 local StructureActionMode = require(script.Parent.StructureActionMode)
@@ -75,14 +76,6 @@ local function clearPickupTarget()
 	end
 end
 
-local function isMobilePickupInput(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
-end
-
-local function isGamepadPickupInput(): boolean
-	return UserInputService.GamepadEnabled and not isMobilePickupInput()
-end
-
 local function isPickupModeEnabled(): boolean
 	return StructureActionMode.isModeActive(PICKUP_MODE_ID)
 end
@@ -98,13 +91,13 @@ local function updatePickupTooltip()
 		return
 	end
 
-	if isMobilePickupInput() then
+	if ClientInputProfile.usesTouchControls() then
 		tooltip:show(
 			if currentPickupTarget == nil then MOBILE_PICKUP_TOOLTIP_TEXT else MOBILE_PICKUP_SELECTED_TOOLTIP_TEXT,
 			false,
 			PICKUP_TOOLTIP_OWNER_ID
 		)
-	elseif isGamepadPickupInput() then
+	elseif ClientInputProfile.usesGamepadControls() then
 		tooltip:show(GAMEPAD_PICKUP_TOOLTIP_TEXT, false, PICKUP_TOOLTIP_OWNER_ID)
 	else
 		tooltip:show(DESKTOP_PICKUP_TOOLTIP_TEXT, false, PICKUP_TOOLTIP_OWNER_ID)
@@ -123,7 +116,7 @@ local function updatePickupSelection()
 		return
 	end
 
-	if isMobilePickupInput() then
+	if ClientInputProfile.usesTouchControls() then
 		local pickupTarget = currentPickupTarget
 		if pickupTarget ~= nil and pickupTarget.Parent ~= nil then
 			currentSelectionView:show(pickupTarget)
@@ -310,7 +303,7 @@ function PickupController.start()
 			return
 		end
 
-		if not isPickupModeEnabled() or not isMobilePickupInput() then
+		if not isPickupModeEnabled() or not ClientInputProfile.usesTouchControls() then
 			return
 		end
 

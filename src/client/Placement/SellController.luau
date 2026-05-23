@@ -15,6 +15,7 @@ local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
 local HudTooltipModule = require(script.Parent.Parent.UI.HudTooltip)
 local PlacedBuildingTargeting = require(script.Parent.PlacedBuildingTargeting)
 local StructureActionMode = require(script.Parent.StructureActionMode)
@@ -73,14 +74,6 @@ local function clearSellTarget()
 	end
 end
 
-local function isMobileSellInput(): boolean
-	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.GamepadEnabled
-end
-
-local function isGamepadSellInput(): boolean
-	return UserInputService.GamepadEnabled and not isMobileSellInput()
-end
-
 local function isSellModeEnabled(): boolean
 	return StructureActionMode.isModeActive(SELL_MODE_ID)
 end
@@ -99,7 +92,7 @@ local function getSellTargetTooltipText(sellTarget: BasePart): string?
 	end
 
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(rawBuildingId :: BuildingId)
-	if isGamepadSellInput() then
+	if ClientInputProfile.usesGamepadControls() then
 		return string.format(
 			"Press right trigger to sell %s for <font color=\"%s\">+$%d</font>",
 			escapeRichText(buildingDefinition.displayName),
@@ -136,9 +129,9 @@ local function updateSellTooltip()
 		end
 	end
 
-	if isMobileSellInput() then
+	if ClientInputProfile.usesTouchControls() then
 		tooltip:show(MOBILE_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
-	elseif isGamepadSellInput() then
+	elseif ClientInputProfile.usesGamepadControls() then
 		tooltip:show(GAMEPAD_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
 	else
 		tooltip:show(DESKTOP_SELL_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
@@ -157,7 +150,7 @@ local function updateSellSelection()
 		return
 	end
 
-	if isMobileSellInput() then
+	if ClientInputProfile.usesTouchControls() then
 		local sellTarget = currentSellTarget
 		if sellTarget ~= nil and sellTarget.Parent ~= nil then
 			currentSelectionView:show(sellTarget)
@@ -304,7 +297,7 @@ function SellController.start()
 			return
 		end
 
-		if not isSellModeEnabled() or not isMobileSellInput() then
+		if not isSellModeEnabled() or not ClientInputProfile.usesTouchControls() then
 			return
 		end
 

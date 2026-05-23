@@ -7,22 +7,29 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 
+local DailyRewardsConfig = require(playtimeRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
 local PlaytimeRewardsConfig = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsConfig") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
-local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 
+type DailyRewardDefinition = PlaytimeRewardsTypes.DailyRewardDefinition
+type DailyRewardSnapshot = PlaytimeRewardsTypes.DailyRewardSnapshot
+type DailyRewardsSnapshot = PlaytimeRewardsTypes.DailyRewardsSnapshot
+type PlayerDailyRewardsData = PlaytimeRewardsTypes.PlayerDailyRewardsData
+type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 type PlaytimeRewardDefinition = PlaytimeRewardsTypes.PlaytimeRewardDefinition
+type PlaytimeRewardEntry = PlaytimeRewardsTypes.PlaytimeRewardEntry
 type PlaytimeRewardSnapshot = PlaytimeRewardsTypes.PlaytimeRewardSnapshot
 type PlaytimeRewardState = PlaytimeRewardsTypes.PlaytimeRewardState
-type PlaytimeRewardEntry = PlaytimeRewardsTypes.PlaytimeRewardEntry
 type PlaytimeRewardsClaimResult = PlaytimeRewardsTypes.PlaytimeRewardsClaimResult
 type PlaytimeRewardsClaimStatus = PlaytimeRewardsTypes.PlaytimeRewardsClaimStatus
 type PlaytimeRewardsSnapshot = PlaytimeRewardsTypes.PlaytimeRewardsSnapshot
-type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
+type RewardCategory = PlaytimeRewardsTypes.RewardCategory
+type RewardsSnapshot = PlaytimeRewardsTypes.RewardsSnapshot
 
 local hasStarted = false
 local claimInProgressByPlayer: { [Player]: boolean } = {}
@@ -30,48 +37,6 @@ local sessionStartTimesByPlayer: { [Player]: number } = {}
 
 local function getCurrentUnixTime(): number
 	return Workspace:GetServerTimeNow()
-end
-
-local function cloneRewardEntry(rewardEntry: PlaytimeRewardEntry): PlaytimeRewardEntry
-	if rewardEntry.kind == "Cash" then
-		return {
-			kind = "Cash",
-			amount = rewardEntry.amount,
-		}
-	elseif rewardEntry.kind == "Resource" then
-		return {
-			kind = "Resource",
-			resourceId = rewardEntry.resourceId,
-			amount = rewardEntry.amount,
-		}
-	end
-
-	return {
-		kind = "Item",
-		itemId = rewardEntry.itemId,
-		amount = rewardEntry.amount,
-	}
-end
-
-local function cloneRewardEntries(rewardEntries: { PlaytimeRewardEntry }): { PlaytimeRewardEntry }
-	local clone: { PlaytimeRewardEntry } = table.create(#rewardEntries)
-	for _, rewardEntry in ipairs(rewardEntries) do
-		table.insert(clone, cloneRewardEntry(rewardEntry))
-	end
-	return clone
-end
-
-local function cloneRewardDefinition(definition: PlaytimeRewardDefinition): PlaytimeRewardDefinition
-	return {
-		rewardIndex = definition.rewardIndex,
-		displayName = definition.displayName,
-		requiredPlaytimeSeconds = definition.requiredPlaytimeSeconds,
-		rewards = cloneRewardEntries(definition.rewards),
-	}
-end
-
-local function getCycleLength(): number
-	return PlaytimeRewardsConfig.getCycleLength()
 end
 
 local function sanitizeDuration(duration: number): number
@@ -90,7 +55,56 @@ local function sanitizeAmount(amount: number): number
 	return math.floor(amount)
 end
 
-local function sanitizeProgressData(progressData: PlayerPlaytimeRewardsData): PlayerPlaytimeRewardsData
+local function cloneRewardEntry(rewardEntry: PlaytimeRewardEntry): PlaytimeRewardEntry
+	if rewardEntry.kind == "Cash" then
+		return {
+			kind = "Cash",
+			amount = rewardEntry.amount,
+			imageAssetId = rewardEntry.imageAssetId or "",
+		}
+	elseif rewardEntry.kind == "Resource" then
+		return {
+			kind = "Resource",
+			resourceId = rewardEntry.resourceId,
+			amount = rewardEntry.amount,
+			imageAssetId = rewardEntry.imageAssetId or "",
+		}
+	end
+
+	return {
+		kind = "Item",
+		itemId = rewardEntry.itemId,
+		amount = rewardEntry.amount,
+		imageAssetId = rewardEntry.imageAssetId or "",
+	}
+end
+
+local function cloneRewardEntries(rewardEntries: { PlaytimeRewardEntry }): { PlaytimeRewardEntry }
+	local clone: { PlaytimeRewardEntry } = table.create(#rewardEntries)
+	for _, rewardEntry in ipairs(rewardEntries) do
+		table.insert(clone, cloneRewardEntry(rewardEntry))
+	end
+	return clone
+end
+
+local function clonePlaytimeRewardDefinition(definition: PlaytimeRewardDefinition): PlaytimeRewardDefinition
+	return {
+		rewardIndex = definition.rewardIndex,
+		displayName = definition.displayName,
+		requiredPlaytimeSeconds = definition.requiredPlaytimeSeconds,
+		rewards = cloneRewardEntries(definition.rewards),
+	}
+end
+
+local function cloneDailyRewardDefinition(definition: DailyRewardDefinition): DailyRewardDefinition
+	return {
+		rewardIndex = definition.rewardIndex,
+		displayName = definition.displayName,
+		rewards = cloneRewardEntries(definition.rewards),
+	}
+end
+
+local function sanitizePlaytimeData(progressData: PlayerPlaytimeRewardsData): PlayerPlaytimeRewardsData
 	local claimedRewardIndexes: { [number]: boolean } = {}
 	for rewardIndex, isClaimed in pairs(progressData.claimedRewardIndexes) do
 		if isClaimed and PlaytimeRewardsConfig.isRewardIndexInRange(rewardIndex) then
@@ -105,7 +119,23 @@ local function sanitizeProgressData(progressData: PlayerPlaytimeRewardsData): Pl
 	}
 end
 
-local function cloneClaimedRewardIndexes(claimedRewardIndexes: { [number]: boolean }): { [number]: boolean }
+local function sanitizeDailyData(dailyData: PlayerDailyRewardsData): PlayerDailyRewardsData
+	local claimedRewardIndexes: { [number]: boolean } = {}
+	for rewardIndex, isClaimed in pairs(dailyData.claimedRewardIndexes) do
+		if isClaimed and DailyRewardsConfig.isRewardIndexInRange(rewardIndex) then
+			claimedRewardIndexes[rewardIndex] = true
+		end
+	end
+
+	return {
+		claimedRewardIndexes = claimedRewardIndexes,
+		lastClaimUnixTime = sanitizeDuration(dailyData.lastClaimUnixTime),
+		nextRewardIndex = DailyRewardsConfig.sanitizeRewardIndex(dailyData.nextRewardIndex),
+		totalClaims = sanitizeAmount(dailyData.totalClaims),
+	}
+end
+
+local function cloneClaimedPlaytimeRewardIndexes(claimedRewardIndexes: { [number]: boolean }): { [number]: boolean }
 	local clone: { [number]: boolean } = {}
 	for rewardIndex, isClaimed in pairs(claimedRewardIndexes) do
 		if isClaimed and PlaytimeRewardsConfig.isRewardIndexInRange(rewardIndex) then
@@ -114,6 +144,27 @@ local function cloneClaimedRewardIndexes(claimedRewardIndexes: { [number]: boole
 	end
 
 	return clone
+end
+
+local function cloneClaimedDailyRewardIndexes(claimedRewardIndexes: { [number]: boolean }): { [number]: boolean }
+	local clone: { [number]: boolean } = {}
+	for rewardIndex, isClaimed in pairs(claimedRewardIndexes) do
+		if isClaimed and DailyRewardsConfig.isRewardIndexInRange(rewardIndex) then
+			clone[rewardIndex] = true
+		end
+	end
+
+	return clone
+end
+
+local function areAllDailyRewardsClaimed(dailyData: PlayerDailyRewardsData): boolean
+	for rewardIndex = 1, DailyRewardsConfig.getCycleLength() do
+		if dailyData.claimedRewardIndexes[rewardIndex] ~= true then
+			return false
+		end
+	end
+
+	return true
 end
 
 local function getCurrentPlaytimeSeconds(player: Player, progressData: PlayerPlaytimeRewardsData): number
@@ -125,23 +176,23 @@ local function getCurrentPlaytimeSeconds(player: Player, progressData: PlayerPla
 	return progressData.accumulatedPlaytimeSeconds + math.max(0, getCurrentUnixTime() - sessionStartTime)
 end
 
-local function buildPersistedProgressData(player: Player, progressData: PlayerPlaytimeRewardsData): PlayerPlaytimeRewardsData
+local function buildPersistedPlaytimeData(player: Player, progressData: PlayerPlaytimeRewardsData): PlayerPlaytimeRewardsData
 	return {
 		accumulatedPlaytimeSeconds = getCurrentPlaytimeSeconds(player, progressData),
-		claimedRewardIndexes = cloneClaimedRewardIndexes(progressData.claimedRewardIndexes),
+		claimedRewardIndexes = cloneClaimedPlaytimeRewardIndexes(progressData.claimedRewardIndexes),
 		totalClaims = progressData.totalClaims,
 	}
 end
 
 local function persistCurrentPlaytime(player: Player): PlayerPlaytimeRewardsData
-	local progressData = sanitizeProgressData(PlayerDataService.getPlaytimeRewardsData(player))
-	local updatedProgressData = buildPersistedProgressData(player, progressData)
+	local progressData = sanitizePlaytimeData(PlayerDataService.getPlaytimeRewardsData(player))
+	local updatedProgressData = buildPersistedPlaytimeData(player, progressData)
 	sessionStartTimesByPlayer[player] = getCurrentUnixTime()
 	PlayerDataService.setPlaytimeRewardsData(player, updatedProgressData)
 	return updatedProgressData
 end
 
-local function getClaimableRewardIndex(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): number?
+local function getPlaytimeClaimableRewardIndex(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): number?
 	for _, definition in ipairs(PlaytimeRewardsConfig.getRewardDefinitions()) do
 		if progressData.claimedRewardIndexes[definition.rewardIndex] ~= true
 			and currentPlaytimeSeconds >= definition.requiredPlaytimeSeconds
@@ -153,11 +204,83 @@ local function getClaimableRewardIndex(progressData: PlayerPlaytimeRewardsData, 
 	return nil
 end
 
-local function canClaim(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): boolean
-	return getClaimableRewardIndex(progressData, currentPlaytimeSeconds) ~= nil
+local function getDailySecondsRemaining(dailyData: PlayerDailyRewardsData, now: number): number
+	if dailyData.lastClaimUnixTime <= 0 then
+		return 0
+	end
+
+	return math.max(0, math.ceil((dailyData.lastClaimUnixTime + DailyRewardsConfig.getCooldownSeconds()) - now))
 end
 
-local function getNextRewardSecondsRemaining(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): number?
+local function getDailyClaimableRewardIndex(dailyData: PlayerDailyRewardsData, now: number): number?
+	if getDailySecondsRemaining(dailyData, now) > 0 then
+		return nil
+	end
+
+	return dailyData.nextRewardIndex
+end
+
+local function getPlaytimeRewardState(rewardIndex: number, requiredPlaytimeSeconds: number, progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): PlaytimeRewardState
+	if progressData.claimedRewardIndexes[rewardIndex] == true then
+		return "Claimed"
+	end
+
+	if currentPlaytimeSeconds >= requiredPlaytimeSeconds then
+		return "Claimable"
+	end
+
+	return "Locked"
+end
+
+local function getDailyRewardState(rewardIndex: number, dailyData: PlayerDailyRewardsData, now: number): PlaytimeRewardState
+	if dailyData.claimedRewardIndexes[rewardIndex] == true then
+		return "Claimed"
+	end
+
+	if getDailyClaimableRewardIndex(dailyData, now) == rewardIndex then
+		return "Claimable"
+	end
+
+	return "Locked"
+end
+
+local function buildPlaytimeRewardSnapshots(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): { PlaytimeRewardSnapshot }
+	local rewardSnapshots: { PlaytimeRewardSnapshot } = {}
+
+	for _, definition in ipairs(PlaytimeRewardsConfig.getRewardDefinitions()) do
+		local secondsRemaining = math.max(0, math.ceil(definition.requiredPlaytimeSeconds - currentPlaytimeSeconds))
+		table.insert(rewardSnapshots, {
+			rewardIndex = definition.rewardIndex,
+			displayName = definition.displayName,
+			requiredPlaytimeSeconds = definition.requiredPlaytimeSeconds,
+			rewards = cloneRewardEntries(definition.rewards),
+			secondsRemaining = secondsRemaining,
+			state = getPlaytimeRewardState(definition.rewardIndex, definition.requiredPlaytimeSeconds, progressData, currentPlaytimeSeconds),
+		})
+	end
+
+	return rewardSnapshots
+end
+
+local function buildDailyRewardSnapshots(dailyData: PlayerDailyRewardsData, now: number): { DailyRewardSnapshot }
+	local rewardSnapshots: { DailyRewardSnapshot } = {}
+	local dailySecondsRemaining = getDailySecondsRemaining(dailyData, now)
+
+	for _, definition in ipairs(DailyRewardsConfig.getRewardDefinitions()) do
+		local state = getDailyRewardState(definition.rewardIndex, dailyData, now)
+		table.insert(rewardSnapshots, {
+			rewardIndex = definition.rewardIndex,
+			displayName = definition.displayName,
+			rewards = cloneRewardEntries(definition.rewards),
+			secondsRemaining = if state == "Locked" and definition.rewardIndex == dailyData.nextRewardIndex then dailySecondsRemaining else 0,
+			state = state,
+		})
+	end
+
+	return rewardSnapshots
+end
+
+local function getNextPlaytimeRewardSecondsRemaining(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): number?
 	local lowestSecondsRemaining: number? = nil
 	for _, definition in ipairs(PlaytimeRewardsConfig.getRewardDefinitions()) do
 		if progressData.claimedRewardIndexes[definition.rewardIndex] ~= true then
@@ -171,55 +294,53 @@ local function getNextRewardSecondsRemaining(progressData: PlayerPlaytimeRewards
 	return lowestSecondsRemaining
 end
 
-local function getRewardState(rewardIndex: number, requiredPlaytimeSeconds: number, progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): PlaytimeRewardState
-	if progressData.claimedRewardIndexes[rewardIndex] == true then
-		return "Claimed"
-	end
-
-	if currentPlaytimeSeconds >= requiredPlaytimeSeconds then
-		return "Claimable"
-	end
-
-	return "Locked"
-end
-
-local function buildRewardSnapshots(progressData: PlayerPlaytimeRewardsData, currentPlaytimeSeconds: number): { PlaytimeRewardSnapshot }
-	local rewardSnapshots: { PlaytimeRewardSnapshot } = {}
-
-	for _, definition in ipairs(PlaytimeRewardsConfig.getRewardDefinitions()) do
-		local secondsRemaining = math.max(0, math.ceil(definition.requiredPlaytimeSeconds - currentPlaytimeSeconds))
-		table.insert(rewardSnapshots, {
-			rewardIndex = definition.rewardIndex,
-			displayName = definition.displayName,
-			requiredPlaytimeSeconds = definition.requiredPlaytimeSeconds,
-			rewards = cloneRewardEntries(definition.rewards),
-			secondsRemaining = secondsRemaining,
-			state = getRewardState(definition.rewardIndex, definition.requiredPlaytimeSeconds, progressData, currentPlaytimeSeconds),
-		})
-	end
-
-	return rewardSnapshots
-end
-
-local function buildSnapshotFromProgress(player: Player, progressData: PlayerPlaytimeRewardsData): PlaytimeRewardsSnapshot
-	local sanitizedProgressData = sanitizeProgressData(progressData)
+local function buildPlaytimeSnapshot(player: Player, progressData: PlayerPlaytimeRewardsData): PlaytimeRewardsSnapshot
+	local sanitizedProgressData = sanitizePlaytimeData(progressData)
 	local currentPlaytimeSeconds = getCurrentPlaytimeSeconds(player, sanitizedProgressData)
 
 	return {
-		canClaim = canClaim(sanitizedProgressData, currentPlaytimeSeconds),
-		claimableRewardIndex = getClaimableRewardIndex(sanitizedProgressData, currentPlaytimeSeconds),
+		canClaim = getPlaytimeClaimableRewardIndex(sanitizedProgressData, currentPlaytimeSeconds) ~= nil,
+		claimableRewardIndex = getPlaytimeClaimableRewardIndex(sanitizedProgressData, currentPlaytimeSeconds),
 		currentPlaytimeSeconds = currentPlaytimeSeconds,
-		cycleLength = getCycleLength(),
-		rewardSnapshots = buildRewardSnapshots(sanitizedProgressData, currentPlaytimeSeconds),
-		nextRewardSecondsRemaining = getNextRewardSecondsRemaining(sanitizedProgressData, currentPlaytimeSeconds),
+		cycleLength = PlaytimeRewardsConfig.getCycleLength(),
+		rewardSnapshots = buildPlaytimeRewardSnapshots(sanitizedProgressData, currentPlaytimeSeconds),
+		nextRewardSecondsRemaining = getNextPlaytimeRewardSecondsRemaining(sanitizedProgressData, currentPlaytimeSeconds),
 		snapshotServerTime = getCurrentUnixTime(),
 		totalClaims = sanitizedProgressData.totalClaims,
 	}
 end
 
+local function buildDailySnapshot(dailyData: PlayerDailyRewardsData): DailyRewardsSnapshot
+	local sanitizedDailyData = sanitizeDailyData(dailyData)
+	local now = getCurrentUnixTime()
+	local dailySecondsRemaining = getDailySecondsRemaining(sanitizedDailyData, now)
+	if dailySecondsRemaining <= 0 and areAllDailyRewardsClaimed(sanitizedDailyData) then
+		sanitizedDailyData.claimedRewardIndexes = {}
+	end
+
+	local claimableRewardIndex = getDailyClaimableRewardIndex(sanitizedDailyData, now)
+
+	return {
+		canClaim = claimableRewardIndex ~= nil,
+		claimableRewardIndex = claimableRewardIndex,
+		cycleLength = DailyRewardsConfig.getCycleLength(),
+		nextRewardSecondsRemaining = if claimableRewardIndex == nil then dailySecondsRemaining else 0,
+		rewardSnapshots = buildDailyRewardSnapshots(sanitizedDailyData, now),
+		snapshotServerTime = now,
+		totalClaims = sanitizedDailyData.totalClaims,
+	}
+end
+
+local function buildRewardsSnapshot(player: Player): RewardsSnapshot
+	return {
+		playtime = buildPlaytimeSnapshot(player, PlayerDataService.getPlaytimeRewardsData(player)),
+		daily = buildDailySnapshot(PlayerDataService.getDailyRewardsData(player)),
+	}
+end
+
 local function pushSnapshot(player: Player)
 	local playtimeRewardsRemotes = Remotes.getPlaytimeRewardsRemotes()
-	playtimeRewardsRemotes.playtimeRewardsUpdated:FireClient(player, buildSnapshotFromProgress(player, PlayerDataService.getPlaytimeRewardsData(player)))
+	playtimeRewardsRemotes.playtimeRewardsUpdated:FireClient(player, buildRewardsSnapshot(player))
 end
 
 local function initializePlayer(player: Player)
@@ -245,60 +366,89 @@ local function grantRewardEntries(player: Player, rewardEntries: { PlaytimeRewar
 	end
 end
 
-local function buildClaimResult(player: Player, progressData: PlayerPlaytimeRewardsData, status: PlaytimeRewardsClaimStatus, claimedRewardIndex: number?): PlaytimeRewardsClaimResult
-	local grantedRewards: { PlaytimeRewardEntry }? = nil
-	if claimedRewardIndex ~= nil then
-		grantedRewards = cloneRewardEntries(PlaytimeRewardsConfig.getRewardDefinition(claimedRewardIndex).rewards)
-	end
-
+local function buildClaimResult(player: Player, status: PlaytimeRewardsClaimStatus, category: RewardCategory?, claimedRewardIndex: number?, grantedRewards: { PlaytimeRewardEntry }?): PlaytimeRewardsClaimResult
 	return {
 		success = status == "Claimed",
 		status = status,
-		snapshot = buildSnapshotFromProgress(player, progressData),
+		snapshot = buildRewardsSnapshot(player),
+		category = category,
 		claimedRewardIndex = claimedRewardIndex,
 		grantedRewards = grantedRewards,
 	}
 end
 
-local function claimReward(player: Player): PlaytimeRewardsClaimResult
+local function claimPlaytimeReward(player: Player): PlaytimeRewardsClaimResult
+	local progressData = sanitizePlaytimeData(PlayerDataService.getPlaytimeRewardsData(player))
+	local currentPlaytimeSeconds = getCurrentPlaytimeSeconds(player, progressData)
+	local claimableRewardIndex = getPlaytimeClaimableRewardIndex(progressData, currentPlaytimeSeconds)
+	if claimableRewardIndex == nil then
+		return buildClaimResult(player, "AlreadyClaimed", "Playtime", nil, nil)
+	end
+
+	local rewardDefinition = clonePlaytimeRewardDefinition(PlaytimeRewardsConfig.getRewardDefinition(claimableRewardIndex))
+	local claimedRewardIndexes = cloneClaimedPlaytimeRewardIndexes(progressData.claimedRewardIndexes)
+	claimedRewardIndexes[claimableRewardIndex] = true
+
+	local updatedProgressData: PlayerPlaytimeRewardsData = {
+		accumulatedPlaytimeSeconds = currentPlaytimeSeconds,
+		claimedRewardIndexes = claimedRewardIndexes,
+		totalClaims = progressData.totalClaims + 1,
+	}
+
+	sessionStartTimesByPlayer[player] = getCurrentUnixTime()
+	PlayerDataService.setPlaytimeRewardsData(player, updatedProgressData)
+	grantRewardEntries(player, rewardDefinition.rewards)
+	pushSnapshot(player)
+
+	return buildClaimResult(player, "Claimed", "Playtime", claimableRewardIndex, rewardDefinition.rewards)
+end
+
+local function claimDailyReward(player: Player): PlaytimeRewardsClaimResult
+	local dailyData = sanitizeDailyData(PlayerDataService.getDailyRewardsData(player))
+	local now = getCurrentUnixTime()
+	local claimableRewardIndex = getDailyClaimableRewardIndex(dailyData, now)
+	if claimableRewardIndex == nil then
+		return buildClaimResult(player, "AlreadyClaimed", "Daily", nil, nil)
+	end
+
+	local rewardDefinition = cloneDailyRewardDefinition(DailyRewardsConfig.getRewardDefinition(claimableRewardIndex))
+	local claimedRewardIndexes: { [number]: boolean } = if areAllDailyRewardsClaimed(dailyData) then {} else cloneClaimedDailyRewardIndexes(dailyData.claimedRewardIndexes)
+	claimedRewardIndexes[claimableRewardIndex] = true
+
+	local updatedDailyData: PlayerDailyRewardsData = {
+		claimedRewardIndexes = claimedRewardIndexes,
+		lastClaimUnixTime = now,
+		nextRewardIndex = DailyRewardsConfig.getNextRewardIndex(claimableRewardIndex),
+		totalClaims = dailyData.totalClaims + 1,
+	}
+
+	PlayerDataService.setDailyRewardsData(player, updatedDailyData)
+	grantRewardEntries(player, rewardDefinition.rewards)
+	pushSnapshot(player)
+
+	return buildClaimResult(player, "Claimed", "Daily", claimableRewardIndex, rewardDefinition.rewards)
+end
+
+local function claimReward(player: Player, category: unknown): PlaytimeRewardsClaimResult
 	if claimInProgressByPlayer[player] == true then
-		return buildClaimResult(player, PlayerDataService.getPlaytimeRewardsData(player), "AlreadyClaimed", nil)
+		return buildClaimResult(player, "AlreadyClaimed", nil, nil, nil)
 	end
 
 	claimInProgressByPlayer[player] = true
 
 	local success, result = pcall(function(): PlaytimeRewardsClaimResult
-		local progressData = sanitizeProgressData(PlayerDataService.getPlaytimeRewardsData(player))
-		local currentPlaytimeSeconds = getCurrentPlaytimeSeconds(player, progressData)
-		local claimableRewardIndex = getClaimableRewardIndex(progressData, currentPlaytimeSeconds)
-
-		if claimableRewardIndex == nil then
-			return buildClaimResult(player, progressData, "AlreadyClaimed", nil)
+		if category == "Daily" then
+			return claimDailyReward(player)
 		end
 
-		local rewardDefinition = cloneRewardDefinition(PlaytimeRewardsConfig.getRewardDefinition(claimableRewardIndex))
-		grantRewardEntries(player, rewardDefinition.rewards)
-
-		local claimedRewardIndexes = cloneClaimedRewardIndexes(progressData.claimedRewardIndexes)
-		claimedRewardIndexes[claimableRewardIndex] = true
-		local updatedProgressData: PlayerPlaytimeRewardsData = {
-			accumulatedPlaytimeSeconds = currentPlaytimeSeconds,
-			claimedRewardIndexes = claimedRewardIndexes,
-			totalClaims = progressData.totalClaims + 1,
-		}
-
-		sessionStartTimesByPlayer[player] = getCurrentUnixTime()
-		PlayerDataService.setPlaytimeRewardsData(player, updatedProgressData)
-		pushSnapshot(player)
-
-		return buildClaimResult(player, updatedProgressData, "Claimed", claimableRewardIndex)
+		return claimPlaytimeReward(player)
 	end)
 
 	claimInProgressByPlayer[player] = nil
 
 	if not success then
 		warn(string.format("[PlaytimeRewardsService] Failed to claim reward for %s: %s", player.Name, tostring(result)))
-		return buildClaimResult(player, PlayerDataService.getPlaytimeRewardsData(player), "AlreadyClaimed", nil)
+		return buildClaimResult(player, "AlreadyClaimed", nil, nil, nil)
 	end
 
 	return result :: PlaytimeRewardsClaimResult
@@ -322,12 +472,12 @@ function PlaytimeRewardsService.start()
 	hasStarted = true
 
 	local playtimeRewardsRemotes = Remotes.getPlaytimeRewardsRemotes()
-	playtimeRewardsRemotes.getPlaytimeRewardsSnapshot.OnServerInvoke = function(player: Player): PlaytimeRewardsSnapshot
-		return buildSnapshotFromProgress(player, PlayerDataService.getPlaytimeRewardsData(player))
+	playtimeRewardsRemotes.getPlaytimeRewardsSnapshot.OnServerInvoke = function(player: Player): RewardsSnapshot
+		return buildRewardsSnapshot(player)
 	end
 
-	playtimeRewardsRemotes.claimPlaytimeReward.OnServerInvoke = function(player: Player): PlaytimeRewardsClaimResult
-		return claimReward(player)
+	playtimeRewardsRemotes.claimPlaytimeReward.OnServerInvoke = function(player: Player, category: unknown): PlaytimeRewardsClaimResult
+		return claimReward(player, category)
 	end
 
 	PlayerDataService.observeBeforeSave(saveCurrentPlaytime)
