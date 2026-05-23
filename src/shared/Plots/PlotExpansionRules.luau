@@ -16,7 +16,7 @@ type ResourceId = ResourceTypes.ResourceId
 
 local PlotExpansionRules = {}
 
-local function getProductionMultiplier(modifierId: PlotModifierId?): number
+function PlotExpansionRules.getProductionMultiplier(modifierId: PlotModifierId?): number
 	if modifierId == "DoubleProduction" then
 		return 2
 	end
@@ -29,23 +29,23 @@ local function getProductionMultiplier(modifierId: PlotModifierId?): number
 end
 
 function PlotExpansionRules.getResourceOutputMultiplier(modifierId: PlotModifierId?, resourceId: ResourceId): number
-	return getProductionMultiplier(modifierId)
+	return PlotExpansionRules.getProductionMultiplier(modifierId)
 end
 
 function PlotExpansionRules.getStorageCapMultiplier(modifierId: PlotModifierId?, resourceId: ResourceId): number
 	if resourceId == "Apple" then
-		return getProductionMultiplier(modifierId)
+		return PlotExpansionRules.getProductionMultiplier(modifierId)
 	end
 
 	return 1
 end
 
 function PlotExpansionRules.getBuildingProductionMultiplier(modifierId: PlotModifierId?, buildingId: BuildingId): number
-	return getProductionMultiplier(modifierId)
+	return PlotExpansionRules.getProductionMultiplier(modifierId)
 end
 
 function PlotExpansionRules.getOfflineCiderRateMultiplier(modifierId: PlotModifierId?, buildingId: BuildingId): number
-	return getProductionMultiplier(modifierId)
+	return PlotExpansionRules.getProductionMultiplier(modifierId)
 end
 
 return table.freeze(PlotExpansionRules)
