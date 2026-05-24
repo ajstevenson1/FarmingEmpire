@@ -117,6 +117,7 @@ export type ProductionRuntimeState = {
 	timeLeft: number,
 	statusText: string,
 	storedAmount: number,
+	pendingOutputAmount: number?,
 	isReadyToHarvest: boolean,
 }
 
@@ -139,6 +140,7 @@ export type InputProcessorSavedProductionState = {
 	state: ProductionState,
 	storedAmount: number,
 	secondsUntilCycleFinishes: number?,
+	pendingOutputAmount: number?,
 }
 
 export type SavedProductionState =

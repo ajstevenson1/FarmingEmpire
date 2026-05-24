@@ -28,8 +28,8 @@ type LockedAreaBillboardWidgets = {
 local PROMPT_FOLDER_NAME = "PlotExpansionPrompts"
 local PROMPT_PART_PREFIX = "TilePrompt"
 local PROMPT_PART_SIZE = Vector3.new(4, 4, 4)
-local PROMPT_HEIGHT_OFFSET = 3
-local PROMPT_MAX_ACTIVATION_DISTANCE = 12
+local PROMPT_HEIGHT_OFFSET = 3.25
+local PROMPT_MAX_ACTIVATION_DISTANCE = 10
 local OWNER_USER_ID_ATTRIBUTE = PlotLocator.Attributes.ownerUserId
 local TILE_ROW_ATTRIBUTE = "PlotExpansionRow"
 local TILE_COLUMN_ATTRIBUTE = "PlotExpansionColumn"
@@ -38,18 +38,6 @@ local LOCKED_AREA_BILLBOARD_NAME = "LockedAreaBillboard"
 local COST_LABEL_NAME = "Cost"
 local MULTIPLIER_LABEL_NAME = "Multiplier"
 local LOCKED_RICH_TEXT = '<font color="#FF2B2B">Locked</font>'
-local BILLBOARD_SIZE = UDim2.fromOffset(260, 130)
-local BILLBOARD_MAX_DISTANCE = 250
-local BILLBOARD_STUDS_OFFSET = Vector3.new(0, 5, 0)
-local COST_TEXT_COLOR = Color3.fromRGB(255, 255, 255)
-local MULTIPLIER_TEXT_COLOR = Color3.fromRGB(72, 214, 91)
-local TEXT_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
-local TEXT_STROKE_TRANSPARENCY = 0
-local TEXT_STROKE_THICKNESS = 2
-local COST_LABEL_TOP_POSITION = UDim2.fromScale(0.5, 0.33)
-local COST_LABEL_CENTER_POSITION = UDim2.fromScale(0.5, 0.4)
-local MULTIPLIER_LABEL_POSITION = UDim2.fromScale(0.5, 0.58)
-local LABEL_SIZE = UDim2.fromScale(0.98, 0.28)
 
 local workspacePlotsFolder = Workspace:WaitForChild(PlotLocator.PLOTS_FOLDER_NAME) :: Folder
 local hasStarted = false
@@ -111,83 +99,6 @@ local function getCostText(tileSnapshot: PlotTileSnapshot): string
 	return string.format("%s ($%s)", LOCKED_RICH_TEXT, getFormattedPriceText(tileSnapshot.price))
 end
 
-local function ensureTextStroke(label: TextLabel): UIStroke
-	local existingStroke = label:FindFirstChild("RuntimeStroke")
-	if existingStroke ~= nil and existingStroke:IsA("UIStroke") then
-		existingStroke.Color = TEXT_STROKE_COLOR
-		existingStroke.Transparency = TEXT_STROKE_TRANSPARENCY
-		existingStroke.Thickness = TEXT_STROKE_THICKNESS
-		return existingStroke
-	end
-
-	if existingStroke ~= nil then
-		existingStroke:Destroy()
-	end
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "RuntimeStroke"
-	stroke.Color = TEXT_STROKE_COLOR
-	stroke.Transparency = TEXT_STROKE_TRANSPARENCY
-	stroke.Thickness = TEXT_STROKE_THICKNESS
-	stroke.Parent = label
-	return stroke
-end
-
-local function styleBillboardLabel(label: TextLabel, textColor: Color3)
-	label.BackgroundTransparency = 1
-	label.BorderSizePixel = 0
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	label.TextScaled = true
-	label.TextWrapped = false
-	label.RichText = true
-	label.Font = Enum.Font.GothamBlack
-	label.TextColor3 = textColor
-	label.TextStrokeTransparency = 1
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Visible = true
-
-	ensureTextStroke(label)
-end
-
-local function normalizeBillboardLabelParent(rootGui: BillboardGui, label: TextLabel)
-	if label.Parent ~= rootGui then
-		label.Parent = rootGui
-	end
-
-	label.Rotation = 0
-	label.Size = LABEL_SIZE
-end
-
-local function hideTemplateBackgrounds(rootGui: BillboardGui)
-	for _, descendant in ipairs(rootGui:GetDescendants()) do
-		if descendant:IsA("Frame") then
-			descendant.BackgroundTransparency = 1
-			descendant.BorderSizePixel = 0
-		elseif descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") then
-			descendant.BackgroundTransparency = 1
-			descendant.BorderSizePixel = 0
-			descendant.ImageTransparency = 1
-		elseif descendant:IsA("TextButton") then
-			descendant.BackgroundTransparency = 1
-			descendant.BorderSizePixel = 0
-		elseif descendant:IsA("UIStroke") and descendant.Name ~= "RuntimeStroke" then
-			descendant.Enabled = false
-		end
-	end
-end
-
-local function styleLockedAreaBillboard(rootGui: BillboardGui)
-	rootGui.AlwaysOnTop = true
-	rootGui.LightInfluence = 0
-	rootGui.MaxDistance = BILLBOARD_MAX_DISTANCE
-	rootGui.Size = BILLBOARD_SIZE
-	rootGui.StudsOffset = BILLBOARD_STUDS_OFFSET
-	rootGui.StudsOffsetWorldSpace = Vector3.zero
-
-	hideTemplateBackgrounds(rootGui)
-end
-
 local function createLockedAreaBillboardWidgets(promptPart: BasePart): LockedAreaBillboardWidgets
 	local template = templatesFolder:WaitForChild(LOCKED_AREA_TEMPLATE_NAME)
 	assert(
@@ -199,7 +110,6 @@ local function createLockedAreaBillboardWidgets(promptPart: BasePart): LockedAre
 	rootGui.Name = LOCKED_AREA_BILLBOARD_NAME
 	rootGui.Adornee = promptPart
 	rootGui.Parent = promptPart
-	styleLockedAreaBillboard(rootGui)
 
 	local costLabelInstance = rootGui:FindFirstChild(COST_LABEL_NAME, true)
 	assert(
@@ -218,12 +128,7 @@ local function createLockedAreaBillboardWidgets(promptPart: BasePart): LockedAre
 	)
 
 	local costLabel = costLabelInstance :: TextLabel
-	styleBillboardLabel(costLabel, COST_TEXT_COLOR)
-	normalizeBillboardLabelParent(rootGui, costLabel)
-
 	local multiplierLabel = multiplierLabelInstance :: TextLabel
-	styleBillboardLabel(multiplierLabel, MULTIPLIER_TEXT_COLOR)
-	normalizeBillboardLabelParent(rootGui, multiplierLabel)
 
 	return {
 		rootGui = rootGui,
@@ -245,15 +150,8 @@ local function getOrCreateLockedAreaBillboardWidgets(promptPart: BasePart): Lock
 				and multiplierLabelInstance ~= nil
 				and multiplierLabelInstance:IsA("TextLabel")
 			then
-				styleLockedAreaBillboard(existingBillboard)
-
 				local costLabel = costLabelInstance :: TextLabel
-				styleBillboardLabel(costLabel, COST_TEXT_COLOR)
-				normalizeBillboardLabelParent(existingBillboard, costLabel)
-
 				local multiplierLabel = multiplierLabelInstance :: TextLabel
-				styleBillboardLabel(multiplierLabel, MULTIPLIER_TEXT_COLOR)
-				normalizeBillboardLabelParent(existingBillboard, multiplierLabel)
 
 				return {
 					rootGui = existingBillboard,
@@ -277,9 +175,7 @@ local function updateLockedAreaBillboard(promptPart: BasePart, tileSnapshot: Plo
 	billboardWidgets.rootGui.Enabled = not tileSnapshot.isUnlocked
 	billboardWidgets.rootGui.Adornee = promptPart
 	billboardWidgets.costLabel.Text = getCostText(tileSnapshot)
-	billboardWidgets.costLabel.Position = if hasMultiplier then COST_LABEL_TOP_POSITION else COST_LABEL_CENTER_POSITION
 	billboardWidgets.multiplierLabel.Text = if hasMultiplier then multiplierText else ""
-	billboardWidgets.multiplierLabel.Position = MULTIPLIER_LABEL_POSITION
 	billboardWidgets.multiplierLabel.Visible = hasMultiplier
 end
 

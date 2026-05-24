@@ -86,7 +86,7 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV9"
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV10"
 local CURRENT_SCHEMA_VERSION = 1
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
@@ -302,12 +302,17 @@ local function sanitizeSavedProductionState(rawProduction: unknown): SavedProduc
 		if rawProductionValues.secondsUntilCycleFinishes ~= nil then
 			secondsUntilCycleFinishes = sanitizeDuration(rawProductionValues.secondsUntilCycleFinishes)
 		end
+		local pendingOutputAmount: number? = nil
+		if rawProductionValues.pendingOutputAmount ~= nil then
+			pendingOutputAmount = sanitizeAmount(rawProductionValues.pendingOutputAmount)
+		end
 
 		return {
 			behaviorId = "InputProcessor",
 			state = productionState,
 			storedAmount = storedAmount,
 			secondsUntilCycleFinishes = secondsUntilCycleFinishes,
+			pendingOutputAmount = pendingOutputAmount,
 		}
 	end
 
@@ -338,12 +343,17 @@ local function cloneSavedProductionState(production: SavedProductionState?): Sav
 		if production.secondsUntilCycleFinishes ~= nil then
 			secondsUntilCycleFinishes = sanitizeDuration(production.secondsUntilCycleFinishes)
 		end
+		local pendingOutputAmount: number? = nil
+		if production.pendingOutputAmount ~= nil then
+			pendingOutputAmount = sanitizeAmount(production.pendingOutputAmount)
+		end
 
 		return {
 			behaviorId = "InputProcessor",
 			state = production.state,
 			storedAmount = sanitizeAmount(production.storedAmount),
 			secondsUntilCycleFinishes = secondsUntilCycleFinishes,
+			pendingOutputAmount = pendingOutputAmount,
 		}
 	end
 

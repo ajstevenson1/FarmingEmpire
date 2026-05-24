@@ -153,12 +153,17 @@ local function cloneSavedProductionState(production: SavedProductionState?): Sav
 		if production.secondsUntilCycleFinishes ~= nil then
 			secondsUntilCycleFinishes = sanitizeDuration(production.secondsUntilCycleFinishes)
 		end
+		local pendingOutputAmount: number? = nil
+		if production.pendingOutputAmount ~= nil then
+			pendingOutputAmount = sanitizeAmount(production.pendingOutputAmount)
+		end
 
 		return {
 			behaviorId = "InputProcessor",
 			state = production.state,
 			storedAmount = sanitizeAmount(production.storedAmount),
 			secondsUntilCycleFinishes = secondsUntilCycleFinishes,
+			pendingOutputAmount = pendingOutputAmount,
 		}
 	end
 
@@ -181,7 +186,9 @@ local function areSavedProductionStatesEqual(left: SavedProductionState?, right:
 	elseif left.behaviorId == "InputProcessor" and right.behaviorId == "InputProcessor" then
 		local leftSeconds = if left.secondsUntilCycleFinishes == nil then nil else sanitizeDuration(left.secondsUntilCycleFinishes)
 		local rightSeconds = if right.secondsUntilCycleFinishes == nil then nil else sanitizeDuration(right.secondsUntilCycleFinishes)
-		return leftSeconds == rightSeconds
+		local leftPendingOutput = if left.pendingOutputAmount == nil then nil else sanitizeAmount(left.pendingOutputAmount)
+		local rightPendingOutput = if right.pendingOutputAmount == nil then nil else sanitizeAmount(right.pendingOutputAmount)
+		return leftSeconds == rightSeconds and leftPendingOutput == rightPendingOutput
 	end
 
 	return false

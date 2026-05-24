@@ -27,8 +27,21 @@ local function getSafeOutputAmount(config: InputProcessorProductionConfig): numb
 	return math.max(0, math.floor(config.outputAmount))
 end
 
+local function getSafeInputAmount(config: InputProcessorProductionConfig): number
+	return math.max(0, math.floor(config.inputAmount))
+end
+
 local function getSafeCycleDuration(config: InputProcessorProductionConfig): number
 	return math.max(0.001, config.cycleDurationSeconds)
+end
+
+local function getOutputAmountForInputAmount(config: InputProcessorProductionConfig, inputAmount: number): number
+	local safeInputAmount = getSafeInputAmount(config)
+	if safeInputAmount <= 0 then
+		return 0
+	end
+
+	return math.max(0, math.floor((getSafeOutputAmount(config) * math.max(0, math.floor(inputAmount))) / safeInputAmount))
 end
 
 local function getStoredStatusText(config: InputProcessorProductionConfig, storedAmount: number): string
@@ -53,6 +66,7 @@ local function createWaitingState(
 		timeLeft = 0,
 		statusText = if hasStoredOutput then getStoredStatusText(config, safeStoredAmount) else fallbackStatusText,
 		storedAmount = safeStoredAmount,
+		pendingOutputAmount = nil,
 		isReadyToHarvest = hasStoredOutput,
 	}
 end
@@ -60,9 +74,11 @@ end
 local function createProcessingState(
 	config: InputProcessorProductionConfig,
 	currentTime: number,
-	storedAmount: number
+	storedAmount: number,
+	pendingOutputAmount: number
 ): ProductionRuntimeState
 	local safeStoredAmount = math.max(0, math.floor(storedAmount))
+	local safePendingOutputAmount = math.max(0, math.floor(pendingOutputAmount))
 
 	return {
 		state = "Processing",
@@ -74,6 +90,7 @@ local function createProcessingState(
 			then string.format("%s | %ds", getStoredStatusText(config, safeStoredAmount), config.cycleDurationSeconds)
 			else string.format("%ds", config.cycleDurationSeconds),
 		storedAmount = safeStoredAmount,
+		pendingOutputAmount = safePendingOutputAmount,
 		isReadyToHarvest = safeStoredAmount > 0,
 	}
 end
@@ -91,6 +108,7 @@ local function updateProcessingDisplay(runtimeState: ProductionRuntimeState, con
 		else string.format("%ds", timeLeft)
 	runtimeState.state = "Processing"
 	runtimeState.storedAmount = storedAmount
+	runtimeState.pendingOutputAmount = math.max(0, math.floor(runtimeState.pendingOutputAmount or getSafeOutputAmount(config)))
 	runtimeState.isReadyToHarvest = storedAmount > 0
 end
 
@@ -100,8 +118,12 @@ local function tryBeginProcessing(
 	storedAmount: number
 ): ProductionRuntimeState
 	local ownerPlayer = context.ownerPlayer
-	if ownerPlayer ~= nil and context.tryConsumeResource(ownerPlayer, config.inputResourceId, config.inputAmount) then
-		return createProcessingState(config, context.currentTime, storedAmount)
+	if ownerPlayer ~= nil then
+		local inputAmount = math.min(context.getResourceAmount(ownerPlayer, config.inputResourceId), getSafeInputAmount(config))
+		local outputAmount = getOutputAmountForInputAmount(config, inputAmount)
+		if inputAmount > 0 and outputAmount > 0 and context.tryConsumeResource(ownerPlayer, config.inputResourceId, inputAmount) then
+			return createProcessingState(config, context.currentTime, storedAmount, outputAmount)
+		end
 	end
 
 	return createWaitingState(config, context.currentTime, storedAmount, config.blockedStatusText, "Blocked")
@@ -137,6 +159,9 @@ function InputProcessorBehavior.createRuntimeStateFromSavedState(
 			timeLeft = math.ceil(secondsUntilCycleFinishes),
 			statusText = "",
 			storedAmount = storedAmount,
+			pendingOutputAmount = if savedState.pendingOutputAmount == nil
+				then getSafeOutputAmount(typedConfig)
+				else math.max(0, math.floor(savedState.pendingOutputAmount)),
 			isReadyToHarvest = storedAmount > 0,
 		}
 
@@ -156,7 +181,7 @@ function InputProcessorBehavior.createSavedState(
 	config: ProductionConfig,
 	currentTime: number
 ): SavedProductionState?
-	getTypedConfig(config)
+	local typedConfig = getTypedConfig(config)
 
 	return {
 		behaviorId = "InputProcessor",
@@ -164,6 +189,9 @@ function InputProcessorBehavior.createSavedState(
 		storedAmount = math.max(0, math.floor(runtimeState.storedAmount)),
 		secondsUntilCycleFinishes = if runtimeState.state == "Processing"
 			then math.max(0, runtimeState.cycleFinishesAt - currentTime)
+			else nil,
+		pendingOutputAmount = if runtimeState.state == "Processing"
+			then math.max(0, math.floor(runtimeState.pendingOutputAmount or getSafeOutputAmount(typedConfig)))
 			else nil,
 	}
 end
@@ -177,7 +205,8 @@ function InputProcessorBehavior.updateRuntimeState(
 
 	if runtimeState.state == "Processing" then
 		if context.currentTime >= runtimeState.cycleFinishesAt then
-			local nextStoredAmount = math.max(0, math.floor(runtimeState.storedAmount)) + getSafeOutputAmount(typedConfig)
+			local outputAmount = math.max(0, math.floor(runtimeState.pendingOutputAmount or getSafeOutputAmount(typedConfig)))
+			local nextStoredAmount = math.max(0, math.floor(runtimeState.storedAmount)) + outputAmount
 
 			return tryBeginProcessing(typedConfig, {
 				currentTime = context.currentTime,
