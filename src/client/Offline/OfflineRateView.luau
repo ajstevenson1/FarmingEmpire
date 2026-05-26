@@ -11,7 +11,7 @@ local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter")
 local ROOT_GUI_NAME = "GUI"
 local HUD_NAME = "HUD"
 local TOP_NAME = "Top"
-local TEXT_NAME = "Text"
+local OFFLINE_FRAME_NAME = "Offline"
 local VALUE_LABEL_NAME = "OfflineValue"
 
 export type OfflineRateView = {
@@ -41,11 +41,11 @@ local function getValueLabel(): TextLabel
 	local top = hud:WaitForChild(TOP_NAME)
 	assert(top:IsA("Frame"), "GUI.HUD.Top must be a Frame")
 
-	local textFrame = top:WaitForChild(TEXT_NAME)
-	assert(textFrame:IsA("Frame"), "GUI.HUD.Top.Text must be a Frame")
+	local offlineFrame = top:WaitForChild(OFFLINE_FRAME_NAME)
+	assert(offlineFrame:IsA("Frame"), "GUI.HUD.Top.Offline must be a Frame")
 
-	local valueLabel = textFrame:WaitForChild(VALUE_LABEL_NAME)
-	assert(valueLabel:IsA("TextLabel"), "GUI.HUD.Top.Text.OfflineValue must be a TextLabel")
+	local valueLabel = offlineFrame:WaitForChild(VALUE_LABEL_NAME)
+	assert(valueLabel:IsA("TextLabel"), "GUI.HUD.Top.Offline.OfflineValue must be a TextLabel")
 	return valueLabel
 end
 
