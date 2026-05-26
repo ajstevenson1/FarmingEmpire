@@ -127,6 +127,20 @@ local function getProductionDuration(productionConfig: ProductionConfig): number
 	return productionConfig.cycleDurationSeconds
 end
 
+local function getSafeDuration(durationSeconds: number): number
+	return if durationSeconds > 0 then durationSeconds else 1
+end
+
+local function getProductionRatePerSecond(productionConfig: ProductionConfig): number
+	if productionConfig.behaviorId == "GrowAndHarvest" then
+		return productionConfig.outputAmount / getSafeDuration(productionConfig.cycleDurationSeconds)
+	elseif productionConfig.behaviorId == "TimedStorageProducer" then
+		return productionConfig.outputAmountPerInterval / getSafeDuration(productionConfig.produceIntervalSeconds)
+	end
+
+	return productionConfig.outputAmount / getSafeDuration(productionConfig.cycleDurationSeconds)
+end
+
 local function scaleWholeNumber(value: number, multiplier: number): number
 	return math.max(0, math.floor(value * multiplier))
 end
@@ -191,6 +205,7 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	part:SetAttribute(BuildingAttributeNames.productionStatusText, runtimeState.statusText)
 	part:SetAttribute(BuildingAttributeNames.productionDuration, getProductionDuration(productionConfig))
 	part:SetAttribute(BuildingAttributeNames.productionOutputName, getOutputResourceName(productionConfig))
+	part:SetAttribute(BuildingAttributeNames.productionRatePerSecond, getProductionRatePerSecond(productionConfig))
 	part:SetAttribute(BuildingAttributeNames.productionStoredAmount, runtimeState.storedAmount)
 	part:SetAttribute(BuildingAttributeNames.productionStorageCap, getStorageCap(productionConfig))
 	part:SetAttribute(BuildingAttributeNames.isReadyToHarvest, runtimeState.isReadyToHarvest)

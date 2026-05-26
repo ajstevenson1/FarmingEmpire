@@ -10,6 +10,7 @@ local BuildingAttributeNames = {
 	productionStatusText = "ProductionStatusText",
 	productionDuration = "ProductionDuration",
 	productionMultiplier = "ProductionMultiplier",
+	productionRatePerSecond = "ProductionRatePerSecond",
 	productionOutputName = "ProductionOutputName",
 	productionStoredAmount = "ProductionStoredAmount",
 	productionStorageCap = "ProductionStorageCap",

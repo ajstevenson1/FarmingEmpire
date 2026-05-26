@@ -96,6 +96,9 @@ local function trackPart(part: BasePart)
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionMultiplier):Connect(function()
 			view:refresh()
 		end),
+		part:GetAttributeChangedSignal(BuildingAttributeNames.productionRatePerSecond):Connect(function()
+			view:refresh()
+		end),
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionProgress):Connect(function()
 			view:refresh()
 		end),
