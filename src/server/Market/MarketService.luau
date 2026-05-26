@@ -12,6 +12,7 @@ local MarketConfig = require(economyFolder:WaitForChild("MarketConfig") :: Modul
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 type MarketSnapshot = EconomyTypes.MarketSnapshot
 
@@ -111,6 +112,7 @@ local function handleSellAllCider(player: Player)
 	end
 
 	EconomyService.addCash(player, ciderToSell * currentCiderSellPrice)
+	TutorialService.handleCiderSold(player)
 end
 
 local function startPriceLoop()

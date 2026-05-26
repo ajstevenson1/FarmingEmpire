@@ -68,6 +68,11 @@ export type PlayerInventoryData = {
 	selectedSlotIndex: number?,
 }
 
+export type PlayerTutorialData = {
+	stepIndex: number,
+	completed: boolean,
+}
+
 export type PlayerData = {
 	schemaVersion: number,
 	economy: PlayerEconomyData,
@@ -79,6 +84,7 @@ export type PlayerData = {
 	settings: SettingsValues,
 	playtimeRewards: PlayerPlaytimeRewardsData,
 	dailyRewards: PlayerDailyRewardsData,
+	tutorial: PlayerTutorialData,
 }
 
 export type LoadResult = {
@@ -86,8 +92,8 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV10"
-local CURRENT_SCHEMA_VERSION = 1
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON24"
+local CURRENT_SCHEMA_VERSION = 2
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -151,6 +157,23 @@ local function sanitizeDuration(value: unknown): number
 	end
 
 	return value
+end
+
+local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
+	local rawTutorialValues: { [string]: unknown } = {}
+	if type(rawTutorial) == "table" then
+		rawTutorialValues = rawTutorial :: { [string]: unknown }
+	end
+
+	local rawStepIndex = rawTutorialValues.stepIndex
+	local stepIndex = if type(rawStepIndex) == "number" and rawStepIndex == math.floor(rawStepIndex) and rawStepIndex > 0
+		then rawStepIndex
+		else 1
+
+	return {
+		stepIndex = stepIndex,
+		completed = rawTutorialValues.completed == true,
+	}
 end
 
 local function sanitizeTimestamp(value: unknown): number
@@ -392,6 +415,10 @@ local function createDefaultData(): PlayerData
 			lastClaimUnixTime = 0,
 			nextRewardIndex = 1,
 			totalClaims = 0,
+		},
+		tutorial = {
+			stepIndex = 1,
+			completed = false,
 		},
 	}
 end
@@ -654,6 +681,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
 		playtimeRewards = sanitizePlaytimeRewardsData(rawPlaytimeRewards),
 		dailyRewards = sanitizeDailyRewardsData(rawDailyRewards),
+		tutorial = sanitizeTutorialData(rawDataTable.tutorial),
 	}
 end
 
@@ -739,6 +767,7 @@ local function cloneData(data: PlayerData): PlayerData
 			nextRewardIndex = sanitizeRewardIndex(data.dailyRewards.nextRewardIndex, DAILY_REWARDS_CYCLE_LENGTH) or 1,
 			totalClaims = sanitizeAmount(data.dailyRewards.totalClaims),
 		},
+		tutorial = sanitizeTutorialData(data.tutorial),
 	}
 end
 

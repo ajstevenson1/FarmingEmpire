@@ -25,6 +25,7 @@ local ProductionService = require(script.Parent.Parent.Production.ProductionServ
 local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 type BuildingId = BuildingTypes.BuildingId
 type ItemId = InventoryTypes.ItemId
@@ -406,6 +407,7 @@ local function handlePlacementRequest(
 
 	ProductionService.registerPlacedBuilding(placedPart, buildingId, nil)
 	PlayerDataService.addPlacedBuilding(player, buildingId, gridX, gridZ, rotationQuarterTurns)
+	TutorialService.handleBuildingPlaced(player, buildingId)
 end
 
 local function resolveOwnedPlacedBuildingOnAssignedPlot(player: Player, placedPart: BasePart): ValidatedPlacedBuildingTarget?

@@ -12,6 +12,7 @@ local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
@@ -233,6 +234,7 @@ local function openShopForPlayer(player: Player, shopId: ShopId)
 		shopId = shopId,
 		snapshot = buildSnapshot(player),
 	})
+	TutorialService.handleShopOpened(player, shopId)
 end
 
 local function isPlayerCloseEnoughToShop(player: Player, definition: ShopDefinition): boolean
@@ -319,12 +321,17 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 		return createPurchaseResult(player, false, "OutOfStock", shopId, productId)
 	end
 
-	if not EconomyService.trySpendCash(player, productDefinition.price) then
+	local purchasePrice = if TutorialService.shouldUseFreeTutorialPurchase(player, shopId, productId)
+		then 0
+		else productDefinition.price
+
+	if purchasePrice > 0 and not EconomyService.trySpendCash(player, purchasePrice) then
 		return createPurchaseResult(player, false, "InsufficientCash", shopId, productId)
 	end
 
 	decrementStock(player, shopId, productDefinition)
 	InventoryService.addItem(player, productDefinition.itemId, productDefinition.quantityPerPurchase)
+	TutorialService.handleShopPurchaseSucceeded(player, shopId, productId)
 
 	return createPurchaseResult(player, true, "Purchased", shopId, productId)
 end

@@ -1,6 +1,8 @@
 --!strict
 
 local CmdrService = require(script.Admin.CmdrService)
+local AdminAnnouncementService = require(script.Notifications.AdminAnnouncementService)
+local TutorialService = require(script.Tutorial.TutorialService)
 local CharacterLifecycleService = require(script.Characters.CharacterLifecycleService)
 local EconomyService = require(script.Economy.EconomyService)
 local ApplesEarnedLeaderboardService = require(script.Leaderboards.ApplesEarnedLeaderboardService)
@@ -30,9 +32,11 @@ local RobuxSpentLeaderboardService = require(script.Leaderboards.RobuxSpentLeade
 local SettingsService = require(script.Settings.SettingsService)
 local PlaytimeRewardsService = require(script.PlaytimeRewards.PlaytimeRewardsService)
 
+AdminAnnouncementService.start()
 CmdrService.start()
 CharacterLifecycleService.start()
 PlayerDataService.start()
+TutorialService.start()
 SettingsService.start()
 PlotService.start()
 FallRecoveryService.start()

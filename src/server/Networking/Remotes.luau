@@ -71,6 +71,16 @@ type PlaytimeRewardsRemotes = {
 	claimPlaytimeReward: RemoteFunction,
 }
 
+type NotificationRemotes = {
+	notificationReceived: RemoteEvent,
+}
+
+type TutorialRemotes = {
+	tutorialStepUpdated: RemoteEvent,
+	tutorialTapContinue: RemoteEvent,
+	getTutorialSnapshot: RemoteFunction,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -84,6 +94,8 @@ local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
 local cachedSettingsRemotes: SettingsRemotes? = nil
 local cachedPlaytimeRewardsRemotes: PlaytimeRewardsRemotes? = nil
+local cachedNotificationRemotes: NotificationRemotes? = nil
+local cachedTutorialRemotes: TutorialRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -308,6 +320,34 @@ function Remotes.getPlaytimeRewardsRemotes(): PlaytimeRewardsRemotes
 	}
 
 	return cachedPlaytimeRewardsRemotes
+end
+
+function Remotes.getNotificationRemotes(): NotificationRemotes
+	if cachedNotificationRemotes ~= nil then
+		return cachedNotificationRemotes
+	end
+
+	local notificationsFolder = getOrCreateFolder(getRootFolder(), RemoteNames.notificationsFolderName)
+	cachedNotificationRemotes = {
+		notificationReceived = getOrCreateRemoteEvent(notificationsFolder, RemoteNames.notificationReceivedEventName),
+	}
+
+	return cachedNotificationRemotes
+end
+
+function Remotes.getTutorialRemotes(): TutorialRemotes
+	if cachedTutorialRemotes ~= nil then
+		return cachedTutorialRemotes
+	end
+
+	local tutorialFolder = getOrCreateFolder(getRootFolder(), RemoteNames.tutorialFolderName)
+	cachedTutorialRemotes = {
+		tutorialStepUpdated = getOrCreateRemoteEvent(tutorialFolder, RemoteNames.tutorialStepUpdatedEventName),
+		tutorialTapContinue = getOrCreateRemoteEvent(tutorialFolder, RemoteNames.tutorialTapContinueEventName),
+		getTutorialSnapshot = getOrCreateRemoteFunction(tutorialFolder, RemoteNames.getTutorialSnapshotFunctionName),
+	}
+
+	return cachedTutorialRemotes
 end
 
 return table.freeze(Remotes)

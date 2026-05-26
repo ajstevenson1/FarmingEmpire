@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 local CIDER_SELL_MODEL_NAME = "CiderSell"
 local TOUCH_PART_NAME = "Touch"
@@ -70,6 +71,7 @@ local function openCiderMarketForPlayer(player: Player)
 	end
 
 	Remotes.getMarketRemotes().ciderMarketOpened:FireClient(player)
+	TutorialService.handleCiderSellOpened(player)
 end
 
 local CiderSellService = {}

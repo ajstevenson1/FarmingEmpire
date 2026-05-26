@@ -538,6 +538,11 @@ function InventoryService.getEquippedItemId(player: Player): ItemId?
 	return inventoryState.hotbarSlots[selectedSlotIndex]
 end
 
+function InventoryService.getItemQuantity(player: Player, itemId: ItemId): number
+	local inventoryState = getPlayerInventoryState(player)
+	return getItemQuantity(inventoryState, itemId)
+end
+
 function InventoryService.tryConsumeItem(player: Player, itemId: ItemId, quantity: number): boolean
 	local inventoryState = getPlayerInventoryState(player)
 	local previousItemId = InventoryService.getEquippedItemId(player)

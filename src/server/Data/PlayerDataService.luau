@@ -30,6 +30,7 @@ type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
 type HotbarSlotData = PlayerDataStore.HotbarSlotData
 export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
+export type PlayerTutorialData = PlayerDataStore.PlayerTutorialData
 export type UnlockedPlotTileData = PlotExpansionTypes.PlotTileCoordinate
 type BuildingId = BuildingTypes.BuildingId
 type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
@@ -841,6 +842,41 @@ function PlayerDataService.setDailyRewardsData(player: Player, dailyRewardsData:
 	end
 
 	record.data.dailyRewards = clonedDailyRewardsData
+	markDirty(record)
+end
+
+function PlayerDataService.getTutorialData(player: Player): PlayerTutorialData
+	local record = loadPlayerData(player)
+	return {
+		stepIndex = record.data.tutorial.stepIndex,
+		completed = record.data.tutorial.completed,
+	}
+end
+
+function PlayerDataService.setTutorialStep(player: Player, stepIndex: number)
+	local record = loadPlayerData(player)
+	local sanitizedStepIndex = if stepIndex > 0 and stepIndex == math.floor(stepIndex) then stepIndex else 1
+	if record.data.tutorial.stepIndex == sanitizedStepIndex and not record.data.tutorial.completed then
+		return
+	end
+
+	record.data.tutorial = {
+		stepIndex = sanitizedStepIndex,
+		completed = false,
+	}
+	markDirty(record)
+end
+
+function PlayerDataService.completeTutorial(player: Player)
+	local record = loadPlayerData(player)
+	if record.data.tutorial.completed then
+		return
+	end
+
+	record.data.tutorial = {
+		stepIndex = record.data.tutorial.stepIndex,
+		completed = true,
+	}
 	markDirty(record)
 end
 

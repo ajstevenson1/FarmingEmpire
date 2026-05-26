@@ -16,6 +16,7 @@ local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScr
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
 local ShopMenuView = require(script.Parent.ShopMenuView)
+local TutorialClientState = require(script.Parent.Parent.Tutorial.TutorialClientState)
 
 type EconomySnapshot = EconomyTypes.EconomySnapshot
 type ShopId = ShopTypes.ShopId
@@ -112,11 +113,15 @@ local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash:
 
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		local itemDefinition = ItemCatalog.getItemDefinition(productDefinition.itemId)
+		local effectivePrice = if TutorialClientState.shouldUseFreePurchase(shopId, productDefinition.id)
+			then 0
+			else productDefinition.price
 		table.insert(products, {
 			productDefinition = productDefinition,
 			displayName = itemDefinition.displayName,
 			stockRemaining = shopState.stockRemainingByProductId[productDefinition.id] or 0,
-			canAfford = cash >= productDefinition.price,
+			canAfford = cash >= effectivePrice,
+			effectivePrice = effectivePrice,
 		})
 	end
 
@@ -181,6 +186,7 @@ function ShopController.start()
 			return
 		end
 
+		local shouldCloseAfterTutorialPurchase = TutorialClientState.shouldUseFreePurchase(shopId, productId)
 		isPurchasePending = true
 		renderIfReady(view)
 
@@ -193,6 +199,10 @@ function ShopController.start()
 		latestCash = refreshedEconomySnapshot.cash
 		isPurchasePending = false
 		renderIfReady(view)
+
+		if result.success and shouldCloseAfterTutorialPurchase then
+			FrameManager.close(shopId)
+		end
 	end)
 
 	shopOpened.OnClientEvent:Connect(function(payload: ShopOpenedPayload)

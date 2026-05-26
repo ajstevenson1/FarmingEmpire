@@ -51,6 +51,7 @@ local DESKTOP_GRID_PADDING = 30
 local MOBILE_GRID_CELL_SIZE = 100
 local MOBILE_GRID_PADDING = 15
 local MOBILE_SCROLLER_WIDTH = 520
+local CLAIM_HITBOX_NAME = "RewardClaimHitbox"
 
 local hasStarted = false
 local latestSnapshot: RewardsSnapshot? = nil
@@ -63,6 +64,9 @@ local registeredFrame: Frame? = nil
 local tabBaseSizes: { [GuiObject]: UDim2 } = {}
 local tabBaseStrokeColors: { [UIStroke]: Color3 } = {}
 local renderFrame: ((Frame, ScreenGui, RemoteFunction, boolean) -> ())? = nil
+local cachedRootGui: ScreenGui? = nil
+local cachedGetRewardsSnapshot: RemoteFunction? = nil
+local cachedClaimReward: RemoteFunction? = nil
 
 local function getRootGui(): ScreenGui
 	local localPlayer = Players.LocalPlayer
@@ -334,6 +338,10 @@ local function canClaimAny(snapshot: RewardsSnapshot): boolean
 	return canClaimPlaytime(snapshot.playtime) or canClaimDaily(snapshot.daily)
 end
 
+local function getPreferredOpenCategory(snapshot: RewardsSnapshot): RewardCategory
+	return if canClaimDaily(snapshot.daily) then "Daily" else activeCategory
+end
+
 local function getCategorySnapshot(snapshot: RewardsSnapshot, category: RewardCategory): PlaytimeRewardsSnapshot | DailyRewardsSnapshot
 	if category == "Daily" then
 		return snapshot.daily
@@ -525,6 +533,38 @@ local function setClaimState(tile: GuiObject, rewardState: PlaytimeRewardState, 
 	end
 end
 
+local function getHighestGuiZIndex(root: Instance): number
+	local highestZIndex = 1
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("GuiObject") then
+			highestZIndex = math.max(highestZIndex, descendant.ZIndex)
+		end
+	end
+
+	return highestZIndex
+end
+
+local function getOrCreateClaimHitbox(tile: GuiObject): TextButton
+	local existing = tile:FindFirstChild(CLAIM_HITBOX_NAME)
+	if existing ~= nil then
+		assert(existing:IsA("TextButton"), string.format("%s must be a TextButton", existing:GetFullName()))
+		return existing
+	end
+
+	local hitbox = Instance.new("TextButton")
+	hitbox.Name = CLAIM_HITBOX_NAME
+	hitbox.Active = false
+	hitbox.AutoButtonColor = false
+	hitbox.BackgroundTransparency = 1
+	hitbox.BorderSizePixel = 0
+	hitbox.Size = UDim2.fromScale(1, 1)
+	hitbox.Position = UDim2.fromScale(0, 0)
+	hitbox.Text = ""
+	hitbox.ZIndex = getHighestGuiZIndex(tile) + 1
+	hitbox.Parent = tile
+	return hitbox
+end
+
 local function renderRewardTile(tile: GuiObject, rewardSnapshot: RewardSnapshot, categorySnapshot: PlaytimeRewardsSnapshot | DailyRewardsSnapshot, category: RewardCategory, claimReward: RemoteFunction, rootGui: ScreenGui, frame: Frame)
 	local rewardState = getRewardState(rewardSnapshot, categorySnapshot, category)
 	local rewardText = formatRewardEntries(rewardSnapshot.rewards)
@@ -570,42 +610,49 @@ local function renderRewardTile(tile: GuiObject, rewardSnapshot: RewardSnapshot,
 
 	setClaimState(tile, rewardState, isClaimPending)
 
+	local function tryClaimReward()
+		if rewardState ~= "Claimable" or isClaimPending then
+			return
+		end
+
+		isClaimPending = true
+		setClaimState(tile, rewardState, true)
+
+		local success, result = pcall(function(): unknown
+			return claimReward:InvokeServer(category)
+		end)
+
+		isClaimPending = false
+		if not success then
+			warn(string.format("[PlaytimeRewardsController] Failed to claim %s reward: %s", category, tostring(result)))
+			setClaimState(tile, rewardState, false)
+			return
+		end
+
+		local claimResult = result :: PlaytimeRewardsClaimResult
+		latestSnapshot = claimResult.snapshot
+		RewardClaimEffects.play(rootGui)
+		renderTabs(frame)
+		local notification = getNotificationIndicator(rootGui)
+		if notification ~= nil and latestSnapshot ~= nil then
+			notification.Visible = canClaimAny(latestSnapshot :: RewardsSnapshot) and not isClaimPending
+		end
+		local renderFrameCallback = renderFrame
+		if renderFrameCallback ~= nil then
+			renderFrameCallback(frame, rootGui, claimReward, false)
+		end
+	end
+
 	local claim = findDescendant(tile, "Claim")
 	if claim ~= nil and (claim:IsA("TextButton") or claim:IsA("ImageButton")) then
 		local button = claim :: GuiButtonLike
-		button.Activated:Connect(function()
-			if rewardState ~= "Claimable" or isClaimPending then
-				return
-			end
-
-			isClaimPending = true
-			setClaimState(tile, rewardState, true)
-
-			local success, result = pcall(function(): unknown
-				return claimReward:InvokeServer(category)
-			end)
-
-			isClaimPending = false
-			if not success then
-				warn(string.format("[PlaytimeRewardsController] Failed to claim %s reward: %s", category, tostring(result)))
-				setClaimState(tile, rewardState, false)
-				return
-			end
-
-			local claimResult = result :: PlaytimeRewardsClaimResult
-			latestSnapshot = claimResult.snapshot
-			RewardClaimEffects.play(rootGui)
-			renderTabs(frame)
-			local notification = getNotificationIndicator(rootGui)
-			if notification ~= nil and latestSnapshot ~= nil then
-				notification.Visible = canClaimAny(latestSnapshot :: RewardsSnapshot) and not isClaimPending
-			end
-			local renderFrameCallback = renderFrame
-			if renderFrameCallback ~= nil then
-				renderFrameCallback(frame, rootGui, claimReward, false)
-			end
-		end)
+		button.Activated:Connect(tryClaimReward)
 	end
+
+	local claimHitbox = getOrCreateClaimHitbox(tile)
+	claimHitbox.Active = rewardState == "Claimable" and not isClaimPending
+	claimHitbox.Visible = rewardState == "Claimable"
+	claimHitbox.Activated:Connect(tryClaimReward)
 end
 
 local function warnMissingTemplate()
@@ -821,6 +868,36 @@ end
 
 local PlaytimeRewardsController = {}
 
+function PlaytimeRewardsController.open(category: RewardCategory?)
+	local rootGui = cachedRootGui
+	local getRewardsSnapshot = cachedGetRewardsSnapshot
+	local claimReward = cachedClaimReward
+	if rootGui == nil or getRewardsSnapshot == nil or claimReward == nil then
+		return
+	end
+
+	refreshSnapshot(getRewardsSnapshot)
+	local snapshot = latestSnapshot
+	if category ~= nil then
+		activeCategory = category
+	elseif snapshot ~= nil then
+		activeCategory = getPreferredOpenCategory(snapshot)
+	end
+
+	renderNotificationIndicator(rootGui)
+	local frame = ensureFrameRegistered(rootGui, claimReward)
+	if frame == nil then
+		return
+	end
+
+	local renderFrameCallback = renderFrame
+	if renderFrameCallback ~= nil then
+		renderFrameCallback(frame, rootGui, claimReward, false)
+	end
+
+	FrameManager.open(REWARDS_FRAME_ID)
+end
+
 function PlaytimeRewardsController.start()
 	if hasStarted then
 		return
@@ -831,6 +908,9 @@ function PlaytimeRewardsController.start()
 	local rootGui = getRootGui()
 	local openButton = getOpenButton(rootGui)
 	local rewardsUpdated, getRewardsSnapshot, claimReward = getRewardsRemotes()
+	cachedRootGui = rootGui
+	cachedGetRewardsSnapshot = getRewardsSnapshot
+	cachedClaimReward = claimReward
 
 	renderNotificationIndicator(rootGui)
 	refreshSnapshot(getRewardsSnapshot)
@@ -838,13 +918,18 @@ function PlaytimeRewardsController.start()
 	ensureFrameRegistered(rootGui, claimReward)
 
 	openButton.Activated:Connect(function()
+		refreshSnapshot(getRewardsSnapshot)
+		local snapshot = latestSnapshot
+		if snapshot ~= nil then
+			activeCategory = getPreferredOpenCategory(snapshot)
+		end
+
+		renderNotificationIndicator(rootGui)
 		local frame = ensureFrameRegistered(rootGui, claimReward)
 		if frame == nil then
 			return
 		end
 
-		refreshSnapshot(getRewardsSnapshot)
-		renderNotificationIndicator(rootGui)
 		local renderFrameCallback = renderFrame
 		if renderFrameCallback ~= nil then
 			renderFrameCallback(frame, rootGui, claimReward, false)

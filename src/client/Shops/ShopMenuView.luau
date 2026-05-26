@@ -20,6 +20,7 @@ export type RenderProduct = {
 	displayName: string,
 	stockRemaining: number,
 	canAfford: boolean,
+	effectivePrice: number,
 }
 
 type ShopWidgets = {
@@ -258,7 +259,7 @@ local function createProductRow(
 
 	setRequiredNamedText(row, "ItemName", renderProduct.displayName)
 	setRequiredNamedText(row, "ItemStock", formatStock(renderProduct.stockRemaining))
-	setRequiredNamedText(row, "ItemPrice", formatCash(productDefinition.price))
+	setRequiredNamedText(row, "ItemPrice", formatCash(renderProduct.effectivePrice))
 
 	local buyButton = findRequiredDescendant(row, "BuyButton")
 	assert(buyButton:IsA("GuiButton"), string.format("%s must be a GuiButton", buyButton:GetFullName()))
@@ -267,7 +268,7 @@ local function createProductRow(
 	local canBuy = isInStock and renderProduct.canAfford
 	buyButton.Active = canBuy
 	buyButton.AutoButtonColor = canBuy
-	setButtonText(buyButton, formatCash(productDefinition.price))
+	setButtonText(buyButton, formatCash(renderProduct.effectivePrice))
 
 	buyButton.Activated:Connect(function()
 		if not canBuy then
