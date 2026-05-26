@@ -28,13 +28,14 @@ local latestResourceSnapshot: ResourceSnapshot? = nil
 local latestEconomySnapshot: EconomySnapshot? = nil
 local latestStatusText: string? = nil
 
-local function getMarketRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction)
+local function getMarketRemotes(): (RemoteEvent, RemoteEvent, RemoteEvent, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local marketFolder = rootFolder:WaitForChild(RemoteNames.marketFolderName) :: Folder
 	local marketUpdated = marketFolder:WaitForChild(RemoteNames.marketUpdatedEventName) :: RemoteEvent
 	local ciderMarketOpened = marketFolder:WaitForChild(RemoteNames.ciderMarketOpenedEventName) :: RemoteEvent
+	local ciderMarketClosed = marketFolder:WaitForChild(RemoteNames.ciderMarketClosedEventName) :: RemoteEvent
 	local getMarketSnapshot = marketFolder:WaitForChild(RemoteNames.getMarketSnapshotFunctionName) :: RemoteFunction
-	return marketUpdated, ciderMarketOpened, getMarketSnapshot
+	return marketUpdated, ciderMarketOpened, ciderMarketClosed, getMarketSnapshot
 end
 
 local function getSellAllCiderRemote(): RemoteEvent
@@ -119,7 +120,7 @@ function CiderMarketController.start()
 		closedPosition = getClosedPanelPosition(panel),
 	})
 
-	local marketUpdated, ciderMarketOpened, getMarketSnapshot = getMarketRemotes()
+	local marketUpdated, ciderMarketOpened, ciderMarketClosed, getMarketSnapshot = getMarketRemotes()
 	local resourceUpdated, getResourceSnapshot = getResourceRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
 	local sellAllCider = getSellAllCiderRemote()
@@ -131,6 +132,11 @@ function CiderMarketController.start()
 
 	view:connectCloseRequested(function()
 		FrameManager.close(CIDER_MARKET_FRAME_ID)
+	end)
+	FrameManager.observeFrameClosed(function(frameId: string)
+		if frameId == CIDER_MARKET_FRAME_ID then
+			ciderMarketClosed:FireServer()
+		end
 	end)
 
 	view:connectSellRequested(function()

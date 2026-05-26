@@ -1,6 +1,7 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
@@ -16,6 +17,7 @@ local TutorialHudView = require(script.Parent.TutorialHudView)
 local TutorialSpotlightView = require(script.Parent.TutorialSpotlightView)
 local TutorialBeamView = require(script.Parent.TutorialBeamView)
 local TutorialClientState = require(script.Parent.TutorialClientState)
+local TutorialTargetResolver = require(script.Parent.TutorialTargetResolver)
 
 type TutorialStepPayload = TutorialTypes.TutorialStepPayload
 type InventorySnapshot = InventoryTypes.InventorySnapshot
@@ -28,8 +30,11 @@ local currentStepIndex: number? = nil
 local shouldHideStepEightSpotlight = false
 local hasSeenIncompleteTutorial = false
 local didAutoOpenDailyRewards = false
+local activeOnboardingIndicator: GuiObject? = nil
+local activeOnboardingIndicatorOriginalVisible = false
+local activeOnboardingTargetName = "None"
 
-local function getTutorialRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction)
+local function getTutorialRemotes(): (RemoteEvent, RemoteEvent, RemoteEvent, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName)
 	assert(rootFolder:IsA("Folder"), "ReplicatedStorage.GameRemotes must be a Folder")
 
@@ -38,12 +43,14 @@ local function getTutorialRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction)
 
 	local stepUpdated = remotesFolder:WaitForChild(RemoteNames.tutorialStepUpdatedEventName)
 	local tapContinue = remotesFolder:WaitForChild(RemoteNames.tutorialTapContinueEventName)
+	local skipRequested = remotesFolder:WaitForChild(RemoteNames.tutorialSkipRequestedEventName)
 	local getSnapshot = remotesFolder:WaitForChild(RemoteNames.getTutorialSnapshotFunctionName)
 	assert(stepUpdated:IsA("RemoteEvent"), "TutorialStepUpdated must be a RemoteEvent")
 	assert(tapContinue:IsA("RemoteEvent"), "TutorialTapContinue must be a RemoteEvent")
+	assert(skipRequested:IsA("RemoteEvent"), "TutorialSkipRequested must be a RemoteEvent")
 	assert(getSnapshot:IsA("RemoteFunction"), "GetTutorialSnapshot must be a RemoteFunction")
 
-	return stepUpdated, tapContinue, getSnapshot
+	return stepUpdated, tapContinue, skipRequested, getSnapshot
 end
 
 local function getRootGui(): ScreenGui
@@ -74,7 +81,74 @@ local function updateEquipStepSpotlight(snapshot: InventorySnapshot?)
 	if snapshot ~= nil and getSelectedItemId(snapshot) == "OakTree" then
 		shouldHideStepEightSpotlight = true
 		spotlight:hide()
+		local indicator = activeOnboardingIndicator
+		if indicator ~= nil and indicator.Parent ~= nil then
+			indicator.Visible = activeOnboardingIndicatorOriginalVisible
+		end
+		activeOnboardingIndicator = nil
+		activeOnboardingTargetName = "None"
 	end
+end
+
+local function clearOnboardingIndicator()
+	local indicator = activeOnboardingIndicator
+	if indicator ~= nil and indicator.Parent ~= nil then
+		indicator.Visible = activeOnboardingIndicatorOriginalVisible
+	end
+
+	activeOnboardingIndicator = nil
+	activeOnboardingTargetName = "None"
+end
+
+local function findOnboardingIndicator(target: GuiObject): GuiObject?
+	local directChild = target:FindFirstChild("Onboarding")
+	if directChild ~= nil and directChild:IsA("GuiObject") then
+		return directChild
+	end
+
+	for _, descendant in ipairs(target:GetDescendants()) do
+		if descendant.Name == "Onboarding" and descendant:IsA("GuiObject") then
+			return descendant
+		end
+	end
+
+	return nil
+end
+
+local function updateOnboardingIndicator(targetName: string)
+	if targetName == "None" then
+		clearOnboardingIndicator()
+		return
+	end
+
+	local target = TutorialTargetResolver.getGuiTarget(targetName)
+	if target == nil then
+		return
+	end
+
+	local indicator = findOnboardingIndicator(target)
+	if indicator == nil then
+		return
+	end
+
+	if indicator == activeOnboardingIndicator then
+		indicator.Visible = true
+		return
+	end
+
+	local previousIndicator = activeOnboardingIndicator
+	if previousIndicator ~= nil and previousIndicator.Parent ~= nil then
+		previousIndicator.Visible = activeOnboardingIndicatorOriginalVisible
+	end
+
+	activeOnboardingIndicator = indicator
+	activeOnboardingIndicatorOriginalVisible = indicator.Visible
+	indicator.Visible = true
+end
+
+local function showOnboardingIndicatorForTarget(targetName: string)
+	activeOnboardingTargetName = targetName
+	updateOnboardingIndicator(targetName)
 end
 
 local function applyPayload(payload: TutorialStepPayload)
@@ -87,6 +161,7 @@ local function applyPayload(payload: TutorialStepPayload)
 	currentStepIndex = if step ~= nil then step.id else nil
 	TutorialClientState.setCurrentStep(if step ~= nil then step.id else nil, payload.data.completed)
 	if payload.data.completed or step == nil then
+		clearOnboardingIndicator()
 		if hasSeenIncompleteTutorial and not didAutoOpenDailyRewards then
 			didAutoOpenDailyRewards = true
 			PlaytimeRewardsController.open("Daily")
@@ -102,6 +177,7 @@ local function applyPayload(payload: TutorialStepPayload)
 	hasSeenIncompleteTutorial = true
 	hud:showStep(step)
 	shouldHideStepEightSpotlight = false
+	showOnboardingIndicatorForTarget(step.spotlightTarget)
 
 	if step.spotlightTarget == "None" then
 		spotlight:hide()
@@ -127,7 +203,7 @@ function TutorialController.start()
 
 	hasStarted = true
 
-	local stepUpdated, tapContinue, getSnapshot = getTutorialRemotes()
+	local stepUpdated, tapContinue, skipRequested, getSnapshot = getTutorialRemotes()
 	hudView = TutorialHudView.new()
 	spotlightView = TutorialSpotlightView.new(getRootGui())
 	beamView = TutorialBeamView.new()
@@ -135,11 +211,19 @@ function TutorialController.start()
 	hudView:connectContinueRequested(function()
 		tapContinue:FireServer()
 	end)
+	hudView:connectSkipRequested(function()
+		skipRequested:FireServer()
+	end)
 
 	stepUpdated.OnClientEvent:Connect(function(payload: TutorialStepPayload)
 		applyPayload(payload)
 	end)
 	InventoryController.observeSnapshotChanged(updateEquipStepSpotlight)
+	RunService.RenderStepped:Connect(function()
+		if activeOnboardingTargetName ~= "None" then
+			updateOnboardingIndicator(activeOnboardingTargetName)
+		end
+	end)
 
 	applyPayload(getSnapshot:InvokeServer() :: TutorialStepPayload)
 end

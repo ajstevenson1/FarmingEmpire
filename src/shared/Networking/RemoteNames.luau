@@ -33,6 +33,7 @@ local RemoteNames = {
 	getEconomySnapshotFunctionName = "GetEconomySnapshot",
 	marketUpdatedEventName = "MarketUpdated",
 	ciderMarketOpenedEventName = "CiderMarketOpened",
+	ciderMarketClosedEventName = "CiderMarketClosed",
 	getMarketSnapshotFunctionName = "GetMarketSnapshot",
 	sellAllCiderEventName = "SellAllCider",
 	plotExpansionUpdatedEventName = "PlotExpansionUpdated",
@@ -40,6 +41,7 @@ local RemoteNames = {
 	requestPlotTilePurchaseFunctionName = "RequestPlotTilePurchase",
 	requestTeleportEventName = "RequestTeleport",
 	shopOpenedEventName = "ShopOpened",
+	shopClosedEventName = "ShopClosed",
 	getShopSnapshotFunctionName = "GetShopSnapshot",
 	requestShopPurchaseFunctionName = "RequestShopPurchase",
 	getSettingsSnapshotFunctionName = "GetSettingsSnapshot",
@@ -50,6 +52,7 @@ local RemoteNames = {
 	notificationReceivedEventName = "NotificationReceived",
 	tutorialStepUpdatedEventName = "TutorialStepUpdated",
 	tutorialTapContinueEventName = "TutorialTapContinue",
+	tutorialSkipRequestedEventName = "TutorialSkipRequested",
 	getTutorialSnapshotFunctionName = "GetTutorialSnapshot",
 }
 

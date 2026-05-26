@@ -132,7 +132,7 @@ local steps: { TutorialStepDefinition } = {
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "None",
-		autoDismissSeconds = 2,
+		autoContinueDelaySeconds = 2,
 	},
 }
 

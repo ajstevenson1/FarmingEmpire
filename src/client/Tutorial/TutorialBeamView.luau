@@ -1,15 +1,14 @@
 --!strict
 
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local TutorialTargetResolver = require(script.Parent.TutorialTargetResolver)
 
 export type TutorialBeamView = {
 	_beamTargetName: string,
-	_beam: Beam?,
-	_startAttachment: Attachment?,
-	_endAttachment: Attachment?,
+	_arrowPart: Part?,
+	_arrowTexture: Texture?,
 	_updateConnection: RBXScriptConnection?,
 	_clearBeamInstances: (self: TutorialBeamView) -> (),
 	_update: (self: TutorialBeamView) -> (),
@@ -23,6 +22,15 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before creating TutorialBeamV
 
 local TutorialBeamView = {}
 TutorialBeamView.__index = TutorialBeamView
+
+local ARROW_TEXTURE = "rbxassetid://10249261654"
+local ARROW_STRIP_WIDTH_STUDS = 4
+local ARROW_STRIP_THICKNESS_STUDS = 0.05
+local ARROW_STRIP_HEIGHT_STUDS = 0.08
+local ARROW_TEXTURE_TILE_WIDTH_STUDS = 4
+local ARROW_TEXTURE_TILE_LENGTH_STUDS = 4
+local ARROW_TEXTURE_SPEED_STUDS_PER_SECOND = 8
+local BEAM_COLOR = Color3.fromRGB(255, 255, 255)
 
 local function getRootPart(): BasePart?
 	local character = localPlayer.Character
@@ -38,45 +46,72 @@ local function getRootPart(): BasePart?
 	return nil
 end
 
-local function createBeam(startAttachment: Attachment, endAttachment: Attachment): Beam
-	local beam = Instance.new("Beam")
-	beam.Name = "TutorialTargetBeam"
-	beam.Attachment0 = startAttachment
-	beam.Attachment1 = endAttachment
-	beam.Color = ColorSequence.new(Color3.fromRGB(63, 221, 113))
-	beam.FaceCamera = true
-	beam.LightEmission = 0.35
-	beam.Segments = 10
-	beam.Transparency = NumberSequence.new(0.05)
-	beam.Width0 = 0.35
-	beam.Width1 = 0.12
-	beam.Parent = startAttachment
-	return beam
+local function refreshArrowTextureAsync(arrowTexture: Texture)
+	arrowTexture.Texture = ""
+
+	task.defer(function()
+		if arrowTexture.Parent == nil then
+			return
+		end
+
+		arrowTexture.Texture = ARROW_TEXTURE
+	end)
+
+	task.delay(1, function()
+		if arrowTexture.Parent == nil then
+			return
+		end
+
+		arrowTexture.Texture = ""
+		task.wait()
+		if arrowTexture.Parent ~= nil then
+			arrowTexture.Texture = ARROW_TEXTURE
+		end
+	end)
+end
+
+local function createArrowPart(): (Part, Texture)
+	local arrowPart = Instance.new("Part")
+	arrowPart.Name = "TutorialArrowGuide"
+	arrowPart.Anchored = true
+	arrowPart.CanCollide = false
+	arrowPart.CanQuery = false
+	arrowPart.CanTouch = false
+	arrowPart.CastShadow = false
+	arrowPart.Color = BEAM_COLOR
+	arrowPart.Material = Enum.Material.SmoothPlastic
+	arrowPart.Transparency = 1
+
+	local arrowTexture = Instance.new("Texture")
+	arrowTexture.Name = "ArrowTexture"
+	arrowTexture.Face = Enum.NormalId.Top
+	arrowTexture.Color3 = BEAM_COLOR
+	arrowTexture.Transparency = 0
+	arrowTexture.StudsPerTileU = ARROW_TEXTURE_TILE_WIDTH_STUDS
+	arrowTexture.StudsPerTileV = ARROW_TEXTURE_TILE_LENGTH_STUDS
+	arrowTexture.Parent = arrowPart
+
+	arrowPart.Parent = workspace
+	refreshArrowTextureAsync(arrowTexture)
+
+	return arrowPart, arrowTexture
 end
 
 function TutorialBeamView.new(): TutorialBeamView
 	return setmetatable({
 		_beamTargetName = "None",
-		_beam = nil,
-		_startAttachment = nil,
-		_endAttachment = nil,
+		_arrowPart = nil,
+		_arrowTexture = nil,
 		_updateConnection = nil,
 	}, TutorialBeamView) :: TutorialBeamView
 end
 
 function TutorialBeamView:_clearBeamInstances()
-	if self._beam ~= nil then
-		self._beam:Destroy()
-		self._beam = nil
+	if self._arrowPart ~= nil then
+		self._arrowPart:Destroy()
+		self._arrowPart = nil
 	end
-	if self._startAttachment ~= nil then
-		self._startAttachment:Destroy()
-		self._startAttachment = nil
-	end
-	if self._endAttachment ~= nil then
-		self._endAttachment:Destroy()
-		self._endAttachment = nil
-	end
+	self._arrowTexture = nil
 end
 
 function TutorialBeamView:_update()
@@ -87,29 +122,31 @@ function TutorialBeamView:_update()
 		return
 	end
 
-	if self._beam ~= nil and self._startAttachment ~= nil and self._startAttachment.Parent == rootPart
-		and self._endAttachment ~= nil and self._endAttachment.Parent == targetPart
-	then
-		self._startAttachment.Position = Vector3.new(0, 2.6, 0)
-		self._endAttachment.Position = Vector3.new(0, math.max(targetPart.Size.Y * 0.5, 1), 0)
+	local startPosition = rootPart.Position + Vector3.new(0, 0.25, 0)
+	local endPosition = targetPart.Position + Vector3.new(0, math.max(targetPart.Size.Y * 0.5, 1), 0)
+	local delta = endPosition - startPosition
+	local flatDelta = Vector3.new(delta.X, 0, delta.Z)
+	local distance = flatDelta.Magnitude
+	if distance <= 0.1 then
+		self:_clearBeamInstances()
 		return
 	end
 
-	self:_clearBeamInstances()
+	if self._arrowPart == nil or self._arrowTexture == nil then
+		local arrowPart, arrowTexture = createArrowPart()
+		self._arrowPart = arrowPart
+		self._arrowTexture = arrowTexture
+	end
 
-	local startAttachment = Instance.new("Attachment")
-	startAttachment.Name = "TutorialBeamStart"
-	startAttachment.Position = Vector3.new(0, 2.6, 0)
-	startAttachment.Parent = rootPart
+	local arrowPart = self._arrowPart :: Part
+	local arrowTexture = self._arrowTexture :: Texture
+	local direction = flatDelta.Unit
+	local midpoint = startPosition + direction * (distance * 0.5)
+	local stripPosition = Vector3.new(midpoint.X, startPosition.Y + ARROW_STRIP_HEIGHT_STUDS, midpoint.Z)
 
-	local endAttachment = Instance.new("Attachment")
-	endAttachment.Name = "TutorialBeamEnd"
-	endAttachment.Position = Vector3.new(0, math.max(targetPart.Size.Y * 0.5, 1), 0)
-	endAttachment.Parent = targetPart
-
-	self._startAttachment = startAttachment
-	self._endAttachment = endAttachment
-	self._beam = createBeam(startAttachment, endAttachment)
+	arrowPart.Size = Vector3.new(ARROW_STRIP_WIDTH_STUDS, ARROW_STRIP_THICKNESS_STUDS, distance)
+	arrowPart.CFrame = CFrame.lookAt(stripPosition, stripPosition + direction) * CFrame.Angles(0, math.pi, 0)
+	arrowTexture.OffsetStudsV = os.clock() * ARROW_TEXTURE_SPEED_STUDS_PER_SECOND
 end
 
 function TutorialBeamView:show(beamTargetName: string)

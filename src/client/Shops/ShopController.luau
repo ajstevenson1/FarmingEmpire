@@ -33,14 +33,16 @@ local activeShopId: ShopId? = nil
 local latestSnapshot: ShopSnapshot? = nil
 local latestCash = 0
 local isPurchasePending = false
+local freeTutorialProductIdByShopId: { [ShopId]: ShopProductId } = {}
 
-local function getShopRemotes(): (RemoteEvent, RemoteFunction, RemoteFunction)
+local function getShopRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local shopFolder = rootFolder:WaitForChild(RemoteNames.shopFolderName) :: Folder
 	local shopOpened = shopFolder:WaitForChild(RemoteNames.shopOpenedEventName) :: RemoteEvent
+	local shopClosed = shopFolder:WaitForChild(RemoteNames.shopClosedEventName) :: RemoteEvent
 	local getShopSnapshot = shopFolder:WaitForChild(RemoteNames.getShopSnapshotFunctionName) :: RemoteFunction
 	local requestShopPurchase = shopFolder:WaitForChild(RemoteNames.requestShopPurchaseFunctionName) :: RemoteFunction
-	return shopOpened, getShopSnapshot, requestShopPurchase
+	return shopOpened, shopClosed, getShopSnapshot, requestShopPurchase
 end
 
 local function getEconomyRemotes(): (RemoteEvent, RemoteFunction)
@@ -113,7 +115,8 @@ local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash:
 
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		local itemDefinition = ItemCatalog.getItemDefinition(productDefinition.itemId)
-		local effectivePrice = if TutorialClientState.shouldUseFreePurchase(shopId, productDefinition.id)
+		local effectivePrice = if freeTutorialProductIdByShopId[shopId] == productDefinition.id
+				or TutorialClientState.shouldUseFreePurchase(shopId, productDefinition.id)
 			then 0
 			else productDefinition.price
 		table.insert(products, {
@@ -170,14 +173,20 @@ function ShopController.start()
 		})
 	end
 
-	local shopOpened, getShopSnapshot, requestShopPurchase = getShopRemotes()
+	local shopOpened, shopClosed, getShopSnapshot, requestShopPurchase = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
 	latestSnapshot = getShopSnapshot:InvokeServer() :: ShopSnapshot
 	local initialEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 	latestCash = initialEconomySnapshot.cash
 
 	view:connectCloseRequested(function(shopId: ShopId)
+		freeTutorialProductIdByShopId[shopId] = nil
 		FrameManager.close(shopId)
+	end)
+	FrameManager.observeFrameClosed(function(frameId: string)
+		if ShopCatalog.isShopId(frameId) then
+			shopClosed:FireServer(frameId)
+		end
 	end)
 
 	view:connectPurchaseRequested(function(productId: ShopProductId)
@@ -186,7 +195,8 @@ function ShopController.start()
 			return
 		end
 
-		local shouldCloseAfterTutorialPurchase = TutorialClientState.shouldUseFreePurchase(shopId, productId)
+		local shouldCloseAfterTutorialPurchase = freeTutorialProductIdByShopId[shopId] == productId
+			or TutorialClientState.shouldUseFreePurchase(shopId, productId)
 		isPurchasePending = true
 		renderIfReady(view)
 
@@ -201,6 +211,7 @@ function ShopController.start()
 		renderIfReady(view)
 
 		if result.success and shouldCloseAfterTutorialPurchase then
+			freeTutorialProductIdByShopId[shopId] = nil
 			FrameManager.close(shopId)
 		end
 	end)
@@ -208,6 +219,11 @@ function ShopController.start()
 	shopOpened.OnClientEvent:Connect(function(payload: ShopOpenedPayload)
 		activeShopId = payload.shopId
 		latestSnapshot = payload.snapshot
+		if payload.freeTutorialProductId ~= nil then
+			freeTutorialProductIdByShopId[payload.shopId] = payload.freeTutorialProductId
+		else
+			freeTutorialProductIdByShopId[payload.shopId] = nil
+		end
 		renderIfReady(view)
 		FrameManager.open(payload.shopId)
 	end)

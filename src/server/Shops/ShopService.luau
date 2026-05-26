@@ -10,6 +10,7 @@ local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
+local ReopenGuard = require(script.Parent.Parent.Interactions.ReopenGuard)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
@@ -225,16 +226,22 @@ local function findTouchPart(definition: ShopDefinition): BasePart?
 end
 
 local function openShopForPlayer(player: Player, shopId: ShopId)
+	if not ReopenGuard.canOpen(player, shopId) then
+		return
+	end
+
 	local currentTime = getCurrentTime()
 	if not canOpenShopForPlayer(player, shopId, currentTime) then
 		return
 	end
 
+	ReopenGuard.markOpened(player, shopId)
+	TutorialService.handleShopOpened(player, shopId)
 	Remotes.getShopRemotes().shopOpened:FireClient(player, {
 		shopId = shopId,
 		snapshot = buildSnapshot(player),
+		freeTutorialProductId = TutorialService.getFreeTutorialProductId(player, shopId),
 	})
-	TutorialService.handleShopOpened(player, shopId)
 end
 
 local function isPlayerCloseEnoughToShop(player: Player, definition: ShopDefinition): boolean
@@ -342,6 +349,7 @@ local function connectShopTouch(definition: ShopDefinition)
 		return
 	end
 
+	ReopenGuard.registerStation(definition.id, touchPart)
 	touchPart.Touched:Connect(function(touchedPart: BasePart)
 		local player = findPlayerFromTouchedPart(touchedPart)
 		if player == nil then
@@ -366,6 +374,14 @@ function ShopService.start()
 		return buildSnapshot(player)
 	end
 	shopRemotes.requestShopPurchase.OnServerInvoke = handlePurchaseRequest
+	shopRemotes.shopClosed.OnServerEvent:Connect(function(player: Player, rawShopId: unknown)
+		if type(rawShopId) ~= "string" or not ShopCatalog.isShopId(rawShopId) then
+			return
+		end
+
+		ReopenGuard.markClosed(player, rawShopId :: ShopId)
+	end)
+	ReopenGuard.start()
 
 	local currentTime = getCurrentTime()
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do

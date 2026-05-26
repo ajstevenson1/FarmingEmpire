@@ -19,10 +19,13 @@ export type TutorialSpotlightView = {
 	_updateConnection: RBXScriptConnection?,
 	_slideTweens: { Tween },
 	_slideCompletedCount: number,
+	_hasVisibleRects: boolean,
+	_isSlidingIn: boolean,
 	_cancelSlideTweens: (self: TutorialSpotlightView) -> (),
 	_getRects: (self: TutorialSpotlightView) -> { RectDefinition }?,
 	_applyRects: (self: TutorialSpotlightView, rects: { RectDefinition }) -> (),
 	_slideIn: (self: TutorialSpotlightView, rects: { RectDefinition }) -> (),
+	_ensureUpdateConnection: (self: TutorialSpotlightView) -> (),
 	_update: (self: TutorialSpotlightView) -> (),
 	show: (self: TutorialSpotlightView, targetName: string) -> (),
 	hide: (self: TutorialSpotlightView) -> (),
@@ -72,6 +75,8 @@ function TutorialSpotlightView.new(rootGui: ScreenGui): TutorialSpotlightView
 		_updateConnection = nil,
 		_slideTweens = {},
 		_slideCompletedCount = 0,
+		_hasVisibleRects = false,
+		_isSlidingIn = false,
 	}, TutorialSpotlightView) :: TutorialSpotlightView
 end
 
@@ -81,6 +86,7 @@ function TutorialSpotlightView:_cancelSlideTweens()
 	end
 	table.clear(self._slideTweens)
 	self._slideCompletedCount = 0
+	self._isSlidingIn = false
 end
 
 function TutorialSpotlightView:_getRects(): { RectDefinition }?
@@ -131,10 +137,12 @@ function TutorialSpotlightView:_applyRects(rects: { RectDefinition })
 	for index, rect in ipairs(rects) do
 		setFrameRect(self._frames[index], rect.x, rect.y, rect.width, rect.height)
 	end
+	self._hasVisibleRects = true
 end
 
 function TutorialSpotlightView:_slideIn(rects: { RectDefinition })
 	self:_cancelSlideTweens()
+	self._isSlidingIn = true
 
 	local rootSize = self._rootGui.AbsoluteSize
 	local startRects: { RectDefinition } = {
@@ -159,13 +167,26 @@ function TutorialSpotlightView:_slideIn(rects: { RectDefinition })
 
 			self._slideCompletedCount += 1
 			if self._slideCompletedCount >= #self._frames and self._targetName ~= "None" and self._updateConnection == nil then
+				self._isSlidingIn = false
 				self._updateConnection = RunService.RenderStepped:Connect(function()
 					self:_update()
 				end)
+			elseif self._slideCompletedCount >= #self._frames then
+				self._isSlidingIn = false
 			end
 		end)
 		tween:Play()
 	end
+end
+
+function TutorialSpotlightView:_ensureUpdateConnection()
+	if self._updateConnection ~= nil then
+		return
+	end
+
+	self._updateConnection = RunService.RenderStepped:Connect(function()
+		self:_update()
+	end)
 end
 
 function TutorialSpotlightView:_update()
@@ -174,10 +195,19 @@ function TutorialSpotlightView:_update()
 		for _, frame in ipairs(self._frames) do
 			frame.Visible = false
 		end
+		self._hasVisibleRects = false
 		return
 	end
 
-	self:_applyRects(rects)
+	if self._isSlidingIn then
+		return
+	end
+
+	if self._hasVisibleRects then
+		self:_applyRects(rects)
+	else
+		self:_slideIn(rects)
+	end
 end
 
 function TutorialSpotlightView:show(targetName: string)
@@ -185,6 +215,14 @@ function TutorialSpotlightView:show(targetName: string)
 	self._targetName = targetName
 	local rects = self:_getRects()
 	if rects == nil then
+		if shouldSlideIn then
+			self:_cancelSlideTweens()
+			self._hasVisibleRects = false
+			for _, frame in ipairs(self._frames) do
+				frame.Visible = false
+			end
+		end
+		self:_ensureUpdateConnection()
 		return
 	end
 
@@ -207,6 +245,7 @@ end
 function TutorialSpotlightView:hide()
 	self._targetName = "None"
 	self:_cancelSlideTweens()
+	self._hasVisibleRects = false
 	if self._updateConnection ~= nil then
 		self._updateConnection:Disconnect()
 		self._updateConnection = nil

@@ -1,7 +1,6 @@
 --!strict
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
@@ -14,7 +13,10 @@ type Widgets = {
 	rootGui: ScreenGui,
 	container: GuiObject,
 	textLabel: TextLabel,
-	tapToContinueLabel: TextLabel,
+	skipOpenButton: GuiButton,
+	skipModal: GuiObject,
+	skipConfirmButton: GuiButton,
+	skipBackButton: GuiButton,
 }
 
 export type TutorialHudView = {
@@ -23,23 +25,30 @@ export type TutorialHudView = {
 	_isTyping: boolean,
 	_fullText: string,
 	_tapToContinue: boolean,
+	_autoContinueDelaySeconds: number?,
 	_continueCallbacks: { () -> () },
-	_inputConnection: RBXScriptConnection?,
-	_animateTapToContinue: (self: TutorialHudView, stepVersion: number) -> (),
+	_skipCallbacks: { () -> () },
+	_scheduleAutoContinue: (self: TutorialHudView, stepVersion: number, delaySeconds: number) -> (),
 	_playTypewriter: (self: TutorialHudView, stepVersion: number, text: string) -> (),
 	showStep: (self: TutorialHudView, step: TutorialStepDefinition) -> (),
 	hide: (self: TutorialHudView) -> (),
 	connectContinueRequested: (self: TutorialHudView, callback: () -> ()) -> (),
+	connectSkipRequested: (self: TutorialHudView, callback: () -> ()) -> (),
 	destroy: (self: TutorialHudView) -> (),
 }
 
 local HUD_NAME = "HUD"
 local TUTORIAL_NAME = "Tutorial"
 local TEXT_LABEL_NAME = "Text"
-local TAP_TO_CONTINUE_LABEL_NAME = "TapToContinue"
+local SKIP_BUTTON_NAME = "Skip"
+local FRAMES_NAME = "Frames"
+local SKIP_TUTORIAL_FRAME_NAME = "SkipTutorial"
+local MODAL_FRAME_NAME = "Frame"
+local BACK_BUTTON_NAME = "Back"
 
 local TYPEWRITER_CHARACTERS_PER_SECOND = 20
 local NOTIFICATION_Z_INDEX = 20
+local AUTO_CONTINUE_DELAY_SECONDS = 2
 
 local TutorialHudView = {}
 TutorialHudView.__index = TutorialHudView
@@ -61,14 +70,32 @@ local function getWidgets(): Widgets
 	local textLabel = tutorial:WaitForChild(TEXT_LABEL_NAME)
 	assert(textLabel:IsA("TextLabel"), "GUI.HUD.Tutorial.Text must be a TextLabel")
 
-	local tapToContinueLabel = tutorial:WaitForChild(TAP_TO_CONTINUE_LABEL_NAME)
-	assert(tapToContinueLabel:IsA("TextLabel"), "GUI.HUD.Tutorial.TapToContinue must be a TextLabel")
+	local skipOpenButton = tutorial:WaitForChild(SKIP_BUTTON_NAME)
+	assert(skipOpenButton:IsA("GuiButton"), "GUI.HUD.Tutorial.Skip must be a GuiButton")
+
+	local frames = rootGui:WaitForChild(FRAMES_NAME)
+	assert(frames:IsA("GuiObject"), "PlayerGui.GUI.Frames must be a GuiObject")
+
+	local skipModal = frames:WaitForChild(SKIP_TUTORIAL_FRAME_NAME)
+	assert(skipModal:IsA("GuiObject"), "GUI.Frames.SkipTutorial must be a GuiObject")
+
+	local modalFrame = skipModal:WaitForChild(MODAL_FRAME_NAME)
+	assert(modalFrame:IsA("GuiObject"), "GUI.Frames.SkipTutorial.Frame must be a GuiObject")
+
+	local skipConfirmButton = modalFrame:WaitForChild(SKIP_BUTTON_NAME)
+	assert(skipConfirmButton:IsA("GuiButton"), "GUI.Frames.SkipTutorial.Frame.Skip must be a GuiButton")
+
+	local skipBackButton = modalFrame:WaitForChild(BACK_BUTTON_NAME)
+	assert(skipBackButton:IsA("GuiButton"), "GUI.Frames.SkipTutorial.Frame.Back must be a GuiButton")
 
 	return {
 		rootGui = rootGui,
 		container = tutorial,
 		textLabel = textLabel,
-		tapToContinueLabel = tapToContinueLabel,
+		skipOpenButton = skipOpenButton,
+		skipModal = skipModal,
+		skipConfirmButton = skipConfirmButton,
+		skipBackButton = skipBackButton,
 	}
 end
 
@@ -146,18 +173,12 @@ local function getRichTextPrefix(richText: string, visibleCharacters: number): s
 	return table.concat(output)
 end
 
-local function isPrimaryPointerInput(inputObject: InputObject): boolean
-	return inputObject.UserInputType == Enum.UserInputType.MouseButton1
-		or inputObject.UserInputType == Enum.UserInputType.Touch
-end
-
 function TutorialHudView.new(): TutorialHudView
 	local widgets = getWidgets()
 	raiseZIndex(widgets.container)
 	widgets.textLabel.RichText = true
-	widgets.tapToContinueLabel.RichText = true
-	widgets.tapToContinueLabel.Visible = false
 	widgets.container.Visible = false
+	widgets.skipModal.Visible = false
 
 	local self = setmetatable({
 		_widgets = widgets,
@@ -165,46 +186,45 @@ function TutorialHudView.new(): TutorialHudView
 		_isTyping = false,
 		_fullText = "",
 		_tapToContinue = false,
+		_autoContinueDelaySeconds = nil,
 		_continueCallbacks = {},
-		_inputConnection = nil,
+		_skipCallbacks = {},
 	}, TutorialHudView) :: TutorialHudView
 
-	self._inputConnection = UserInputService.InputBegan:Connect(function(inputObject: InputObject, _gameProcessed: boolean)
-		if not isPrimaryPointerInput(inputObject) or not widgets.container.Visible then
-			return
+	widgets.skipOpenButton.Activated:Connect(function()
+		if widgets.container.Visible then
+			widgets.skipModal.Visible = true
 		end
+	end)
 
-		if self._isTyping then
-			self._isTyping = false
-			self._stepVersion += 1
-			widgets.textLabel.Text = self._fullText
-			widgets.tapToContinueLabel.Visible = self._tapToContinue
-			return
-		end
+	widgets.skipBackButton.Activated:Connect(function()
+		widgets.skipModal.Visible = false
+	end)
 
-		if self._tapToContinue then
-			for _, callback in ipairs(self._continueCallbacks) do
-				callback()
-			end
+	widgets.skipConfirmButton.Activated:Connect(function()
+		widgets.skipModal.Visible = false
+		for _, callback in ipairs(self._skipCallbacks) do
+			callback()
 		end
 	end)
 
 	return self
 end
 
-function TutorialHudView:_animateTapToContinue(stepVersion: number)
-	local dotCount = 1
-	local dotFrames = { ".", ". .", ". . ." }
-	while self._stepVersion == stepVersion and self._tapToContinue and not self._isTyping do
-		self._widgets.tapToContinueLabel.Text = "Tap to continue" .. dotFrames[dotCount]
-		dotCount = if dotCount >= 3 then 1 else dotCount + 1
-		task.wait(0.35)
-	end
+function TutorialHudView:_scheduleAutoContinue(stepVersion: number, delaySeconds: number)
+	task.delay(delaySeconds, function()
+		if self._stepVersion ~= stepVersion or self._isTyping then
+			return
+		end
+
+		for _, callback in ipairs(self._continueCallbacks) do
+			callback()
+		end
+	end)
 end
 
 function TutorialHudView:_playTypewriter(stepVersion: number, text: string)
 	self._isTyping = true
-	self._widgets.tapToContinueLabel.Visible = false
 
 	local visibleCharacterCount = getVisibleCharacterCount(text)
 	if visibleCharacterCount <= 0 then
@@ -229,11 +249,10 @@ function TutorialHudView:_playTypewriter(stepVersion: number, text: string)
 
 	self._widgets.textLabel.Text = text
 	self._isTyping = false
-	self._widgets.tapToContinueLabel.Visible = self._tapToContinue
 	if self._tapToContinue then
-		task.spawn(function()
-			self:_animateTapToContinue(stepVersion)
-		end)
+		self:_scheduleAutoContinue(stepVersion, AUTO_CONTINUE_DELAY_SECONDS)
+	elseif self._autoContinueDelaySeconds ~= nil then
+		self:_scheduleAutoContinue(stepVersion, self._autoContinueDelaySeconds)
 	end
 end
 
@@ -242,11 +261,11 @@ function TutorialHudView:showStep(step: TutorialStepDefinition)
 	local stepVersion = self._stepVersion
 	self._fullText = step.text
 	self._tapToContinue = step.tapToContinue
+	self._autoContinueDelaySeconds = step.autoContinueDelaySeconds
 	self._isTyping = false
 
 	self._widgets.container.Visible = true
 	self._widgets.textLabel.Text = ""
-	self._widgets.tapToContinueLabel.Visible = false
 	task.spawn(function()
 		self:_playTypewriter(stepVersion, step.text)
 	end)
@@ -264,23 +283,25 @@ function TutorialHudView:hide()
 	self._stepVersion += 1
 	self._isTyping = false
 	self._tapToContinue = false
+	self._autoContinueDelaySeconds = nil
 	self._fullText = ""
 	self._widgets.textLabel.Text = ""
-	self._widgets.tapToContinueLabel.Visible = false
 	self._widgets.container.Visible = false
+	self._widgets.skipModal.Visible = false
 end
 
 function TutorialHudView:connectContinueRequested(callback: () -> ())
 	table.insert(self._continueCallbacks, callback)
 end
 
+function TutorialHudView:connectSkipRequested(callback: () -> ())
+	table.insert(self._skipCallbacks, callback)
+end
+
 function TutorialHudView:destroy()
 	self:hide()
-	if self._inputConnection ~= nil then
-		self._inputConnection:Disconnect()
-		self._inputConnection = nil
-	end
 	table.clear(self._continueCallbacks)
+	table.clear(self._skipCallbacks)
 end
 
 return TutorialHudView

@@ -48,6 +48,7 @@ export type ShopSnapshot = {
 export type ShopOpenedPayload = {
 	shopId: ShopId,
 	snapshot: ShopSnapshot,
+	freeTutorialProductId: ShopProductId?,
 }
 
 export type ShopPurchaseStatus =

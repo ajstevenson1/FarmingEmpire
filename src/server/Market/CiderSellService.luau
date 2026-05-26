@@ -4,11 +4,13 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local ReopenGuard = require(script.Parent.Parent.Interactions.ReopenGuard)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 local CIDER_SELL_MODEL_NAME = "CiderSell"
 local TOUCH_PART_NAME = "Touch"
 local TOUCH_OPEN_DEBOUNCE_SECONDS = 1
+local CIDER_SELL_STATION_ID = "CiderMarket"
 
 local hasStarted = false
 local nextAllowedOpenAtByPlayer: { [Player]: number } = {}
@@ -66,10 +68,15 @@ local function canOpenForPlayer(player: Player): boolean
 end
 
 local function openCiderMarketForPlayer(player: Player)
+	if not ReopenGuard.canOpen(player, CIDER_SELL_STATION_ID) then
+		return
+	end
+
 	if not canOpenForPlayer(player) then
 		return
 	end
 
+	ReopenGuard.markOpened(player, CIDER_SELL_STATION_ID)
 	Remotes.getMarketRemotes().ciderMarketOpened:FireClient(player)
 	TutorialService.handleCiderSellOpened(player)
 end
@@ -85,6 +92,7 @@ function CiderSellService.start()
 
 	local touchPart = findCiderSellTouchPart()
 	if touchPart ~= nil then
+		ReopenGuard.registerStation(CIDER_SELL_STATION_ID, touchPart)
 		touchPart.Touched:Connect(function(touchedPart: BasePart)
 			local player = findPlayerFromTouchedPart(touchedPart)
 			if player == nil then
@@ -94,6 +102,12 @@ function CiderSellService.start()
 			openCiderMarketForPlayer(player)
 		end)
 	end
+
+	local marketRemotes = Remotes.getMarketRemotes()
+	marketRemotes.ciderMarketClosed.OnServerEvent:Connect(function(player: Player)
+		ReopenGuard.markClosed(player, CIDER_SELL_STATION_ID)
+	end)
+	ReopenGuard.start()
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		nextAllowedOpenAtByPlayer[player] = nil

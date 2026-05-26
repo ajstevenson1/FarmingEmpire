@@ -40,6 +40,7 @@ type HarvestRemotes = {
 type MarketRemotes = {
 	marketUpdated: RemoteEvent,
 	ciderMarketOpened: RemoteEvent,
+	ciderMarketClosed: RemoteEvent,
 	getMarketSnapshot: RemoteFunction,
 	sellAllCider: RemoteEvent,
 }
@@ -56,6 +57,7 @@ type TeleportRemotes = {
 
 type ShopRemotes = {
 	shopOpened: RemoteEvent,
+	shopClosed: RemoteEvent,
 	getShopSnapshot: RemoteFunction,
 	requestShopPurchase: RemoteFunction,
 }
@@ -78,6 +80,7 @@ type NotificationRemotes = {
 type TutorialRemotes = {
 	tutorialStepUpdated: RemoteEvent,
 	tutorialTapContinue: RemoteEvent,
+	tutorialSkipRequested: RemoteEvent,
 	getTutorialSnapshot: RemoteFunction,
 }
 
@@ -243,6 +246,7 @@ function Remotes.getMarketRemotes(): MarketRemotes
 	cachedMarketRemotes = {
 		marketUpdated = getOrCreateRemoteEvent(marketFolder, RemoteNames.marketUpdatedEventName),
 		ciderMarketOpened = getOrCreateRemoteEvent(marketFolder, RemoteNames.ciderMarketOpenedEventName),
+		ciderMarketClosed = getOrCreateRemoteEvent(marketFolder, RemoteNames.ciderMarketClosedEventName),
 		getMarketSnapshot = getOrCreateRemoteFunction(marketFolder, RemoteNames.getMarketSnapshotFunctionName),
 		sellAllCider = getOrCreateRemoteEvent(marketFolder, RemoteNames.sellAllCiderEventName),
 	}
@@ -286,6 +290,7 @@ function Remotes.getShopRemotes(): ShopRemotes
 	local shopFolder = getOrCreateFolder(getRootFolder(), RemoteNames.shopFolderName)
 	cachedShopRemotes = {
 		shopOpened = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopOpenedEventName),
+		shopClosed = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopClosedEventName),
 		getShopSnapshot = getOrCreateRemoteFunction(shopFolder, RemoteNames.getShopSnapshotFunctionName),
 		requestShopPurchase = getOrCreateRemoteFunction(shopFolder, RemoteNames.requestShopPurchaseFunctionName),
 	}
@@ -344,6 +349,7 @@ function Remotes.getTutorialRemotes(): TutorialRemotes
 	cachedTutorialRemotes = {
 		tutorialStepUpdated = getOrCreateRemoteEvent(tutorialFolder, RemoteNames.tutorialStepUpdatedEventName),
 		tutorialTapContinue = getOrCreateRemoteEvent(tutorialFolder, RemoteNames.tutorialTapContinueEventName),
+		tutorialSkipRequested = getOrCreateRemoteEvent(tutorialFolder, RemoteNames.tutorialSkipRequestedEventName),
 		getTutorialSnapshot = getOrCreateRemoteFunction(tutorialFolder, RemoteNames.getTutorialSnapshotFunctionName),
 	}
 

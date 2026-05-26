@@ -44,14 +44,12 @@ local SELL_NEAR_MODEL_NAME = "CiderSell"
 local SELL_NEAR_TOUCH_PART_NAME = "Touch"
 local NEAR_DISTANCE_STUDS = 55
 local POLL_INTERVAL_SECONDS = 0.5
-local FINAL_STEP_COMPLETE_DELAY_SECONDS = 2
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 
 local hasStarted = false
-local completionTaskByPlayer: { [Player]: thread } = {}
 
 local function cloneTutorialData(data: TutorialData): TutorialData
 	return {
@@ -183,37 +181,11 @@ local function hasItem(player: Player, itemId: ItemId): boolean
 	return InventoryService.getItemQuantity(player, itemId) > 0
 end
 
-local function cancelFinalCompletionTask(player: Player)
-	local existingTask = completionTaskByPlayer[player]
-	if existingTask ~= nil then
-		local success, result = pcall(function()
-			if coroutine.status(existingTask) ~= "running" and coroutine.status(existingTask) ~= "dead" then
-				task.cancel(existingTask)
-			end
-		end)
-		if not success then
-			warn(string.format("Failed to cancel tutorial completion task for %s: %s", player.Name, tostring(result)))
-		end
-		completionTaskByPlayer[player] = nil
-	end
-end
-
 local TutorialService = {}
 
 local function completeTutorial(player: Player)
-	cancelFinalCompletionTask(player)
 	PlayerDataService.completeTutorial(player)
 	sendStep(player)
-end
-
-local function scheduleFinalCompletion(player: Player)
-	cancelFinalCompletionTask(player)
-	completionTaskByPlayer[player] = task.delay(FINAL_STEP_COMPLETE_DELAY_SECONDS, function()
-		completionTaskByPlayer[player] = nil
-		if PlayerDataService.getTutorialData(player).stepIndex == TutorialConfig.getFinalStepIndex() then
-			completeTutorial(player)
-		end
-	end)
 end
 
 local function advanceToStep(player: Player, stepIndex: number)
@@ -230,10 +202,6 @@ local function advanceToStep(player: Player, stepIndex: number)
 
 	PlayerDataService.setTutorialStep(player, stepIndex)
 	sendStep(player)
-
-	if stepIndex == finalStepIndex then
-		scheduleFinalCompletion(player)
-	end
 end
 
 local function advanceIfCurrentStep(player: Player, expectedStepIndex: number)
@@ -283,10 +251,6 @@ local function initializePlayer(player: Player)
 	PlayerDataService.waitForData(player)
 	advancePastAlreadySatisfiedSteps(player)
 	sendStep(player)
-
-	if PlayerDataService.getTutorialData(player).stepIndex == TutorialConfig.getFinalStepIndex() then
-		scheduleFinalCompletion(player)
-	end
 end
 
 local function startProximityLoop()
@@ -325,8 +289,18 @@ function TutorialService.start()
 	end
 	tutorialRemotes.tutorialTapContinue.OnServerEvent:Connect(function(player: Player)
 		local data = PlayerDataService.getTutorialData(player)
-		if data.stepIndex == 1 or data.stepIndex == 12 or data.stepIndex == 17 then
+		if data.stepIndex == 1
+			or data.stepIndex == 12
+			or data.stepIndex == 17
+			or data.stepIndex == TutorialConfig.getFinalStepIndex()
+		then
 			advanceIfCurrentStep(player, data.stepIndex)
+		end
+	end)
+	tutorialRemotes.tutorialSkipRequested.OnServerEvent:Connect(function(player: Player)
+		local data = PlayerDataService.getTutorialData(player)
+		if not data.completed then
+			completeTutorial(player)
 		end
 	end)
 
@@ -345,9 +319,6 @@ function TutorialService.start()
 	end)
 
 	Players.PlayerAdded:Connect(initializePlayer)
-	Players.PlayerRemoving:Connect(function(player: Player)
-		cancelFinalCompletionTask(player)
-	end)
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		initializePlayer(player)
@@ -373,6 +344,17 @@ function TutorialService.shouldUseFreeTutorialPurchase(player: Player, shopId: S
 	local data = PlayerDataService.getTutorialData(player)
 	return (data.stepIndex == 4 and shopId == "TreesShop" and productId == OAK_TREE_ITEM_ID)
 		or (data.stepIndex == 6 and shopId == "MillsShop" and productId == CIDER_MILL_ITEM_ID)
+end
+
+function TutorialService.getFreeTutorialProductId(player: Player, shopId: ShopId): ShopProductId?
+	local data = PlayerDataService.getTutorialData(player)
+	if data.stepIndex == 4 and shopId == "TreesShop" then
+		return OAK_TREE_ITEM_ID
+	elseif data.stepIndex == 6 and shopId == "MillsShop" then
+		return CIDER_MILL_ITEM_ID
+	end
+
+	return nil
 end
 
 function TutorialService.handleShopPurchaseSucceeded(player: Player, _shopId: ShopId, productId: ShopProductId)

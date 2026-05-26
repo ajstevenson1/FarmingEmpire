@@ -22,6 +22,7 @@ export type TutorialStepDefinition = {
 	spotlightTarget: TutorialTarget,
 	beamTarget: TutorialBeamTarget,
 	autoDismissSeconds: number?,
+	autoContinueDelaySeconds: number?,
 }
 
 export type TutorialData = {
