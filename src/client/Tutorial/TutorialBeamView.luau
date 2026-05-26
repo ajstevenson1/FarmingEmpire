@@ -23,7 +23,7 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before creating TutorialBeamV
 local TutorialBeamView = {}
 TutorialBeamView.__index = TutorialBeamView
 
-local ARROW_TEXTURE = "rbxassetid://10249261654"
+local ARROW_TEXTURE = "rbxassetid://10249261576"
 local ARROW_STRIP_WIDTH_STUDS = 4
 local ARROW_STRIP_THICKNESS_STUDS = 0.05
 local ARROW_STRIP_HEIGHT_STUDS = 0.08
@@ -80,7 +80,7 @@ local function createArrowPart(): (Part, Texture)
 	arrowPart.CastShadow = false
 	arrowPart.Color = BEAM_COLOR
 	arrowPart.Material = Enum.Material.SmoothPlastic
-	arrowPart.Transparency = 1
+	arrowPart.Transparency = 0.99
 
 	local arrowTexture = Instance.new("Texture")
 	arrowTexture.Name = "ArrowTexture"
