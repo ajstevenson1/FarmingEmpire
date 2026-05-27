@@ -17,6 +17,7 @@ local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionSer
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionBehaviorRegistry = require(script.Parent.ProductionBehaviorRegistry)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+local WeatherModifierService = require(script.Parent.Parent.Weather.WeatherModifierService)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
@@ -38,6 +39,7 @@ type TrackedBuilding = {
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
+local TREES_CATEGORY_FOLDER_NAME = "Trees"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
@@ -145,19 +147,29 @@ local function scaleWholeNumber(value: number, multiplier: number): number
 	return math.max(0, math.floor(value * multiplier))
 end
 
+local function getTreeSpeedMultiplier(buildingDefinition: BuildingDefinition): number
+	local visualConfig = buildingDefinition.visualConfig
+	if visualConfig.kind ~= "Staged" or visualConfig.categoryFolderName ~= TREES_CATEGORY_FOLDER_NAME then
+		return 1
+	end
+
+	return WeatherModifierService.getTreeSpeedMultiplier()
+end
+
 local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: BuildingDefinition): ProductionConfig
 	local baseProductionConfig = buildingDefinition.productionConfig
 	local outputResourceId = getOutputResourceId(baseProductionConfig)
 	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId)
 	local storageCapMultiplier = PlotExpansionService.getStorageCapMultiplierForPlacedPart(part, outputResourceId)
-	if outputMultiplier <= 1 and storageCapMultiplier <= 1 then
+	local treeSpeedMultiplier = getTreeSpeedMultiplier(buildingDefinition)
+	if outputMultiplier <= 1 and storageCapMultiplier <= 1 and treeSpeedMultiplier <= 1 then
 		return baseProductionConfig
 	end
 
 	if baseProductionConfig.behaviorId == "GrowAndHarvest" then
 		return {
 			behaviorId = "GrowAndHarvest",
-			cycleDurationSeconds = baseProductionConfig.cycleDurationSeconds,
+			cycleDurationSeconds = baseProductionConfig.cycleDurationSeconds / treeSpeedMultiplier,
 			outputResourceId = baseProductionConfig.outputResourceId,
 			outputAmount = scaleWholeNumber(baseProductionConfig.outputAmount, outputMultiplier),
 			storageCap = scaleWholeNumber(baseProductionConfig.storageCap, storageCapMultiplier),
@@ -165,7 +177,7 @@ local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: 
 	elseif baseProductionConfig.behaviorId == "TimedStorageProducer" then
 		return {
 			behaviorId = "TimedStorageProducer",
-			produceIntervalSeconds = baseProductionConfig.produceIntervalSeconds,
+			produceIntervalSeconds = baseProductionConfig.produceIntervalSeconds / treeSpeedMultiplier,
 			outputResourceId = baseProductionConfig.outputResourceId,
 			outputAmountPerInterval = scaleWholeNumber(baseProductionConfig.outputAmountPerInterval, outputMultiplier),
 			storageCap = scaleWholeNumber(baseProductionConfig.storageCap, storageCapMultiplier),
@@ -302,6 +314,42 @@ local function registerExistingPlacedBuildings()
 	end
 end
 
+local function getTimedStorageInterval(productionConfig: ProductionConfig): number?
+	if productionConfig.behaviorId ~= "TimedStorageProducer" then
+		return nil
+	end
+
+	return math.max(0.001, productionConfig.produceIntervalSeconds)
+end
+
+local function preserveTimedStorageProgress(
+	runtimeState: ProductionRuntimeState,
+	previousProductionConfig: ProductionConfig,
+	nextProductionConfig: ProductionConfig,
+	currentTime: number
+)
+	local previousInterval = getTimedStorageInterval(previousProductionConfig)
+	local nextInterval = getTimedStorageInterval(nextProductionConfig)
+	if previousInterval == nil or nextInterval == nil then
+		return
+	end
+
+	if math.abs(previousInterval - nextInterval) < 0.001 then
+		return
+	end
+
+	if runtimeState.storedAmount >= getStorageCap(nextProductionConfig) then
+		runtimeState.cycleStartedAt = currentTime
+		runtimeState.cycleFinishesAt = currentTime
+		return
+	end
+
+	local elapsedSeconds = math.clamp(currentTime - runtimeState.cycleStartedAt, 0, previousInterval)
+	local intervalProgress = math.clamp(elapsedSeconds / previousInterval, 0, 1)
+	runtimeState.cycleStartedAt = currentTime - (nextInterval * intervalProgress)
+	runtimeState.cycleFinishesAt = currentTime + (nextInterval * (1 - intervalProgress))
+end
+
 local ProductionService = {}
 
 function ProductionService.start()
@@ -353,6 +401,23 @@ end
 
 function ProductionService.unregisterPlacedBuilding(part: BasePart)
 	trackedBuildingsByPart[part] = nil
+end
+
+function ProductionService.refreshWeatherModifiers()
+	local currentTime = getCurrentTime()
+	for part, trackedBuilding in pairs(trackedBuildingsByPart) do
+		if part.Parent == nil then
+			trackedBuildingsByPart[part] = nil
+		else
+			updateTrackedBuilding(trackedBuilding)
+
+			local previousProductionConfig = trackedBuilding.effectiveProductionConfig
+			local nextProductionConfig = getEffectiveProductionConfig(part, trackedBuilding.buildingDefinition)
+			preserveTimedStorageProgress(trackedBuilding.runtimeState, previousProductionConfig, nextProductionConfig, currentTime)
+			trackedBuilding.effectiveProductionConfig = nextProductionConfig
+			syncPartAttributes(trackedBuilding)
+		end
+	end
 end
 
 function ProductionService.tryHarvestPlacedBuilding(part: BasePart): (boolean, HarvestOutput?)

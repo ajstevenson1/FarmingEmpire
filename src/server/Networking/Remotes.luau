@@ -84,6 +84,11 @@ type TutorialRemotes = {
 	getTutorialSnapshot: RemoteFunction,
 }
 
+type WeatherRemotes = {
+	weatherUpdated: RemoteEvent,
+	getWeatherSnapshot: RemoteFunction,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -99,6 +104,7 @@ local cachedSettingsRemotes: SettingsRemotes? = nil
 local cachedPlaytimeRewardsRemotes: PlaytimeRewardsRemotes? = nil
 local cachedNotificationRemotes: NotificationRemotes? = nil
 local cachedTutorialRemotes: TutorialRemotes? = nil
+local cachedWeatherRemotes: WeatherRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -354,6 +360,20 @@ function Remotes.getTutorialRemotes(): TutorialRemotes
 	}
 
 	return cachedTutorialRemotes
+end
+
+function Remotes.getWeatherRemotes(): WeatherRemotes
+	if cachedWeatherRemotes ~= nil then
+		return cachedWeatherRemotes
+	end
+
+	local weatherFolder = getOrCreateFolder(getRootFolder(), RemoteNames.weatherFolderName)
+	cachedWeatherRemotes = {
+		weatherUpdated = getOrCreateRemoteEvent(weatherFolder, RemoteNames.weatherUpdatedEventName),
+		getWeatherSnapshot = getOrCreateRemoteFunction(weatherFolder, RemoteNames.getWeatherSnapshotFunctionName),
+	}
+
+	return cachedWeatherRemotes
 end
 
 return table.freeze(Remotes)

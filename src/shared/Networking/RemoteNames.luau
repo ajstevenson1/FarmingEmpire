@@ -15,6 +15,7 @@ local RemoteNames = {
 	playtimeRewardsFolderName = "PlaytimeRewards",
 	notificationsFolderName = "Notifications",
 	tutorialFolderName = "Tutorial",
+	weatherFolderName = "Weather",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
 	setSelectedSlotEventName = "SetSelectedSlot",
@@ -54,6 +55,8 @@ local RemoteNames = {
 	tutorialTapContinueEventName = "TutorialTapContinue",
 	tutorialSkipRequestedEventName = "TutorialSkipRequested",
 	getTutorialSnapshotFunctionName = "GetTutorialSnapshot",
+	weatherUpdatedEventName = "WeatherUpdated",
+	getWeatherSnapshotFunctionName = "GetWeatherSnapshot",
 }
 
 return table.freeze(RemoteNames)
