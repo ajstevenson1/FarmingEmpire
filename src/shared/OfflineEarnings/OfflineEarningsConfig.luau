@@ -2,8 +2,11 @@
 
 local OfflineEarningsConfig = {}
 
-OfflineEarningsConfig.maxOfflineSeconds = 72 * 60 * 60
+OfflineEarningsConfig.maxOfflineSeconds = 12 * 60 * 60
 OfflineEarningsConfig.minOfflineSecondsToReward = 5
+OfflineEarningsConfig.offlineMultiplierPerOnlineMultiplier = 2
+OfflineEarningsConfig.treeToOfflineCiderConversion = 0.25
+OfflineEarningsConfig.exponentialCurveStrength = 1.2
 
 OfflineEarningsConfig.plateModelName = "OfflineEarningsPlate"
 OfflineEarningsConfig.touchPartName = "Touch"

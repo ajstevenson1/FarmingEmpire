@@ -208,11 +208,7 @@ local function saveCurrentOfflineSnapshot(player: Player)
 	saveOfflineSnapshotAtTime(player, getCurrentUnixTime())
 end
 
-local function getAwardCiderPerSecond(player: Player, savedCiderPerSecond: number): number
-	if savedCiderPerSecond > 0 then
-		return savedCiderPerSecond
-	end
-
+local function getAwardCiderPerSecond(player: Player): number
 	return calculateCurrentCiderPerSecond(player)
 end
 
@@ -229,7 +225,7 @@ local function initializePlayer(player: Player)
 
 	local offlineSeconds = getOfflineSeconds(offlineData.lastSeenAt, currentTime)
 	if offlineSeconds >= OfflineEarningsConfig.minOfflineSecondsToReward then
-		local ciderPerSecond = getAwardCiderPerSecond(player, offlineData.ciderPerSecondSnapshot)
+		local ciderPerSecond = getAwardCiderPerSecond(player)
 		local earnedCider = OfflineCiderRateCalculator.calculateCiderForSeconds(ciderPerSecond, offlineSeconds)
 		if earnedCider > 0 then
 			PlayerDataService.addPendingOfflineCider(player, earnedCider)
