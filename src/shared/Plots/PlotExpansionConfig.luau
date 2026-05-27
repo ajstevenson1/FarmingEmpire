@@ -25,18 +25,18 @@ local function createTileDefinition(row: number, column: number, price: number, 
 end
 
 local tileDefinitions: { PlotTileDefinition } = table.freeze({
-	createTileDefinition(1, 1, 500, nil),
+	createTileDefinition(1, 1, 5000, nil),
 	createTileDefinition(1, 2, 0, nil),
-	createTileDefinition(1, 3, 500, nil),
-	createTileDefinition(2, 1, 2500, nil),
-	createTileDefinition(2, 2, 2500, nil),
-	createTileDefinition(2, 3, 2500, nil),
-	createTileDefinition(3, 1, 8500, "DoubleProduction"),
-	createTileDefinition(3, 2, 8500, "DoubleProduction"),
-	createTileDefinition(3, 3, 8500, "DoubleProduction"),
-	createTileDefinition(4, 1, 25000, "TripleProduction"),
-	createTileDefinition(4, 2, 25000, "TripleProduction"),
-	createTileDefinition(4, 3, 25000, "TripleProduction"),
+	createTileDefinition(1, 3, 12500, nil),
+	createTileDefinition(2, 1, 100000, nil),
+	createTileDefinition(2, 2, 250000, nil),
+	createTileDefinition(2, 3, 600000, nil),
+	createTileDefinition(3, 1, 10000000, "DoubleProduction"),
+	createTileDefinition(3, 2, 25000000, "DoubleProduction"),
+	createTileDefinition(3, 3, 60000000, "DoubleProduction"),
+	createTileDefinition(4, 1, 400000000, "TripleProduction"),
+	createTileDefinition(4, 2, 900000000, "TripleProduction"),
+	createTileDefinition(4, 3, 2000000000, "TripleProduction"),
 })
 
 local tileDefinitionsByKey: { [string]: PlotTileDefinition } = {}

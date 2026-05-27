@@ -112,7 +112,7 @@ local millDefinitions: { MillTierDefinition } = table.freeze({
 	createMillTier("TitanCiderMill", "Titan Cider Mill", 110000000, 92, 92, 16.4, 1),
 	createMillTier("QuantumReactorMill", "Quantum Reactor Mill", 340000000, 115, 115, 21.4, 1),
 	createMillTier("DyingForgeMill", "Dying Forge Mill", 1050000000, 140, 140, 28.1, 1),
-	createMillTier("DeepSpaceMill", "Deep Space Mill", 72000000, 200, 200, 36.3, 1),
+	createMillTier("DeepSpaceMill", "Deep Space Mill", 7200000000, 200, 200, 36.3, 1),
 })
 
 local treeBuildingIds: { [string]: boolean } = {}
