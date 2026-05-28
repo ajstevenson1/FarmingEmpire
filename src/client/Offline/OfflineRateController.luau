@@ -11,6 +11,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local offlineEarningsFolder = sharedFolder:WaitForChild("OfflineEarnings") :: Folder
 local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
@@ -20,6 +21,7 @@ local PlotExpansionConfig = require(plotsFolder:WaitForChild("PlotExpansionConfi
 local PlotExpansionRules = require(plotsFolder:WaitForChild("PlotExpansionRules") :: ModuleScript)
 local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local OfflineRateView = require(script.Parent.OfflineRateView)
 
 type BuildingId = BuildingTypes.BuildingId
@@ -115,8 +117,19 @@ local function getOwnedBuildingIds(placedObjectsFolder: Folder): { OfflineRateBu
 	return ownedBuildings
 end
 
+local function getOfflineWindmillMultiplier(buildings: { OfflineRateBuilding }): number
+	local bonusTotal = 0
+	for _, building in ipairs(buildings) do
+		bonusTotal += WindmillConfig.getOfflineEarningsMultiplierBonus(building.buildingId)
+	end
+
+	return 1 + bonusTotal
+end
+
 local function recomputeOfflineRate(view: OfflineRateViewInstance, placedObjectsFolder: Folder)
-	local ciderPerHour = OfflineCiderRateCalculator.calculateCiderPerHour(getOwnedBuildingIds(placedObjectsFolder))
+	local ownedBuildings = getOwnedBuildingIds(placedObjectsFolder)
+	local ciderPerHour =
+		OfflineCiderRateCalculator.calculateCiderPerHour(ownedBuildings, getOfflineWindmillMultiplier(ownedBuildings))
 	view:render(ciderPerHour)
 end
 

@@ -13,6 +13,7 @@ local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
+local WindmillBoostService = require(script.Parent.Parent.Windmills.WindmillBoostService)
 
 type MarketSnapshot = EconomyTypes.MarketSnapshot
 
@@ -111,7 +112,8 @@ local function handleSellAllCider(player: Player)
 		return
 	end
 
-	EconomyService.addCash(player, ciderToSell * currentCiderSellPrice)
+	local cashEarned = math.floor(ciderToSell * currentCiderSellPrice * WindmillBoostService.getCiderSellCashMultiplier(player))
+	EconomyService.addCash(player, cashEarned)
 	TutorialService.handleCiderSold(player)
 end
 

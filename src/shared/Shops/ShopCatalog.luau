@@ -2,7 +2,9 @@
 
 local ShopTypes = require(script.Parent.ShopTypes)
 local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
@@ -10,15 +12,18 @@ type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
 type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
+type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local RESTOCK_INTERVAL_SECONDS = 5 * 60
 local TREE_IMAGE_ASSET_ID = "80078631350858"
 local MILL_IMAGE_ASSET_ID = "120573464445068"
+local WINDMILL_IMAGE_ASSET_ID = "120573464445068"
 local EMPTY_DEVELOPER_PRODUCT_ID = ""
 
 local shopIds: { ShopId } = {
 	"TreesShop",
 	"MillsShop",
+	"WindmillShop",
 }
 
 local definitionsById: { [ShopId]: ShopDefinition } = {
@@ -36,6 +41,16 @@ local definitionsById: { [ShopId]: ShopDefinition } = {
 		id = "MillsShop",
 		displayName = "Mills Shop",
 		worldModelName = "MillsShop",
+		touchPartName = "Touch",
+		restockGuiName = "RestockGUI",
+		nameLabelName = "NameLabel",
+		timerLabelName = "TimerLabel",
+		restockIntervalSeconds = RESTOCK_INTERVAL_SECONDS,
+	}),
+	WindmillShop = table.freeze({
+		id = "WindmillShop",
+		displayName = "Windmill Shop",
+		worldModelName = "WindmillShop",
 		touchPartName = "Touch",
 		restockGuiName = "RestockGUI",
 		nameLabelName = "NameLabel",
@@ -79,6 +94,23 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 	}))
 end
 productsByShopId.MillsShop = table.freeze(millProducts)
+
+local windmillProducts: { ShopProductDefinition } = {}
+for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDefinitions()) do
+	table.insert(windmillProducts, table.freeze({
+		id = windmillDefinition.id,
+		shopId = "WindmillShop",
+		itemId = windmillDefinition.id,
+		imageAssetId = WINDMILL_IMAGE_ASSET_ID,
+		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
+		price = windmillDefinition.price,
+		quantityPerPurchase = 1,
+		stockPerRestock = windmillDefinition.stockPerRestock,
+		sortOrder = 10 + index - 1,
+		description = windmillDefinition.description,
+	}))
+end
+productsByShopId.WindmillShop = table.freeze(windmillProducts)
 
 local productsByShopIdAndProductId: { [ShopId]: { [ShopProductId]: ShopProductDefinition } } = {}
 

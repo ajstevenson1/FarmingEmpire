@@ -40,10 +40,12 @@ export type BuildingId =
 	| "QuantumReactorMill"
 	| "DyingForgeMill"
 	| "DeepSpaceMill"
+	| "OfflineEarningsWindmill"
+	| "CiderCashWindmill"
 
 export type PlacementRotationQuarterTurns = number
 
-export type ProductionBehaviorId = "GrowAndHarvest" | "TimedStorageProducer" | "InputProcessor"
+export type ProductionBehaviorId = "GrowAndHarvest" | "TimedStorageProducer" | "InputProcessor" | "Passive"
 
 export type ProductionState = "Growing" | "Ready" | "Idle" | "Processing" | "Blocked"
 
@@ -107,7 +109,13 @@ export type InputProcessorProductionConfig = {
 	blockedStatusText: string,
 }
 
-export type ProductionConfig = GrowAndHarvestProductionConfig | TimedStorageProducerProductionConfig | InputProcessorProductionConfig
+export type PassiveProductionConfig = {
+	behaviorId: "Passive",
+	statusText: string,
+}
+
+export type ProductionConfig =
+	GrowAndHarvestProductionConfig | TimedStorageProducerProductionConfig | InputProcessorProductionConfig | PassiveProductionConfig
 
 export type ProductionRuntimeState = {
 	state: ProductionState,

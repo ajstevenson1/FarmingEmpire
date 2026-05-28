@@ -32,6 +32,8 @@ export type ItemId =
 	| "QuantumReactorMill"
 	| "DyingForgeMill"
 	| "DeepSpaceMill"
+	| "OfflineEarningsWindmill"
+	| "CiderCashWindmill"
 export type ItemKind = "Tool" | "Placeable"
 
 export type ItemDefinition = {

@@ -2,12 +2,15 @@
 
 local InventoryTypes = require(script.Parent.InventoryTypes)
 local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type ItemDefinition = InventoryTypes.ItemDefinition
 type ItemId = InventoryTypes.ItemId
 type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
+type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local itemsById: { [ItemId]: ItemDefinition } = {
 	Scythe = table.freeze({
@@ -37,6 +40,11 @@ end
 
 for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
 	itemsById[millDefinition.id :: ItemId] = createPlaceableItemDefinition(millDefinition.id :: ItemId, millDefinition.displayName, 30 + index - 1)
+end
+
+for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDefinitions()) do
+	itemsById[windmillDefinition.id :: ItemId] =
+		createPlaceableItemDefinition(windmillDefinition.id :: ItemId, windmillDefinition.displayName, 50 + index - 1)
 end
 
 local ItemCatalog = {}

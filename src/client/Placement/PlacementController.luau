@@ -16,6 +16,7 @@ local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 local plotsCodeFolder = sharedFolder:WaitForChild("Plots") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
@@ -26,6 +27,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local PlotExpansionTypes = require(plotsCodeFolder:WaitForChild("PlotExpansionTypes") :: ModuleScript)
 local PlotExpansionUtils = require(plotsCodeFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local PlotLocator = require(plotsCodeFolder:WaitForChild("PlotLocator") :: ModuleScript)
@@ -143,7 +145,10 @@ local function getPlacementTooltipTextForItem(itemDefinition: ItemDefinition): s
 		return GAMEPAD_PLACEMENT_TOOLTIP_TEXT
 	end
 
-	if ProgressionConfig.isTreeBuildingId(itemDefinition.id) or ProgressionConfig.isMillBuildingId(itemDefinition.id) then
+	if ProgressionConfig.isTreeBuildingId(itemDefinition.id)
+		or ProgressionConfig.isMillBuildingId(itemDefinition.id)
+		or WindmillConfig.isWindmillBuildingId(itemDefinition.id)
+	then
 		return DESKTOP_ROTATABLE_PLACEMENT_TOOLTIP_TEXT
 	end
 
@@ -253,7 +258,9 @@ local function isRotatablePlaceableItem(itemDefinition: ItemDefinition?): boolea
 		return false
 	end
 
-	return ProgressionConfig.isTreeBuildingId(itemDefinition.id) or ProgressionConfig.isMillBuildingId(itemDefinition.id)
+	return ProgressionConfig.isTreeBuildingId(itemDefinition.id)
+		or ProgressionConfig.isMillBuildingId(itemDefinition.id)
+		or WindmillConfig.isWindmillBuildingId(itemDefinition.id)
 end
 
 local PlacementController = {}

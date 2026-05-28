@@ -106,6 +106,10 @@ local function getStorageCap(productionConfig: ProductionConfig): number
 end
 
 local function getOutputResourceName(productionConfig: ProductionConfig): string
+	if productionConfig.behaviorId == "Passive" then
+		return ""
+	end
+
 	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputResourceId
 	end
@@ -113,7 +117,11 @@ local function getOutputResourceName(productionConfig: ProductionConfig): string
 	return productionConfig.outputResourceId
 end
 
-local function getOutputResourceId(productionConfig: ProductionConfig): ResourceId
+local function getOutputResourceId(productionConfig: ProductionConfig): ResourceId?
+	if productionConfig.behaviorId == "Passive" then
+		return nil
+	end
+
 	if productionConfig.behaviorId == "GrowAndHarvest" or productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputResourceId
 	end
@@ -124,6 +132,8 @@ end
 local function getProductionDuration(productionConfig: ProductionConfig): number
 	if productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.produceIntervalSeconds
+	elseif productionConfig.behaviorId == "Passive" then
+		return 0
 	end
 
 	return productionConfig.cycleDurationSeconds
@@ -138,6 +148,8 @@ local function getProductionRatePerSecond(productionConfig: ProductionConfig): n
 		return productionConfig.outputAmount / getSafeDuration(productionConfig.cycleDurationSeconds)
 	elseif productionConfig.behaviorId == "TimedStorageProducer" then
 		return productionConfig.outputAmountPerInterval / getSafeDuration(productionConfig.produceIntervalSeconds)
+	elseif productionConfig.behaviorId == "Passive" then
+		return 0
 	end
 
 	return productionConfig.outputAmount / getSafeDuration(productionConfig.cycleDurationSeconds)
@@ -158,7 +170,12 @@ end
 
 local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: BuildingDefinition): ProductionConfig
 	local baseProductionConfig = buildingDefinition.productionConfig
+	if baseProductionConfig.behaviorId == "Passive" then
+		return baseProductionConfig
+	end
+
 	local outputResourceId = getOutputResourceId(baseProductionConfig)
+	assert(outputResourceId ~= nil, string.format("%s production must have an output resource", buildingDefinition.id))
 	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId)
 	local storageCapMultiplier = PlotExpansionService.getStorageCapMultiplierForPlacedPart(part, outputResourceId)
 	local treeSpeedMultiplier = getTreeSpeedMultiplier(buildingDefinition)
@@ -203,10 +220,11 @@ local function syncPartAttributes(trackedBuilding: TrackedBuilding)
 	local productionConfig = trackedBuilding.effectiveProductionConfig
 	local runtimeState = trackedBuilding.runtimeState
 	local currentGrowthStage = BuildingCatalog.getGrowthStageForProgress(buildingDefinition, runtimeState.progress)
+	local productionMultiplier = if productionConfig.behaviorId == "Passive" then 1 else PlotExpansionService.getBuildingProductionMultiplierForPlacedPart(part, buildingDefinition.id)
 
 	part:SetAttribute(
 		BuildingAttributeNames.productionMultiplier,
-		PlotExpansionService.getBuildingProductionMultiplierForPlacedPart(part, buildingDefinition.id)
+		productionMultiplier
 	)
 	part:SetAttribute(BuildingAttributeNames.buildingId, buildingDefinition.id)
 	part:SetAttribute(BuildingAttributeNames.buildingDisplayName, buildingDefinition.displayName)
@@ -388,13 +406,18 @@ function ProductionService.getStoredOutput(part: BasePart): HarvestOutput?
 		return nil
 	end
 
+	local outputResourceId = getOutputResourceId(trackedBuilding.effectiveProductionConfig)
+	if outputResourceId == nil then
+		return nil
+	end
+
 	local storedAmount = math.floor(trackedBuilding.runtimeState.storedAmount)
 	if storedAmount <= 0 then
 		return nil
 	end
 
 	return {
-		resourceId = getOutputResourceId(trackedBuilding.effectiveProductionConfig),
+		resourceId = outputResourceId,
 		amount = storedAmount,
 	}
 end

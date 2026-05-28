@@ -25,6 +25,10 @@ function PlotExpansionRules.getProductionMultiplier(modifierId: PlotModifierId?)
 		return 3
 	end
 
+	if modifierId == "QuintupleProduction" then
+		return 5
+	end
+
 	return 1
 end
 

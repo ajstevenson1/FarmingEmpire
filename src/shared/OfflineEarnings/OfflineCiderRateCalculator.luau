@@ -88,6 +88,18 @@ local function getSafeOfflineBoostMultiplier(): number
 	return multiplier
 end
 
+local function getSafeWindmillMultiplier(multiplier: number?): number
+	if multiplier == nil then
+		return 1
+	end
+
+	if isInvalidNumber(multiplier) or multiplier < 0 then
+		return 1
+	end
+
+	return multiplier
+end
+
 local function getSafeTreeToOfflineCiderConversion(): number
 	local conversion = OfflineEarningsConfig.treeToOfflineCiderConversion
 	if isInvalidNumber(conversion) or conversion < 0 then
@@ -124,7 +136,7 @@ end
 
 local OfflineCiderRateCalculator = {}
 
-function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { OfflineRateBuilding }): number
+function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { OfflineRateBuilding }, windmillMultiplier: number?): number
 	local ciderPerSecond = 0
 
 	for _, building in ipairs(buildings) do
@@ -140,11 +152,11 @@ function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { Offline
 		ciderPerSecond += boostedMillCiderPerSecond + orchardBonusCiderPerSecond
 	end
 
-	return math.max(0, ciderPerSecond)
+	return math.max(0, ciderPerSecond * getSafeWindmillMultiplier(windmillMultiplier))
 end
 
-function OfflineCiderRateCalculator.calculateCiderPerHour(buildings: { OfflineRateBuilding }): number
-	return OfflineCiderRateCalculator.calculateCiderPerSecond(buildings) * SECONDS_PER_HOUR
+function OfflineCiderRateCalculator.calculateCiderPerHour(buildings: { OfflineRateBuilding }, windmillMultiplier: number?): number
+	return OfflineCiderRateCalculator.calculateCiderPerSecond(buildings, windmillMultiplier) * SECONDS_PER_HOUR
 end
 
 function OfflineCiderRateCalculator.calculateCiderForSeconds(ciderPerSecond: number, seconds: number): number

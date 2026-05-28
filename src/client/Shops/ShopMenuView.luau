@@ -5,15 +5,21 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
+type BuildingId = BuildingTypes.BuildingId
 type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
+type WindmillCategory = WindmillConfig.WindmillCategory
 
 export type RenderProduct = {
 	productDefinition: ShopProductDefinition,
@@ -48,12 +54,42 @@ export type ShopMenuView = {
 local SHOP_FRAME_NAMES: { [ShopId]: string } = {
 	TreesShop = "TreesShop",
 	MillsShop = "MillsShop",
+	WindmillShop = "WindmillShop",
 }
 
 local TEMPLATE_NAMES: { [ShopId]: string } = {
 	TreesShop = "TreesTemplate",
 	MillsShop = "MillsTemplate",
+	WindmillShop = "WindmillTemplate",
 }
+
+local FALLBACK_SHOP_FRAME_NAMES: { [ShopId]: string } = {
+	TreesShop = "TreesShop",
+	MillsShop = "MillsShop",
+	WindmillShop = "MillsShop",
+}
+
+local FALLBACK_TEMPLATE_NAMES: { [ShopId]: string } = {
+	TreesShop = "TreesTemplate",
+	MillsShop = "MillsTemplate",
+	WindmillShop = "WindmillTemplate",
+}
+
+local WINDMILL_SHOP_ID: ShopId = "WindmillShop"
+local WINDMILL_PRODUCT_TEMPLATE_NAME = "WindmillTemplate"
+local WINDMILL_HEADER_TEMPLATE_BY_CATEGORY: { [WindmillCategory]: string } = {
+	Offline = "OfflineTotemHeader",
+	Cash = "CashTotemHeader",
+}
+local WINDMILL_CATEGORY_ORDER: { WindmillCategory } = { "Offline", "Cash" }
+local ITEM_IMAGE_NAMES: { string } = { "ItemImage", "Image", "Icon" }
+local ITEM_NAME_LABEL_NAMES: { string } = { "ItemName", "Name", "NameLabel", "Title", "TitleLabel" }
+local ITEM_STOCK_LABEL_NAMES: { string } = { "ItemStock", "Stock", "StockLabel" }
+local ITEM_PRICE_LABEL_NAMES: { string } = { "ItemPrice", "Price", "PriceLabel" }
+local BUY_BUTTON_NAMES: { string } = { "BuyButton", "Buy", "PurchaseButton", "Purchase" }
+local GENERATED_WINDMILL_PRODUCT_ATTRIBUTE = "GeneratedWindmillProduct"
+local WINDMILL_BUY_CONNECTED_ATTRIBUTE = "WindmillBuyConnected"
+local WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE = "WindmillBuyProductId"
 
 local PRODUCT_IMAGE_PREFIX = "rbxassetid://"
 local PRODUCT_THUMBNAIL_PREFIX = "rbxthumb://"
@@ -91,6 +127,22 @@ local function findRequiredChild(parent: Instance, childName: string): Instance
 	return child
 end
 
+local function getOrCreatePlaceholderChild(parent: Instance, childName: string, fallbackChildName: string): Instance
+	local child = parent:FindFirstChild(childName)
+	if child ~= nil then
+		return child
+	end
+
+	local fallbackChild = findRequiredChild(parent, fallbackChildName)
+	local clonedChild = fallbackChild:Clone()
+	clonedChild.Name = childName
+	if clonedChild:IsA("GuiObject") then
+		clonedChild.Visible = false
+	end
+	clonedChild.Parent = parent
+	return clonedChild
+end
+
 local function findRequiredDescendant(parent: Instance, descendantName: string): Instance
 	local descendant = parent:FindFirstChild(descendantName, true)
 	assert(descendant ~= nil, string.format("%s must contain %s", parent:GetFullName(), descendantName))
@@ -106,6 +158,39 @@ local function findTextLabel(parent: Instance, name: string): TextLabel?
 	return nil
 end
 
+local function findFirstGuiObject(root: Instance, names: { string }): GuiObject?
+	for _, name in ipairs(names) do
+		local candidate = root:FindFirstChild(name, true)
+		if candidate ~= nil and candidate:IsA("GuiObject") then
+			return candidate
+		end
+	end
+
+	return nil
+end
+
+local function findFirstTextLabel(root: Instance, names: { string }): TextLabel?
+	for _, name in ipairs(names) do
+		local candidate = root:FindFirstChild(name, true)
+		if candidate ~= nil and candidate:IsA("TextLabel") then
+			return candidate
+		end
+	end
+
+	return nil
+end
+
+local function findFirstGuiButton(root: Instance, names: { string }): GuiButton?
+	for _, name in ipairs(names) do
+		local candidate = root:FindFirstChild(name, true)
+		if candidate ~= nil and candidate:IsA("GuiButton") then
+			return candidate
+		end
+	end
+
+	return nil
+end
+
 local function setText(instance: Instance, text: string)
 	if instance:IsA("TextLabel") then
 		instance.Text = text
@@ -116,6 +201,13 @@ end
 
 local function setRequiredNamedText(parent: Instance, name: string, text: string)
 	setText(findRequiredDescendant(parent, name), text)
+end
+
+local function setOptionalNamedText(parent: Instance, names: { string }, text: string)
+	local label = findFirstTextLabel(parent, names)
+	if label ~= nil then
+		label.Text = text
+	end
 end
 
 local function setButtonText(button: GuiButton, text: string)
@@ -168,10 +260,10 @@ local function getDeveloperProductPriceText(developerProductId: string, priceCac
 end
 
 local function createShopWidgets(framesFolder: Instance, templatesFolder: Folder, shopId: ShopId): ShopWidgets
-	local frame = findRequiredChild(framesFolder, SHOP_FRAME_NAMES[shopId])
+	local frame = getOrCreatePlaceholderChild(framesFolder, SHOP_FRAME_NAMES[shopId], FALLBACK_SHOP_FRAME_NAMES[shopId])
 	assert(frame:IsA("Frame"), string.format("%s must be a Frame", frame:GetFullName()))
 
-	local template = findRequiredChild(templatesFolder, TEMPLATE_NAMES[shopId])
+	local template = getOrCreatePlaceholderChild(templatesFolder, TEMPLATE_NAMES[shopId], FALLBACK_TEMPLATE_NAMES[shopId])
 	assert(template:IsA("GuiObject"), string.format("%s must be a GuiObject", template:GetFullName()))
 	template.Visible = false
 
@@ -236,6 +328,155 @@ local function fetchDeveloperProductPriceAsync(self: ShopMenuView, developerProd
 	end)
 end
 
+local function getWindmillCategory(renderProduct: RenderProduct): WindmillCategory?
+	local itemId = renderProduct.productDefinition.itemId
+	if not WindmillConfig.isWindmillBuildingId(itemId) then
+		return nil
+	end
+
+	local windmillDefinition = WindmillConfig.getDefinition(itemId :: BuildingId)
+	return if windmillDefinition == nil then nil else windmillDefinition.category
+end
+
+local function groupWindmillProductsByCategory(products: { RenderProduct }): { [WindmillCategory]: { RenderProduct } }
+	local groupedProducts: { [WindmillCategory]: { RenderProduct } } = {
+		Offline = {},
+		Cash = {},
+	}
+
+	for _, renderProduct in ipairs(products) do
+		local category = getWindmillCategory(renderProduct)
+		if category ~= nil then
+			table.insert(groupedProducts[category], renderProduct)
+		end
+	end
+
+	for _, categoryProducts in pairs(groupedProducts) do
+		table.sort(categoryProducts, function(leftProduct: RenderProduct, rightProduct: RenderProduct): boolean
+			if leftProduct.productDefinition.price == rightProduct.productDefinition.price then
+				return leftProduct.displayName < rightProduct.displayName
+			end
+
+			return leftProduct.productDefinition.price < rightProduct.productDefinition.price
+		end)
+	end
+
+	return groupedProducts
+end
+
+local function setProductImage(row: GuiObject, imageAssetId: string)
+	local imageTarget = findFirstGuiObject(row, ITEM_IMAGE_NAMES)
+	if imageTarget == nil then
+		return
+	end
+
+	local imageText = getImageAssetText(imageAssetId)
+	if imageTarget:IsA("ImageLabel") then
+		imageTarget.Image = imageText
+	elseif imageTarget:IsA("ImageButton") then
+		imageTarget.Image = imageText
+	end
+end
+
+local function connectProductBuyButton(self: ShopMenuView, row: GuiObject, renderProduct: RenderProduct)
+	local buyButton = findFirstGuiButton(row, BUY_BUTTON_NAMES)
+	if buyButton == nil then
+		return
+	end
+
+	local isInStock = renderProduct.stockRemaining > 0
+	local canBuy = isInStock and renderProduct.canAfford
+	buyButton.Active = canBuy
+	buyButton.AutoButtonColor = canBuy
+	buyButton:SetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE, renderProduct.productDefinition.id)
+	setButtonText(buyButton, formatCash(renderProduct.effectivePrice))
+
+	if buyButton:GetAttribute(WINDMILL_BUY_CONNECTED_ATTRIBUTE) == true then
+		return
+	end
+
+	buyButton:SetAttribute(WINDMILL_BUY_CONNECTED_ATTRIBUTE, true)
+	buyButton.Activated:Connect(function()
+		if not buyButton.Active then
+			return
+		end
+
+		local productId = buyButton:GetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE)
+		if type(productId) ~= "string" then
+			return
+		end
+
+		for _, callback in ipairs(self._purchaseCallbacks) do
+			callback(productId :: ShopProductId)
+		end
+	end)
+end
+
+local function populateWindmillProductRow(self: ShopMenuView, row: GuiObject, renderProduct: RenderProduct)
+	row.Name = renderProduct.productDefinition.id
+	row.Visible = true
+	setProductImage(row, renderProduct.productDefinition.imageAssetId)
+	setOptionalNamedText(row, ITEM_NAME_LABEL_NAMES, renderProduct.displayName)
+	setOptionalNamedText(row, ITEM_STOCK_LABEL_NAMES, formatStock(renderProduct.stockRemaining))
+	setOptionalNamedText(row, ITEM_PRICE_LABEL_NAMES, formatCash(renderProduct.effectivePrice))
+	connectProductBuyButton(self, row, renderProduct)
+end
+
+local function createWindmillProductRow(
+	self: ShopMenuView,
+	renderProduct: RenderProduct,
+	layoutOrder: number
+): GuiObject
+	local category = getWindmillCategory(renderProduct)
+	assert(category ~= nil, string.format("%s is not a windmill product", renderProduct.productDefinition.id))
+
+	local templateName = WINDMILL_PRODUCT_TEMPLATE_NAME
+	local template = getTemplatesFolder():WaitForChild(templateName)
+	assert(template:IsA("GuiObject"), string.format("Templates.%s must be a GuiObject", templateName))
+
+	local row = template:Clone()
+	row.LayoutOrder = layoutOrder
+	populateWindmillProductRow(self, row, renderProduct)
+	row:SetAttribute(GENERATED_WINDMILL_PRODUCT_ATTRIBUTE, true)
+
+	return row
+end
+
+local function createWindmillCategoryHeader(category: WindmillCategory, layoutOrder: number): GuiObject
+	local templateName = WINDMILL_HEADER_TEMPLATE_BY_CATEGORY[category]
+	local template = getTemplatesFolder():WaitForChild(templateName)
+	assert(template:IsA("GuiObject"), string.format("Templates.%s must be a GuiObject", templateName))
+
+	local header = template:Clone()
+	header.Name = templateName
+	header.LayoutOrder = layoutOrder
+	header.Visible = true
+	header:SetAttribute(GENERATED_WINDMILL_PRODUCT_ATTRIBUTE, true)
+
+	return header
+end
+
+local function renderWindmillProducts(self: ShopMenuView, shopWidgets: ShopWidgets, products: { RenderProduct })
+	local groupedProducts = groupWindmillProductsByCategory(products)
+	local layoutOrder = 1
+
+	for _, category in ipairs(WINDMILL_CATEGORY_ORDER) do
+		local header = createWindmillCategoryHeader(category, layoutOrder)
+		header.Parent = shopWidgets.scrollingFrame
+		table.insert(self._rowFramesByShopId[WINDMILL_SHOP_ID], header)
+		layoutOrder += 1
+
+		local categoryProducts = groupedProducts[category]
+		for index, renderProduct in ipairs(categoryProducts) do
+			local row = createWindmillProductRow(self, renderProduct, layoutOrder + index - 1)
+			row.Parent = shopWidgets.scrollingFrame
+			table.insert(self._rowFramesByShopId[WINDMILL_SHOP_ID], row)
+		end
+
+		layoutOrder += #categoryProducts
+	end
+end
+
 local function createProductRow(
 	self: ShopMenuView,
 	shopWidgets: ShopWidgets,
@@ -298,6 +539,7 @@ function ShopMenuView.new(): ShopMenuView
 	local widgetsByShopId: { [ShopId]: ShopWidgets } = {
 		TreesShop = createShopWidgets(framesFolder, templatesFolder, "TreesShop"),
 		MillsShop = createShopWidgets(framesFolder, templatesFolder, "MillsShop"),
+		WindmillShop = createShopWidgets(framesFolder, templatesFolder, "WindmillShop"),
 	}
 
 	local self = setmetatable({
@@ -307,6 +549,7 @@ function ShopMenuView.new(): ShopMenuView
 		_rowFramesByShopId = {
 			TreesShop = {},
 			MillsShop = {},
+			WindmillShop = {},
 		},
 		_robuxPriceTextByDeveloperProductId = {},
 		_pendingRobuxPriceFetchByDeveloperProductId = {},
@@ -338,6 +581,11 @@ function ShopMenuView:render(shopId: ShopId, secondsUntilRestock: number, produc
 		rowFrame:Destroy()
 	end
 	table.clear(rowFrames)
+
+	if shopId == WINDMILL_SHOP_ID then
+		renderWindmillProducts(self, shopWidgets, products)
+		return
+	end
 
 	for _, renderProduct in ipairs(products) do
 		table.insert(rowFrames, createProductRow(self, shopWidgets, renderProduct))

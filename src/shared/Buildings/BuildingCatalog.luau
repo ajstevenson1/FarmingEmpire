@@ -2,7 +2,9 @@
 
 local BuildingTypes = require(script.Parent.BuildingTypes)
 local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
+local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
@@ -11,11 +13,14 @@ type SingleBuildingVisualConfig = BuildingTypes.SingleBuildingVisualConfig
 type StagedBuildingVisualConfig = BuildingTypes.StagedBuildingVisualConfig
 type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
+type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local TREES_CATEGORY_FOLDER_NAME = "Trees"
 local MILLS_CATEGORY_FOLDER_NAME = "Mills"
+local WINDMILLS_CATEGORY_FOLDER_NAME = "Windmills"
 local OAK_TREE_ASSET_NAME = "OakTree"
 local CIDER_MILL_ASSET_NAME = "CiderMill"
+local WINDMILL_ASSET_NAME = "Windmill"
 local SINGLE_VISUAL_STAGE_NAME = "Single"
 local MAX_APPLE_HARVEST_EFFECT_COUNT = 3
 
@@ -73,6 +78,15 @@ local function createSingleMillVisualConfig(assetName: string): SingleBuildingVi
 	}) :: SingleBuildingVisualConfig
 end
 
+local function createSingleWindmillVisualConfig(): SingleBuildingVisualConfig
+	return table.freeze({
+		kind = "Single",
+		categoryFolderName = WINDMILLS_CATEGORY_FOLDER_NAME,
+		assetName = WINDMILL_ASSET_NAME,
+		fallbackAssetName = WINDMILL_ASSET_NAME,
+	}) :: SingleBuildingVisualConfig
+end
+
 local function createAppleTreeDefinition(treeDefinition: TreeTierDefinition): BuildingDefinition
 	return table.freeze({
 		id = treeDefinition.id,
@@ -122,6 +136,22 @@ local function createCiderMillDefinition(millDefinition: MillTierDefinition): Bu
 	})
 end
 
+local function createWindmillDefinition(windmillDefinition: WindmillDefinition): BuildingDefinition
+	return table.freeze({
+		id = windmillDefinition.id,
+		displayName = windmillDefinition.displayName,
+		sellPrice = windmillDefinition.sellPrice,
+		placementSize = windmillDefinition.placementSize,
+		productionConfig = table.freeze({
+			behaviorId = "Passive",
+			statusText = "Boost active",
+		}),
+		offlineEarningsConfig = nil,
+		visualConfig = createSingleWindmillVisualConfig(),
+		harvestVisualConfig = nil,
+	})
+end
+
 local buildingsById: { [BuildingId]: BuildingDefinition } = {}
 
 for _, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
@@ -130,6 +160,10 @@ end
 
 for _, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
 	buildingsById[millDefinition.id] = createCiderMillDefinition(millDefinition)
+end
+
+for _, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDefinitions()) do
+	buildingsById[windmillDefinition.id] = createWindmillDefinition(windmillDefinition)
 end
 
 local BuildingCatalog = {}

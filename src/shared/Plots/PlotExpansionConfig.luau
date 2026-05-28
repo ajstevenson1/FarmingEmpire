@@ -29,14 +29,14 @@ local tileDefinitions: { PlotTileDefinition } = table.freeze({
 	createTileDefinition(1, 2, 0, nil),
 	createTileDefinition(1, 3, 12500, nil),
 	createTileDefinition(2, 1, 100000, nil),
-	createTileDefinition(2, 2, 250000, nil),
-	createTileDefinition(2, 3, 600000, nil),
-	createTileDefinition(3, 1, 10000000, "DoubleProduction"),
-	createTileDefinition(3, 2, 25000000, "DoubleProduction"),
-	createTileDefinition(3, 3, 60000000, "DoubleProduction"),
-	createTileDefinition(4, 1, 400000000, "TripleProduction"),
-	createTileDefinition(4, 2, 900000000, "TripleProduction"),
-	createTileDefinition(4, 3, 2000000000, "TripleProduction"),
+	createTileDefinition(2, 2, 500000, nil),
+	createTileDefinition(2, 3, 1000000, nil),
+	createTileDefinition(3, 1, 15000000, "DoubleProduction"),
+	createTileDefinition(3, 2, 100000000, "DoubleProduction"),
+	createTileDefinition(3, 3, 500000000, "DoubleProduction"),
+	createTileDefinition(4, 1, 2000000000, "TripleProduction"),
+	createTileDefinition(4, 2, 5000000000000, "QuintupleProduction"),
+	createTileDefinition(4, 3, 100000000000, "TripleProduction"),
 })
 
 local tileDefinitionsByKey: { [string]: PlotTileDefinition } = {}

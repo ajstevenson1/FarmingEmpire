@@ -6,17 +6,25 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local AppleCounterBillboardView = require(script.Parent.AppleCounterBillboardView)
 local CiderCounterBillboardView = require(script.Parent.CiderCounterBillboardView)
 local ProductionBillboardView = require(script.Parent.ProductionBillboardView)
+local WindmillBillboardView = require(script.Parent.WindmillBillboardView)
 
 type AppleCounterBillboardViewInstance = AppleCounterBillboardView.AppleCounterBillboardView
 type CiderCounterBillboardViewInstance = CiderCounterBillboardView.CiderCounterBillboardView
 type ProductionBillboardViewInstance = ProductionBillboardView.ProductionBillboardView
-type ProductionViewInstance = AppleCounterBillboardViewInstance | CiderCounterBillboardViewInstance | ProductionBillboardViewInstance
+type WindmillBillboardViewInstance = WindmillBillboardView.WindmillBillboardView
+type ProductionViewInstance =
+	AppleCounterBillboardViewInstance
+	| CiderCounterBillboardViewInstance
+	| ProductionBillboardViewInstance
+	| WindmillBillboardViewInstance
 
 type TrackedConnections = {
 	refreshConnections: { RBXScriptConnection },
@@ -62,6 +70,11 @@ local function shouldUseCiderCounter(part: BasePart): boolean
 	return type(buildingId) == "string" and ProgressionConfig.isMillBuildingId(buildingId)
 end
 
+local function shouldUseWindmillBillboard(part: BasePart): boolean
+	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
+	return type(buildingId) == "string" and WindmillConfig.isWindmillBuildingId(buildingId)
+end
+
 local function createView(part: BasePart): ProductionViewInstance
 	if shouldUseAppleCounter(part) then
 		return AppleCounterBillboardView.new(part)
@@ -69,6 +82,10 @@ local function createView(part: BasePart): ProductionViewInstance
 
 	if shouldUseCiderCounter(part) then
 		return CiderCounterBillboardView.new(part)
+	end
+
+	if shouldUseWindmillBillboard(part) then
+		return WindmillBillboardView.new(part)
 	end
 
 	return ProductionBillboardView.new(part)

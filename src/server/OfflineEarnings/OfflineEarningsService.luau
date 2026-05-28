@@ -19,6 +19,7 @@ local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local PlotExpansionService = require(script.Parent.Parent.Plots.PlotExpansionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+local WindmillBoostService = require(script.Parent.Parent.Windmills.WindmillBoostService)
 
 type OfflineRateBuilding = OfflineCiderRateCalculator.OfflineRateBuilding
 type ResourceUpdateContext = ResourceTypes.ResourceUpdateContext
@@ -196,7 +197,10 @@ local function getOfflineRateBuildings(player: Player): { OfflineRateBuilding }
 end
 
 local function calculateCurrentCiderPerSecond(player: Player): number
-	return OfflineCiderRateCalculator.calculateCiderPerSecond(getOfflineRateBuildings(player))
+	return OfflineCiderRateCalculator.calculateCiderPerSecond(
+		getOfflineRateBuildings(player),
+		WindmillBoostService.getOfflineEarningsMultiplier(player)
+	)
 end
 
 local function saveOfflineSnapshotAtTime(player: Player, currentTime: number)

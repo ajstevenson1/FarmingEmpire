@@ -9,7 +9,7 @@ local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") ::
 
 type ItemId = InventoryTypes.ItemId
 
-export type ShopId = "TreesShop" | "MillsShop"
+export type ShopId = "TreesShop" | "MillsShop" | "WindmillShop"
 export type ShopProductId = ItemId
 
 export type ShopDefinition = {

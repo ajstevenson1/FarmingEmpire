@@ -9,6 +9,7 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
@@ -17,6 +18,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
@@ -78,7 +80,9 @@ local function isWholeNumber(value: number): boolean
 end
 
 local function isRotatableBuildingId(buildingId: string): boolean
-	return ProgressionConfig.isTreeBuildingId(buildingId) or ProgressionConfig.isMillBuildingId(buildingId)
+	return ProgressionConfig.isTreeBuildingId(buildingId)
+		or ProgressionConfig.isMillBuildingId(buildingId)
+		or WindmillConfig.isWindmillBuildingId(buildingId)
 end
 
 local function getPlacedBuildingDataFromPart(player: Player, part: BasePart): PlacedBuildingData?
