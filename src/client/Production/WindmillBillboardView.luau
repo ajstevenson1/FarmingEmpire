@@ -13,10 +13,10 @@ local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: M
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingId = BuildingTypes.BuildingId
+type WindmillCategory = WindmillConfig.WindmillCategory
 
 type WindmillBillboardWidgets = {
 	rootGui: BillboardGui,
-	nameLabel: TextLabel?,
 	boostLabel: TextLabel?,
 }
 
@@ -32,8 +32,11 @@ local TEMPLATE_NAME_BY_BUILDING_ID: { [BuildingId]: string } = {
 	CiderCashWindmill = "CashWindmill",
 }
 
-local NAME_LABEL_NAMES: { string } = { "Name", "NameLabel", "Title", "TitleLabel" }
 local BOOST_LABEL_NAMES: { string } = { "Boost", "BoostLabel", "Multiplier", "MultiplierLabel", "Value", "ValueLabel" }
+local BOOST_LABEL_NAMES_BY_CATEGORY: { [WindmillCategory]: { string } } = {
+	Cash = { "Cash", "CashLabel" },
+	Offline = { "Offline", "OfflineLabel" },
+}
 
 local WindmillBillboardView = {}
 WindmillBillboardView.__index = WindmillBillboardView
@@ -62,6 +65,20 @@ local function findFirstTextLabel(root: Instance, labelNames: { string }): TextL
 	return nil
 end
 
+local function findCategoryTextLabel(
+	root: Instance,
+	category: WindmillCategory,
+	categoryLabelNamesByCategory: { [WindmillCategory]: { string } },
+	fallbackLabelNames: { string }
+): TextLabel?
+	local categoryLabel = findFirstTextLabel(root, categoryLabelNamesByCategory[category])
+	if categoryLabel ~= nil then
+		return categoryLabel
+	end
+
+	return findFirstTextLabel(root, fallbackLabelNames)
+end
+
 local function getTemplateName(buildingId: BuildingId): string
 	local templateName = TEMPLATE_NAME_BY_BUILDING_ID[buildingId]
 	assert(templateName ~= nil, string.format("No windmill billboard template configured for %s", buildingId))
@@ -78,6 +95,8 @@ local function createWidgets(part: BasePart): WindmillBillboardWidgets
 	local templateName = getTemplateName(buildingId)
 	local template = templatesFolder:WaitForChild(templateName)
 	assert(template:IsA("BillboardGui"), string.format("Templates.%s must be a BillboardGui", templateName))
+	local definition = WindmillConfig.getDefinition(buildingId)
+	assert(definition ~= nil, string.format("Windmill definition missing for %s", buildingId))
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local rootGui = template:Clone() :: BillboardGui
@@ -87,20 +106,19 @@ local function createWidgets(part: BasePart): WindmillBillboardWidgets
 
 	return {
 		rootGui = rootGui,
-		nameLabel = findFirstTextLabel(rootGui, NAME_LABEL_NAMES),
-		boostLabel = findFirstTextLabel(rootGui, BOOST_LABEL_NAMES),
+		boostLabel = findCategoryTextLabel(rootGui, definition.category, BOOST_LABEL_NAMES_BY_CATEGORY, BOOST_LABEL_NAMES),
 	}
 end
 
 local function getBoostText(buildingId: BuildingId): string
 	local offlineBonus = WindmillConfig.getOfflineEarningsMultiplierBonus(buildingId)
 	if offlineBonus > 0 then
-		return string.format("+%d%% Offline", math.floor((offlineBonus * 100) + 0.5))
+		return string.format("%d%%", math.floor((offlineBonus * 100) + 0.5))
 	end
 
 	local cashBonus = WindmillConfig.getCiderSellCashMultiplierBonus(buildingId)
 	if cashBonus > 0 then
-		return string.format("+%d%% Cash", math.floor((cashBonus * 100) + 0.5))
+		return string.format("%d%%", math.floor((cashBonus * 100) + 0.5))
 	end
 
 	return ""
@@ -121,11 +139,6 @@ function WindmillBillboardView:refresh()
 	local buildingId = getBuildingId(self._part)
 	if buildingId == nil then
 		return
-	end
-
-	local definition = WindmillConfig.getDefinition(buildingId)
-	if definition ~= nil and self._widgets.nameLabel ~= nil then
-		self._widgets.nameLabel.Text = definition.displayName
 	end
 
 	if self._widgets.boostLabel ~= nil then
