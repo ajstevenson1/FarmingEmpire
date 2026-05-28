@@ -26,6 +26,10 @@ export type WeatherProductionModifierConfig = {
 	treeSpeedMultiplier: number,
 }
 
+export type WeatherWindmillModifierConfig = {
+	rotationSpeedMultiplier: number,
+}
+
 export type WeatherCycleConfig = {
 	secondsBetweenEvents: number,
 	eventDurationSeconds: number,
@@ -39,6 +43,7 @@ export type WeatherEventDefinition = {
 	particles: WeatherParticlesConfig,
 	clouds: WeatherCloudConfig?,
 	productionModifier: WeatherProductionModifierConfig?,
+	windmillModifier: WeatherWindmillModifierConfig?,
 }
 
 export type WeatherCycleState = "Waiting" | "Active"

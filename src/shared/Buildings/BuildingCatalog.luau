@@ -20,7 +20,7 @@ local MILLS_CATEGORY_FOLDER_NAME = "Mills"
 local WINDMILLS_CATEGORY_FOLDER_NAME = "Windmills"
 local OAK_TREE_ASSET_NAME = "OakTree"
 local CIDER_MILL_ASSET_NAME = "CiderMill"
-local WINDMILL_ASSET_NAME = "Windmill"
+local WINDMILL_ASSET_NAME = "OldWindmill"
 local SINGLE_VISUAL_STAGE_NAME = "Single"
 local MAX_APPLE_HARVEST_EFFECT_COUNT = 3
 

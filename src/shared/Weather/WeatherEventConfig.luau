@@ -30,7 +30,7 @@ WeatherEventConfig.eventsById = table.freeze({
 	Rain = table.freeze({
 		id = "Rain",
 		weight = 100,
-		displayMessage = '<b><font color="#7CCBFF">Rain event!</font></b> Apple production is 50% faster.',
+		displayMessage = '<b><font color="#7CCBFF">Rain event!</font></b> Apple production is 50% faster. Windmills spin 100% faster.',
 		sky = table.freeze({
 			activeSkyName = "Rain",
 			defaultSkyName = "Sky",
@@ -50,6 +50,9 @@ WeatherEventConfig.eventsById = table.freeze({
 		}),
 		productionModifier = table.freeze({
 			treeSpeedMultiplier = 1.5,
+		}),
+		windmillModifier = table.freeze({
+			rotationSpeedMultiplier = 2,
 		}),
 	}),
 })

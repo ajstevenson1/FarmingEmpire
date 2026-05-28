@@ -4,10 +4,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsCodeFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAssetUtils = require(buildingsCodeFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingCatalog = require(buildingsCodeFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsCodeFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type BuildingId = BuildingTypes.BuildingId
@@ -18,12 +20,39 @@ local PREVIOUS_VISUAL_MODEL_NAME = "PreviousVisual"
 local PLACEMENT_BOX_NAME = "PlacementBox"
 local VISUAL_SWAP_OVERLAP_SECONDS = 0.05
 
-local function setBasePartVisualProperties(basePart: BasePart)
-	basePart.Anchored = true
+local function setBasePartVisualProperties(basePart: BasePart, isAnchored: boolean)
+	basePart.Anchored = isAnchored
 	basePart.CanCollide = false
 	basePart.CanQuery = false
 	basePart.CanTouch = false
 	basePart.CastShadow = false
+end
+
+local function getRotatingWeldedParts(buildingId: BuildingId, stageModel: Model): { [BasePart]: boolean }
+	if not WindmillConfig.isWindmillBuildingId(buildingId) then
+		return {}
+	end
+
+	local rotatePart = stageModel:FindFirstChild("Rotate", true)
+	if rotatePart == nil or not rotatePart:IsA("BasePart") then
+		return {}
+	end
+
+	local rotatingParts: { [BasePart]: boolean } = {}
+	for _, descendant in ipairs(stageModel:GetDescendants()) do
+		if descendant:IsA("WeldConstraint") then
+			local part0 = descendant.Part0
+			local part1 = descendant.Part1
+			if part0 == rotatePart and part1 ~= nil then
+				rotatingParts[part1] = true
+			elseif part1 == rotatePart and part0 ~= nil then
+				rotatingParts[part0] = true
+			end
+		end
+	end
+
+	rotatingParts[rotatePart] = nil
+	return rotatingParts
 end
 
 local BuildingVisualService = {}
@@ -45,9 +74,10 @@ function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, building
 	stageModel.Name = NEXT_VISUAL_MODEL_NAME
 	stageModel:PivotTo(rootPart.CFrame)
 
+	local rotatingWeldedParts = getRotatingWeldedParts(buildingId, stageModel)
 	for _, descendant in ipairs(stageModel:GetDescendants()) do
 		if descendant:IsA("BasePart") then
-			setBasePartVisualProperties(descendant)
+			setBasePartVisualProperties(descendant, rotatingWeldedParts[descendant] ~= true)
 			if descendant.Name == PLACEMENT_BOX_NAME then
 				descendant.Transparency = 1
 			end
