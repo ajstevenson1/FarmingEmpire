@@ -7,11 +7,13 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local economyFolder = sharedFolder:WaitForChild("Economy") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 
 local EconomyTypes = require(economyFolder:WaitForChild("EconomyTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
@@ -19,8 +21,10 @@ local ShopMenuView = require(script.Parent.ShopMenuView)
 local TutorialClientState = require(script.Parent.Parent.Tutorial.TutorialClientState)
 
 type EconomySnapshot = EconomyTypes.EconomySnapshot
+type ResourceSnapshot = ResourceTypes.ResourceSnapshot
 type ShopId = ShopTypes.ShopId
 type ShopOpenedPayload = ShopTypes.ShopOpenedPayload
+type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
 type ShopPurchaseResult = ShopTypes.ShopPurchaseResult
 type ShopSnapshot = ShopTypes.ShopSnapshot
@@ -31,6 +35,7 @@ local MENU_FRAME_GROUP = "Menu"
 local hasStarted = false
 local activeShopId: ShopId? = nil
 local latestSnapshot: ShopSnapshot? = nil
+local latestResourceSnapshot: ResourceSnapshot? = nil
 local latestCash = 0
 local isPurchasePending = false
 local freeTutorialProductIdByShopId: { [ShopId]: ShopProductId } = {}
@@ -51,6 +56,14 @@ local function getEconomyRemotes(): (RemoteEvent, RemoteFunction)
 	local economyUpdated = economyRemoteFolder:WaitForChild(RemoteNames.economyUpdatedEventName) :: RemoteEvent
 	local getEconomySnapshot = economyRemoteFolder:WaitForChild(RemoteNames.getEconomySnapshotFunctionName) :: RemoteFunction
 	return economyUpdated, getEconomySnapshot
+end
+
+local function getResourceRemotes(): (RemoteEvent, RemoteFunction)
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local resourcesRemoteFolder = rootFolder:WaitForChild(RemoteNames.resourcesFolderName) :: Folder
+	local resourceUpdated = resourcesRemoteFolder:WaitForChild(RemoteNames.resourceUpdatedEventName) :: RemoteEvent
+	local getResourceSnapshot = resourcesRemoteFolder:WaitForChild(RemoteNames.getResourceSnapshotFunctionName) :: RemoteFunction
+	return resourceUpdated, getResourceSnapshot
 end
 
 local function getClosedPanelPosition(panel: Frame): UDim2
@@ -106,7 +119,28 @@ local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 	end
 end
 
-local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash: number): { RenderProduct }
+local function getAvailableCurrencyAmount(
+	productDefinition: ShopProductDefinition,
+	cash: number,
+	resourceSnapshot: ResourceSnapshot?
+): number
+	if productDefinition.priceCurrency == "Cash" then
+		return cash
+	end
+
+	if resourceSnapshot == nil then
+		return 0
+	end
+
+	return resourceSnapshot.amountsByResourceId[productDefinition.priceCurrency] or 0
+end
+
+local function buildRenderProducts(
+	shopId: ShopId,
+	snapshot: ShopSnapshot,
+	cash: number,
+	resourceSnapshot: ResourceSnapshot?
+): { RenderProduct }
 	local products: { RenderProduct } = {}
 	local shopState = snapshot.shopsById[shopId]
 	if shopState == nil then
@@ -123,7 +157,7 @@ local function buildRenderProducts(shopId: ShopId, snapshot: ShopSnapshot, cash:
 			productDefinition = productDefinition,
 			displayName = itemDefinition.displayName,
 			stockRemaining = shopState.stockRemainingByProductId[productDefinition.id] or 0,
-			canAfford = cash >= effectivePrice,
+			canAfford = getAvailableCurrencyAmount(productDefinition, cash, resourceSnapshot) >= effectivePrice,
 			effectivePrice = effectivePrice,
 		})
 	end
@@ -148,7 +182,7 @@ local function renderIfReady(view: ShopMenuViewInstance)
 	view:render(
 		definition.id,
 		getSecondsUntilRestock(snapshot, shopId),
-		buildRenderProducts(shopId, snapshot, latestCash)
+		buildRenderProducts(shopId, snapshot, latestCash, latestResourceSnapshot)
 	)
 end
 
@@ -175,9 +209,11 @@ function ShopController.start()
 
 	local shopOpened, shopClosed, getShopSnapshot, requestShopPurchase = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
+	local resourceUpdated, getResourceSnapshot = getResourceRemotes()
 	latestSnapshot = getShopSnapshot:InvokeServer() :: ShopSnapshot
 	local initialEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 	latestCash = initialEconomySnapshot.cash
+	latestResourceSnapshot = getResourceSnapshot:InvokeServer() :: ResourceSnapshot
 
 	view:connectCloseRequested(function(shopId: ShopId)
 		freeTutorialProductIdByShopId[shopId] = nil
@@ -207,6 +243,7 @@ function ShopController.start()
 		latestSnapshot = result.snapshot
 		local refreshedEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 		latestCash = refreshedEconomySnapshot.cash
+		latestResourceSnapshot = getResourceSnapshot:InvokeServer() :: ResourceSnapshot
 		isPurchasePending = false
 		renderIfReady(view)
 
@@ -230,6 +267,11 @@ function ShopController.start()
 
 	economyUpdated.OnClientEvent:Connect(function(economySnapshot: EconomySnapshot)
 		latestCash = economySnapshot.cash
+		renderIfReady(view)
+	end)
+
+	resourceUpdated.OnClientEvent:Connect(function(resourceSnapshot: ResourceSnapshot)
+		latestResourceSnapshot = resourceSnapshot
 		renderIfReady(view)
 	end)
 

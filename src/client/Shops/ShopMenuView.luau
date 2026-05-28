@@ -231,6 +231,13 @@ local function formatCash(cash: number): string
 	})
 end
 
+local function formatPlainAmount(amount: number): string
+	return NumberFormatter.formatAbbreviated(math.max(0, math.floor(amount)), {
+		decimalPlaces = 1,
+		trimTrailingZeros = true,
+	})
+end
+
 local function formatStock(stockRemaining: number): string
 	return string.format("Stock: %d", math.max(0, math.floor(stockRemaining)))
 end
@@ -389,7 +396,7 @@ local function connectProductBuyButton(self: ShopMenuView, row: GuiObject, rende
 	buyButton.Active = canBuy
 	buyButton.AutoButtonColor = canBuy
 	buyButton:SetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE, renderProduct.productDefinition.id)
-	setButtonText(buyButton, formatCash(renderProduct.effectivePrice))
+	setButtonText(buyButton, formatPlainAmount(renderProduct.effectivePrice))
 
 	if buyButton:GetAttribute(WINDMILL_BUY_CONNECTED_ATTRIBUTE) == true then
 		return
@@ -418,7 +425,7 @@ local function populateWindmillProductRow(self: ShopMenuView, row: GuiObject, re
 	setProductImage(row, renderProduct.productDefinition.imageAssetId)
 	setOptionalNamedText(row, ITEM_NAME_LABEL_NAMES, renderProduct.displayName)
 	setOptionalNamedText(row, ITEM_STOCK_LABEL_NAMES, formatStock(renderProduct.stockRemaining))
-	setOptionalNamedText(row, ITEM_PRICE_LABEL_NAMES, formatCash(renderProduct.effectivePrice))
+	setOptionalNamedText(row, ITEM_PRICE_LABEL_NAMES, formatPlainAmount(renderProduct.effectivePrice))
 	connectProductBuyButton(self, row, renderProduct)
 end
 

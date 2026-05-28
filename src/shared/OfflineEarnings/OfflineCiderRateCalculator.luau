@@ -79,15 +79,6 @@ local function getSafeRateMultiplier(rateMultiplier: number?): number
 	return rateMultiplier
 end
 
-local function getSafeOfflineBoostMultiplier(): number
-	local multiplier = OfflineEarningsConfig.offlineMultiplierPerOnlineMultiplier
-	if isInvalidNumber(multiplier) or multiplier < 0 then
-		return 1
-	end
-
-	return multiplier
-end
-
 local function getSafeWindmillMultiplier(multiplier: number?): number
 	if multiplier == nil then
 		return 1
@@ -107,6 +98,30 @@ local function getSafeTreeToOfflineCiderConversion(): number
 	end
 
 	return conversion
+end
+
+local function getSafeOfflineMillBaseMultiplier(): number
+	local multiplier = OfflineEarningsConfig.offlineMillBaseMultiplier
+	if isInvalidNumber(multiplier) or multiplier < 0 then
+		return 1
+	end
+
+	return multiplier
+end
+
+local function getSafeOfflineMillTileBonusScale(): number
+	local scale = OfflineEarningsConfig.offlineMillTileBonusScale
+	if isInvalidNumber(scale) or scale < 0 then
+		return 0
+	end
+
+	return scale
+end
+
+local function getOfflineMillMultiplier(rateMultiplier: number): number
+	local baseMultiplier = getSafeOfflineMillBaseMultiplier()
+	local tileBonus = math.max(0, rateMultiplier - 1) * getSafeOfflineMillTileBonusScale()
+	return baseMultiplier + tileBonus
 end
 
 local function getEffectiveOfflineSeconds(seconds: number): number
@@ -143,8 +158,7 @@ function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { Offline
 		local buildingDefinition = BuildingCatalog.getBuildingDefinition(building.buildingId)
 		local rateMultiplier = getSafeRateMultiplier(building.rateMultiplier)
 		local boostedMillCiderPerSecond = getSafeMillCiderPerSecond(buildingDefinition)
-			* rateMultiplier
-			* getSafeOfflineBoostMultiplier()
+			* getOfflineMillMultiplier(rateMultiplier)
 		local orchardBonusCiderPerSecond = getSafeTreeApplePerSecond(buildingDefinition)
 			* getSafeTreeToOfflineCiderConversion()
 			* rateMultiplier

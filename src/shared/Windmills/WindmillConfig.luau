@@ -60,19 +60,19 @@ local windmillDefinitions: { WindmillDefinition } = table.freeze({
 		"OfflineEarningsWindmill",
 		"Offline",
 		"Basic AFK Windmill",
-		"Boosts offline cider earnings by 50%.",
-		2500,
-		0.5,
+		"Boosts offline cider earnings by 25%.",
+		1000,
+		0.25,
 		0
 	),
 	createWindmillDefinition(
 		"CiderCashWindmill",
 		"Cash",
 		"Cash Windmill",
-		"Boosts cash earned from selling cider by 50%.",
-		2500,
+		"Boosts cash earned from selling cider by 25%.",
+		500,
 		0,
-		0.5
+		0.25
 	),
 })
 

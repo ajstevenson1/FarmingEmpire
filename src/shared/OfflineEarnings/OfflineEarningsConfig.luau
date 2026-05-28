@@ -4,7 +4,8 @@ local OfflineEarningsConfig = {}
 
 OfflineEarningsConfig.maxOfflineSeconds = 12 * 60 * 60
 OfflineEarningsConfig.minOfflineSecondsToReward = 5
-OfflineEarningsConfig.offlineMultiplierPerOnlineMultiplier = 2
+OfflineEarningsConfig.offlineMillBaseMultiplier = 1
+OfflineEarningsConfig.offlineMillTileBonusScale = 0.5
 OfflineEarningsConfig.treeToOfflineCiderConversion = 0.25
 OfflineEarningsConfig.exponentialCurveStrength = 1.2
 

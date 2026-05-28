@@ -13,6 +13,7 @@ local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local ReopenGuard = require(script.Parent.Parent.Interactions.ReopenGuard)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 type ShopDefinition = ShopTypes.ShopDefinition
@@ -292,6 +293,18 @@ local function decrementStock(player: Player, shopId: ShopId, productDefinition:
 	stockState[productDefinition.id] = math.max(0, (stockState[productDefinition.id] or 0) - 1)
 end
 
+local function trySpendProductPrice(player: Player, productDefinition: ShopProductDefinition, price: number): boolean
+	if price <= 0 then
+		return true
+	end
+
+	if productDefinition.priceCurrency == "Cash" then
+		return EconomyService.trySpendCash(player, price)
+	end
+
+	return ResourceService.tryConsumeResource(player, productDefinition.priceCurrency, price)
+end
+
 local function handlePurchaseRequest(player: Player, request: unknown): ShopPurchaseResult
 	if type(request) ~= "table" then
 		return createPurchaseResult(player, false, "InvalidShop", nil, nil)
@@ -332,8 +345,11 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 		then 0
 		else productDefinition.price
 
-	if purchasePrice > 0 and not EconomyService.trySpendCash(player, purchasePrice) then
-		return createPurchaseResult(player, false, "InsufficientCash", shopId, productId)
+	if not trySpendProductPrice(player, productDefinition, purchasePrice) then
+		local status: ShopPurchaseStatus = if productDefinition.priceCurrency == "Cash"
+			then "InsufficientCash"
+			else "InsufficientResources"
+		return createPurchaseResult(player, false, status, shopId, productId)
 	end
 
 	decrementStock(player, shopId, productDefinition)
