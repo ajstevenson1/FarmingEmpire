@@ -47,37 +47,37 @@ local rewardDefinitions: { DailyRewardDefinition } = table.freeze({
 	table.freeze({
 		rewardIndex = 1,
 		displayName = "Day 1",
-		rewards = table.freeze({ cash(150) }),
+		rewards = table.freeze({ cash(5000) }),
 	}),
 	table.freeze({
 		rewardIndex = 2,
 		displayName = "Day 2",
-		rewards = table.freeze({ resource("Apple", 50) }),
+		rewards = table.freeze({ resource("Apple", 5000) }),
 	}),
 	table.freeze({
 		rewardIndex = 3,
 		displayName = "Day 3",
-		rewards = table.freeze({ item("OakTree", 1) }),
+		rewards = table.freeze({ item("SapphireTree", 1) }),
 	}),
 	table.freeze({
 		rewardIndex = 4,
 		displayName = "Day 4",
-		rewards = table.freeze({ resource("Cider", 40) }),
+		rewards = table.freeze({ resource("Cider", 10000) }),
 	}),
 	table.freeze({
 		rewardIndex = 5,
 		displayName = "Day 5",
-		rewards = table.freeze({ cash(500) }),
+		rewards = table.freeze({ item("AdvancedCiderMill", 1) }),
 	}),
 	table.freeze({
 		rewardIndex = 6,
 		displayName = "Day 6",
-		rewards = table.freeze({ item("BirchTree", 1) }),
+		rewards = table.freeze({ cash(100000), item("DiamondTree", 1) }),
 	}),
 	table.freeze({
 		rewardIndex = 7,
 		displayName = "Day 7",
-		rewards = table.freeze({ item("BirchTree", 2), cash(1000) }),
+		rewards = table.freeze({ cash(10000000), item("VoidfruitTree", 1) }),
 	}),
 })
 
