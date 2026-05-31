@@ -13,6 +13,7 @@ local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionCon
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local AppleCounterBillboardView = require(script.Parent.AppleCounterBillboardView)
 local CiderCounterBillboardView = require(script.Parent.CiderCounterBillboardView)
+local AutoCiderPassController = require(script.Parent.Parent.Monetization.AutoCiderPassController)
 local ProductionBillboardView = require(script.Parent.ProductionBillboardView)
 local WindmillBillboardView = require(script.Parent.WindmillBillboardView)
 
@@ -70,6 +71,10 @@ local function shouldUseCiderCounter(part: BasePart): boolean
 	return type(buildingId) == "string" and ProgressionConfig.isMillBuildingId(buildingId)
 end
 
+local function shouldHideCiderCounter(part: BasePart): boolean
+	return shouldUseCiderCounter(part) and AutoCiderPassController.ownsAutoCiderPass()
+end
+
 local function shouldUseWindmillBillboard(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
 	return type(buildingId) == "string" and WindmillConfig.isWindmillBuildingId(buildingId)
@@ -97,6 +102,10 @@ local function trackPart(part: BasePart)
 	end
 
 	if not shouldTrackPart(part) then
+		return
+	end
+
+	if shouldHideCiderCounter(part) then
 		return
 	end
 
@@ -175,6 +184,21 @@ local function getPlacedObjectsFolder(): Folder
 	return existingFolder
 end
 
+local function refreshTrackedViewsForAutoCiderOwnership()
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if not child:IsA("BasePart") then
+			continue
+		end
+
+		if shouldHideCiderCounter(child) then
+			destroyTrackedView(child)
+		elseif trackedViewsByPart[child] == nil and shouldTrackPart(child) then
+			trackPart(child)
+		end
+	end
+end
+
 local ProductionStatusController = {}
 
 function ProductionStatusController.start()
@@ -202,6 +226,10 @@ function ProductionStatusController.start()
 		if child:IsA("BasePart") then
 			destroyTrackedView(child)
 		end
+	end)
+
+	AutoCiderPassController.observeOwnershipChanged(function(_ownsAutoCiderPass: boolean)
+		refreshTrackedViewsForAutoCiderOwnership()
 	end)
 end
 

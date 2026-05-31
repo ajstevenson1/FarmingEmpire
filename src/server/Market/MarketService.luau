@@ -113,7 +113,7 @@ local function handleSellAllCider(player: Player)
 	end
 
 	local cashEarned = math.floor(ciderToSell * currentCiderSellPrice * WindmillBoostService.getCiderSellCashMultiplier(player))
-	EconomyService.addCash(player, cashEarned)
+	EconomyService.addEarnedCash(player, cashEarned)
 	TutorialService.handleCiderSold(player)
 end
 

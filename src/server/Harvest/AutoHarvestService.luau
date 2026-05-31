@@ -12,11 +12,14 @@ local toolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 local AutoHarvestConfig = require(harvestFolder:WaitForChild("AutoHarvestConfig") :: ModuleScript)
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
+local HarvestEffectService = require(script.Parent.HarvestEffectService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+
+type AppleHarvestEffectPayload = HarvestEffectService.AppleHarvestEffectPayload
 
 type AutoHarvestPlayerState = {
 	isEnabled: boolean,
@@ -240,6 +243,8 @@ local function handleAutoHarvestRequest(player: Player, requestedTarget: unknown
 	end
 
 	local harvestedCount = 0
+	local harvestEffectPayloads: { AppleHarvestEffectPayload } = {}
+
 	for _, harvestPart in ipairs(getAutoHarvestParts(player, rootPart, placedPart, placedObjectsFolder)) do
 		if harvestedCount >= AutoHarvestConfig.maxAutoHarvestPartsPerSwing then
 			break
@@ -249,11 +254,17 @@ local function handleAutoHarvestRequest(player: Player, requestedTarget: unknown
 		if didHarvest and harvestOutput ~= nil then
 			harvestedCount += 1
 			ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+
+			local harvestEffectPayload = HarvestEffectService.createAppleHarvestEffectPayload(harvestPart, harvestOutput)
+			if harvestEffectPayload ~= nil then
+				table.insert(harvestEffectPayloads, harvestEffectPayload)
+			end
 		end
 	end
 
 	if harvestedCount > 0 then
 		Remotes.getHarvestRemotes().scytheHarvestConfirmed:FireClient(player)
+		HarvestEffectService.fireAppleHarvestEffects(player, harvestEffectPayloads)
 	end
 end
 
@@ -276,4 +287,9 @@ function AutoHarvestService.start()
 	hasStarted = true
 
 	local harvestRemotes = Remotes.getHarvestRemotes()
-	harvestRemotes.requestAutoHarvestState.OnServerEvent:Connect(h 
+	harvestRemotes.requestAutoHarvestState.OnServerEvent:Connect(handleAutoHarvestStateRequest)
+	harvestRemotes.requestAutoHarvest.OnServerEvent:Connect(handleAutoHarvestRequest)
+	Players.PlayerRemoving:Connect(cleanupPlayer)
+end
+
+return table.freeze(AutoHarvestService)

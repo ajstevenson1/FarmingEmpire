@@ -357,7 +357,7 @@ end
 local function grantRewardEntries(player: Player, rewardEntries: { PlaytimeRewardEntry })
 	for _, rewardEntry in ipairs(rewardEntries) do
 		if rewardEntry.kind == "Cash" then
-			EconomyService.addCash(player, rewardEntry.amount)
+			EconomyService.addEarnedCash(player, rewardEntry.amount)
 		elseif rewardEntry.kind == "Resource" then
 			ResourceService.addResource(player, rewardEntry.resourceId, rewardEntry.amount)
 		elseif rewardEntry.kind == "Item" then

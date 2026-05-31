@@ -7,6 +7,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local economyFolder = sharedFolder:WaitForChild("Economy") :: Folder
 
 local EconomyTypes = require(economyFolder:WaitForChild("EconomyTypes") :: ModuleScript)
+local CashBoostService = require(script.Parent.Parent.Monetization.CashBoostService)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 
@@ -76,6 +77,14 @@ function EconomyService.addCash(player: Player, amount: number)
 	PlayerDataService.addLifetimeCashEarned(player, amount)
 	pushEconomyUpdate(player)
 	notifyCashChanged(player, newCash)
+end
+
+function EconomyService.addEarnedCash(player: Player, amount: number)
+	if amount <= 0 then
+		return
+	end
+
+	EconomyService.addCash(player, math.floor(amount * CashBoostService.getCashMultiplier(player)))
 end
 
 function EconomyService.trySpendCash(player: Player, amount: number): boolean

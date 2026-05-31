@@ -3,6 +3,8 @@
 export type AutoHarvestConfig = {
 	arrivalOverlapBoxSize: Vector3,
 	arrivalOverlapDepthStuds: number,
+	serverHarvestDistanceStuds: number,
+	maxAutoHarvestPartsPerSwing: number,
 	harvestIntervalSeconds: number,
 	targetScanIntervalSeconds: number,
 	moveTimeoutSeconds: number,
@@ -24,6 +26,8 @@ export type AutoHarvestConfig = {
 local AutoHarvestConfig: AutoHarvestConfig = table.freeze({
 	arrivalOverlapBoxSize = Vector3.new(5, 6, 5),
 	arrivalOverlapDepthStuds = 1.75,
+	serverHarvestDistanceStuds = 8,
+	maxAutoHarvestPartsPerSwing = 8,
 	harvestIntervalSeconds = 1.15,
 	targetScanIntervalSeconds = 0.75,
 	moveTimeoutSeconds = 8,

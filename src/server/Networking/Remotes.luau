@@ -33,6 +33,8 @@ type PlacementRemotes = {
 
 type HarvestRemotes = {
 	requestScytheSwing: RemoteEvent,
+	requestAutoHarvestState: RemoteEvent,
+	requestAutoHarvest: RemoteEvent,
 	scytheHarvestConfirmed: RemoteEvent,
 	harvestEffect: RemoteEvent,
 }
@@ -208,6 +210,8 @@ function Remotes.getHarvestRemotes(): HarvestRemotes
 	cachedHarvestConfirmedRemote = scytheHarvestConfirmed
 	cachedHarvestRemotes = {
 		requestScytheSwing = requestScytheSwing,
+		requestAutoHarvestState = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestAutoHarvestStateEventName),
+		requestAutoHarvest = getOrCreateRemoteEvent(harvestFolder, RemoteNames.requestAutoHarvestEventName),
 		scytheHarvestConfirmed = scytheHarvestConfirmed,
 		harvestEffect = getOrCreateRemoteEvent(harvestFolder, RemoteNames.harvestEffectEventName),
 	}

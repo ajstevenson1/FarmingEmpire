@@ -30,6 +30,7 @@ local PLOT_NAME_ATTRIBUTE = "PlotName"
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local SCYTHE_ITEM_ID = "Scythe"
 local APPLE_RESOURCE_ID = "Apple"
+local AIM_SETTLE_SECONDS = 0.05
 
 local hasStarted = false
 local view: AutoHarvestViewInstance? = nil
@@ -109,6 +110,16 @@ local function isOwnedAppleTarget(part: BasePart): boolean
 
 	return part:GetAttribute(BuildingAttributeNames.productionOutputName) == APPLE_RESOURCE_ID
 		and part:GetAttribute(BuildingAttributeNames.isReadyToHarvest) == true
+end
+
+local function faceTarget(rootPart: BasePart, targetPart: BasePart)
+	local targetOffset = targetPart.Position - rootPart.Position
+	local planarTargetOffset = Vector3.new(targetOffset.X, 0, targetOffset.Z)
+	if planarTargetOffset.Magnitude <= 0.001 then
+		return
+	end
+
+	rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + planarTargetOffset.Unit, Vector3.yAxis)
 end
 
 local function clearExpiredRecentTargets(currentTime: number)
@@ -305,9 +316,18 @@ local function setAutoHarvestEnabled(shouldEnable: boolean)
 				end
 
 				if didReachTarget and targetPart.Parent ~= nil and isOwnedAppleTarget(targetPart) then
-					ScytheController.tryPlaySwing()
-					markTargetVisited(targetPart)
-					requestScytheSwing:FireServer()
+					local rootPart = getHumanoidRootPart()
+					if rootPart ~= nil then
+						faceTarget(rootPart, targetPart)
+						task.wait(AIM_SETTLE_SECONDS)
+						if not isAutoHarvestEnabled or currentToken ~= runToken or targetPart.Parent == nil or not isOwnedAppleTarget(targetPart) then
+							continue
+						end
+
+						ScytheController.tryPlaySwing()
+						markTargetVisited(targetPart)
+						requestScytheSwing:FireServer()
+					end
 					task.wait(AutoHarvestConfig.harvestIntervalSeconds)
 				else
 					task.wait(AutoHarvestConfig.targetScanIntervalSeconds)
