@@ -7,10 +7,13 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local monetizationFolder = sharedFolder:WaitForChild("Monetization") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local GamePassConfig = require(monetizationFolder:WaitForChild("GamePassConfig") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local GamePassOwnershipService = require(script.Parent.GamePassOwnershipService)
+local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
@@ -21,9 +24,13 @@ local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local INPUT_PROCESSOR_BEHAVIOR_ID = "InputProcessor"
 local CIDER_RESOURCE_ID = "Cider"
 local COLLECTION_INTERVAL_SECONDS = 1
+local AUTO_CIDER_COLLECTION_CONTEXT: ResourceTypes.ResourceUpdateContext = table.freeze({
+	reason = "AutoCiderCollection",
+})
 
 local trackedCiderMillParts: { [BasePart]: boolean } = {}
 local trackedConnectionsByPart: { [BasePart]: { RBXScriptConnection } } = {}
+local autoCiderEnabledByPlayer: { [Player]: boolean } = {}
 local hasStarted = false
 
 local function getPlacedObjectsFolder(): Folder
@@ -99,8 +106,16 @@ local function playerOwnsAutoCiderPass(player: Player): boolean
 	return GamePassOwnershipService.playerOwnsGamePass(player, definition.gamePassId)
 end
 
+local function isAutoCiderEnabled(player: Player): boolean
+	return autoCiderEnabledByPlayer[player] == true
+end
+
 local function collectCiderForPlayer(player: Player)
 	if not playerOwnsAutoCiderPass(player) then
+		return
+	end
+
+	if not isAutoCiderEnabled(player) then
 		return
 	end
 
@@ -109,6 +124,7 @@ local function collectCiderForPlayer(player: Player)
 		return
 	end
 
+	local totalCollectedCider = 0
 	for part in pairs(trackedCiderMillParts) do
 		if part.Parent == nil then
 			trackedCiderMillParts[part] = nil
@@ -121,8 +137,12 @@ local function collectCiderForPlayer(player: Player)
 
 		local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 		if didHarvest and harvestOutput ~= nil and harvestOutput.resourceId == CIDER_RESOURCE_ID then
-			ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+			totalCollectedCider += harvestOutput.amount
 		end
+	end
+
+	if totalCollectedCider > 0 then
+		ResourceService.addResourceWithContext(player, CIDER_RESOURCE_ID, totalCollectedCider, AUTO_CIDER_COLLECTION_CONTEXT)
 	end
 end
 
@@ -148,6 +168,26 @@ local function registerExistingParts()
 	end)
 end
 
+local function bindAutoCiderToggleRemote()
+	local monetizationRemotes = Remotes.getMonetizationRemotes()
+	monetizationRemotes.setAutoCiderEnabled.OnServerEvent:Connect(function(player: Player, isEnabled: unknown)
+		if type(isEnabled) ~= "boolean" then
+			return
+		end
+
+		if isEnabled and not playerOwnsAutoCiderPass(player) then
+			autoCiderEnabledByPlayer[player] = false
+			return
+		end
+
+		autoCiderEnabledByPlayer[player] = isEnabled
+	end)
+
+	Players.PlayerRemoving:Connect(function(player: Player)
+		autoCiderEnabledByPlayer[player] = nil
+	end)
+end
+
 local function startCollectionLoop()
 	task.spawn(function()
 		while true do
@@ -169,6 +209,7 @@ function AutoCiderCollectionService.start()
 
 	hasStarted = true
 
+	bindAutoCiderToggleRemote()
 	task.spawn(registerExistingParts)
 	startCollectionLoop()
 end

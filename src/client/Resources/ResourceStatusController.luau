@@ -31,6 +31,7 @@ local pendingAppleFlushToken = 0
 
 local APPLE_GAIN_FALLBACK_FLUSH_DELAY_SECONDS = 0.12
 local OFFLINE_EARNINGS_CLAIM_REASON: ResourceTypes.ResourceUpdateReason = "OfflineEarningsClaim"
+local AUTO_CIDER_COLLECTION_REASON: ResourceTypes.ResourceUpdateReason = "AutoCiderCollection"
 
 local function getRootGui(): ScreenGui
 	local localPlayer = Players.LocalPlayer
@@ -126,6 +127,8 @@ local function showResourceChangeToastsIfNeeded(
 		toastView:showCiderGain(ciderGain)
 		if context ~= nil and context.reason == OFFLINE_EARNINGS_CLAIM_REASON then
 			RewardClaimEffects.playCiderBottleClaim(getRootGui())
+		elseif context ~= nil and context.reason == AUTO_CIDER_COLLECTION_REASON then
+			return
 		else
 			soundPlayer:playCiderCollected()
 		end

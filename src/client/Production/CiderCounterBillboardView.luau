@@ -13,6 +13,7 @@ local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter")
 
 type CiderCounterWidgets = {
 	rootGui: BillboardGui,
+	countRoot: GuiObject,
 	countLabel: TextLabel,
 	perSecondLabel: TextLabel,
 	multiplierLabel: TextLabel,
@@ -23,6 +24,7 @@ export type CiderCounterBillboardView = {
 	_part: BasePart,
 	_widgets: CiderCounterWidgets,
 	refresh: (self: CiderCounterBillboardView) -> (),
+	setCountVisible: (self: CiderCounterBillboardView, isVisible: boolean) -> (),
 	destroy: (self: CiderCounterBillboardView) -> (),
 }
 
@@ -80,6 +82,16 @@ local function findRequiredTextLabel(root: Instance, labelName: string): TextLab
 	error(string.format("Templates.%s must contain a TextLabel named %s", TEMPLATE_NAME, labelName))
 end
 
+local function findRequiredGuiObject(root: Instance, objectName: string): GuiObject
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant.Name == objectName and descendant:IsA("GuiObject") then
+			return descendant
+		end
+	end
+
+	error(string.format("Templates.%s must contain a GuiObject named %s", TEMPLATE_NAME, objectName))
+end
+
 local function findStroke(countLabel: TextLabel): UIStroke
 	for _, child in ipairs(countLabel:GetChildren()) do
 		if child:IsA("UIStroke") then
@@ -107,6 +119,7 @@ local function createWidgets(part: BasePart): CiderCounterWidgets
 
 	return {
 		rootGui = rootGui,
+		countRoot = findRequiredGuiObject(rootGui, COUNT_LABEL_NAME),
 		countLabel = countLabel,
 		perSecondLabel = findRequiredTextLabel(rootGui, PER_SECOND_LABEL_NAME),
 		multiplierLabel = findRequiredTextLabel(rootGui, MULTIPLIER_LABEL_NAME),
@@ -138,6 +151,10 @@ function CiderCounterBillboardView:refresh()
 	self._widgets.perSecondLabel.Visible = ratePerSecond > 0
 	self._widgets.multiplierLabel.Text = string.format("%dx", productionMultiplier)
 	self._widgets.multiplierLabel.Visible = productionMultiplier > 1
+end
+
+function CiderCounterBillboardView:setCountVisible(isVisible: boolean)
+	self._widgets.countRoot.Visible = isVisible
 end
 
 function CiderCounterBillboardView:destroy()
