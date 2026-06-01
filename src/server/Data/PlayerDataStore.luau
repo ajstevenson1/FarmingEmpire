@@ -92,7 +92,7 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON53"
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON80"
 local CURRENT_SCHEMA_VERSION = 2
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2

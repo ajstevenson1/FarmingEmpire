@@ -12,7 +12,7 @@ export type ResourceSnapshot = {
 	amountsByResourceId: { [ResourceId]: number },
 }
 
-export type ResourceUpdateReason = "OfflineEarningsClaim"
+export type ResourceUpdateReason = "OfflineEarningsClaim" | "AutoCiderCollection"
 
 export type ResourceUpdateContext = {
 	reason: ResourceUpdateReason,

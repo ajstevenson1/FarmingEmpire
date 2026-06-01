@@ -9,23 +9,31 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before starting AutoCiderPass
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local monetizationFolder = sharedFolder:WaitForChild("Monetization") :: Folder
+local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 
 local GamePassConfig = require(monetizationFolder:WaitForChild("GamePassConfig") :: ModuleScript)
+local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 
 type GamePassDefinition = GamePassConfig.GamePassDefinition
 type GuiButtonLike = TextButton | ImageButton
 type OwnershipChangedCallback = (boolean) -> ()
+type EnabledChangedCallback = (boolean) -> ()
 
 local ROOT_GUI_NAME = "GUI"
 local HUD_NAME = "HUD"
 local RIGHT_CONTAINER_NAME = "Right"
 local BUTTON_NAME = "AutoCiderPass"
-local OWNED_TEXT = "Owned"
+local ACTIVE_STROKE_COLOR = Color3.fromRGB(255, 255, 255)
+local INACTIVE_STROKE_COLOR = Color3.fromRGB(0, 0, 0)
 
 local hasStarted = false
 local ownsAutoCiderPass = false
+local isAutoCiderEnabled = false
 local ownershipChangedCallbacks: { OwnershipChangedCallback } = {}
+local enabledChangedCallbacks: { EnabledChangedCallback } = {}
 local button: GuiButtonLike? = nil
+local buttonStroke: UIStroke? = nil
+local setAutoCiderEnabledRemote: RemoteEvent? = nil
 
 local function getDefinition(): GamePassDefinition
 	return GamePassConfig.getAutoCiderDefinition()
@@ -51,26 +59,49 @@ local function getButton(): GuiButtonLike
 	return foundButton :: GuiButtonLike
 end
 
-local function setButtonText(targetButton: GuiButtonLike, text: string)
-	local textLabel = targetButton:FindFirstChild("Text", true)
-	if textLabel ~= nil and textLabel:IsA("TextLabel") then
-		textLabel.Text = text
+local function findStroke(targetButton: GuiButtonLike): UIStroke
+	local designFrame = targetButton:FindFirstChild("Design")
+	if designFrame ~= nil then
+		assert(designFrame:IsA("GuiObject"), "GUI.HUD.Right.AutoCiderPass.Design must be a GuiObject")
+
+		local designStroke = designFrame:FindFirstChild("Stroke")
+		assert(designStroke ~= nil, "GUI.HUD.Right.AutoCiderPass.Design must contain a Stroke child")
+		assert(designStroke:IsA("UIStroke"), "GUI.HUD.Right.AutoCiderPass.Design.Stroke must be a UIStroke")
+		return designStroke
 	end
+
+	local directStroke = targetButton:FindFirstChildWhichIsA("UIStroke")
+	assert(directStroke ~= nil, "GUI.HUD.Right.AutoCiderPass must contain a UIStroke")
+	return directStroke
+end
+
+local function getSetAutoCiderEnabledRemote(): RemoteEvent
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local monetizationRemotesFolder = rootFolder:WaitForChild(RemoteNames.monetizationFolderName) :: Folder
+	local remote = monetizationRemotesFolder:WaitForChild(RemoteNames.setAutoCiderEnabledEventName)
+	assert(remote:IsA("RemoteEvent"), "Monetization.SetAutoCiderEnabled must be a RemoteEvent")
+	return remote
 end
 
 local function renderButton()
-	local targetButton = button
-	if targetButton == nil then
+	local stroke = buttonStroke
+	if stroke == nil then
 		return
 	end
 
-	local definition = getDefinition()
-	setButtonText(targetButton, if ownsAutoCiderPass then OWNED_TEXT else definition.displayName)
+	stroke.Color = if ownsAutoCiderPass and isAutoCiderEnabled then ACTIVE_STROKE_COLOR else INACTIVE_STROKE_COLOR
 end
 
 local function notifyOwnershipChanged()
 	for _, callback in ipairs(ownershipChangedCallbacks) do
 		callback(ownsAutoCiderPass)
+	end
+end
+
+local function notifyEnabledChanged()
+	local isEnabled = ownsAutoCiderPass and isAutoCiderEnabled
+	for _, callback in ipairs(enabledChangedCallbacks) do
+		callback(isEnabled)
 	end
 end
 
@@ -81,8 +112,38 @@ local function setOwnership(nextOwnsAutoCiderPass: boolean)
 	end
 
 	ownsAutoCiderPass = nextOwnsAutoCiderPass
+	if not ownsAutoCiderPass then
+		isAutoCiderEnabled = false
+	end
+
 	renderButton()
 	notifyOwnershipChanged()
+	notifyEnabledChanged()
+end
+
+local function setEnabled(nextIsAutoCiderEnabled: boolean)
+	if not ownsAutoCiderPass then
+		if isAutoCiderEnabled then
+			isAutoCiderEnabled = false
+			notifyEnabledChanged()
+		end
+		renderButton()
+		return
+	end
+
+	if isAutoCiderEnabled == nextIsAutoCiderEnabled then
+		renderButton()
+		return
+	end
+
+	isAutoCiderEnabled = nextIsAutoCiderEnabled
+	renderButton()
+	notifyEnabledChanged()
+
+	local remote = setAutoCiderEnabledRemote
+	if remote ~= nil then
+		remote:FireServer(isAutoCiderEnabled)
+	end
 end
 
 local function refreshOwnership()
@@ -112,10 +173,17 @@ function AutoCiderPassController.start()
 
 	local createdButton = getButton()
 	button = createdButton
+	buttonStroke = findStroke(createdButton)
+	setAutoCiderEnabledRemote = getSetAutoCiderEnabledRemote()
 	renderButton()
 	refreshOwnership()
 
 	createdButton.Activated:Connect(function()
+		if ownsAutoCiderPass then
+			setEnabled(not isAutoCiderEnabled)
+			return
+		end
+
 		local definition = getDefinition()
 		MarketplaceService:PromptGamePassPurchase(localPlayer, definition.gamePassId)
 	end)
@@ -132,8 +200,16 @@ function AutoCiderPassController.ownsAutoCiderPass(): boolean
 	return ownsAutoCiderPass
 end
 
+function AutoCiderPassController.isAutoCiderEnabled(): boolean
+	return ownsAutoCiderPass and isAutoCiderEnabled
+end
+
 function AutoCiderPassController.observeOwnershipChanged(callback: OwnershipChangedCallback)
 	table.insert(ownershipChangedCallbacks, callback)
+end
+
+function AutoCiderPassController.observeEnabledChanged(callback: EnabledChangedCallback)
+	table.insert(enabledChangedCallbacks, callback)
 end
 
 return table.freeze(AutoCiderPassController)

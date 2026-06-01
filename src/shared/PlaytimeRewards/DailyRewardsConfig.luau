@@ -47,7 +47,7 @@ local rewardDefinitions: { DailyRewardDefinition } = table.freeze({
 	table.freeze({
 		rewardIndex = 1,
 		displayName = "Day 1",
-		rewards = table.freeze({ cash(5000) }),
+		rewards = table.freeze({ cash(500) }),
 	}),
 	table.freeze({
 		rewardIndex = 2,

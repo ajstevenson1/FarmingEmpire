@@ -633,6 +633,9 @@ local function renderRewardTile(tile: GuiObject, rewardSnapshot: RewardSnapshot,
 		latestSnapshot = claimResult.snapshot
 		RewardClaimEffects.play(rootGui)
 		renderTabs(frame)
+		if claimResult.success then
+			FrameManager.close(REWARDS_FRAME_ID)
+		end
 		local notification = getNotificationIndicator(rootGui)
 		if notification ~= nil and latestSnapshot ~= nil then
 			notification.Visible = canClaimAny(latestSnapshot :: RewardsSnapshot) and not isClaimPending

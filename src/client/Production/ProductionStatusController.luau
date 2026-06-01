@@ -71,8 +71,10 @@ local function shouldUseCiderCounter(part: BasePart): boolean
 	return type(buildingId) == "string" and ProgressionConfig.isMillBuildingId(buildingId)
 end
 
-local function shouldHideCiderCounter(part: BasePart): boolean
-	return shouldUseCiderCounter(part) and AutoCiderPassController.ownsAutoCiderPass()
+local function applyAutoCiderStateToView(part: BasePart, view: ProductionViewInstance)
+	if shouldUseCiderCounter(part) then
+		(view :: CiderCounterBillboardViewInstance):setCountVisible(not AutoCiderPassController.isAutoCiderEnabled())
+	end
 end
 
 local function shouldUseWindmillBillboard(part: BasePart): boolean
@@ -105,12 +107,9 @@ local function trackPart(part: BasePart)
 		return
 	end
 
-	if shouldHideCiderCounter(part) then
-		return
-	end
-
 	local view = createView(part)
 	trackedViewsByPart[part] = view
+	applyAutoCiderStateToView(part, view)
 
 	local refreshConnections = {
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionStoredAmount):Connect(function()
@@ -150,6 +149,7 @@ local function trackPart(part: BasePart)
 	task.defer(function()
 		if trackedViewsByPart[part] == view then
 			view:refresh()
+			applyAutoCiderStateToView(part, view)
 		end
 	end)
 end
@@ -184,16 +184,17 @@ local function getPlacedObjectsFolder(): Folder
 	return existingFolder
 end
 
-local function refreshTrackedViewsForAutoCiderOwnership()
+local function refreshTrackedViewsForAutoCiderEnabled()
 	local placedObjectsFolder = getPlacedObjectsFolder()
 	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
 		if not child:IsA("BasePart") then
 			continue
 		end
 
-		if shouldHideCiderCounter(child) then
-			destroyTrackedView(child)
-		elseif trackedViewsByPart[child] == nil and shouldTrackPart(child) then
+		local existingView = trackedViewsByPart[child]
+		if existingView ~= nil then
+			applyAutoCiderStateToView(child, existingView)
+		elseif shouldTrackPart(child) then
 			trackPart(child)
 		end
 	end
@@ -228,8 +229,8 @@ function ProductionStatusController.start()
 		end
 	end)
 
-	AutoCiderPassController.observeOwnershipChanged(function(_ownsAutoCiderPass: boolean)
-		refreshTrackedViewsForAutoCiderOwnership()
+	AutoCiderPassController.observeEnabledChanged(function(_isAutoCiderEnabled: boolean)
+		refreshTrackedViewsForAutoCiderEnabled()
 	end)
 end
 

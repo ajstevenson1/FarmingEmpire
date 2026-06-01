@@ -64,6 +64,10 @@ type ShopRemotes = {
 	requestShopPurchase: RemoteFunction,
 }
 
+type MonetizationRemotes = {
+	setAutoCiderEnabled: RemoteEvent,
+}
+
 type SettingsRemotes = {
 	getSettingsSnapshot: RemoteFunction,
 	settingChanged: RemoteEvent,
@@ -102,6 +106,7 @@ local cachedMarketRemotes: MarketRemotes? = nil
 local cachedPlotExpansionRemotes: PlotExpansionRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
+local cachedMonetizationRemotes: MonetizationRemotes? = nil
 local cachedSettingsRemotes: SettingsRemotes? = nil
 local cachedPlaytimeRewardsRemotes: PlaytimeRewardsRemotes? = nil
 local cachedNotificationRemotes: NotificationRemotes? = nil
@@ -306,6 +311,19 @@ function Remotes.getShopRemotes(): ShopRemotes
 	}
 
 	return cachedShopRemotes
+end
+
+function Remotes.getMonetizationRemotes(): MonetizationRemotes
+	if cachedMonetizationRemotes ~= nil then
+		return cachedMonetizationRemotes
+	end
+
+	local monetizationFolder = getOrCreateFolder(getRootFolder(), RemoteNames.monetizationFolderName)
+	cachedMonetizationRemotes = {
+		setAutoCiderEnabled = getOrCreateRemoteEvent(monetizationFolder, RemoteNames.setAutoCiderEnabledEventName),
+	}
+
+	return cachedMonetizationRemotes
 end
 
 function Remotes.getSettingsRemotes(): SettingsRemotes
