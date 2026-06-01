@@ -482,7 +482,7 @@ function PlaytimeRewardsService.start()
 
 	PlayerDataService.observeBeforeSave(saveCurrentPlaytime)
 	Players.PlayerAdded:Connect(initializePlayer)
-	Players.PlayerRemoving:Connect(cleanupPlayer)
+	PlayerDataService.observeAfterRemove(cleanupPlayer)
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		initializePlayer(player)
