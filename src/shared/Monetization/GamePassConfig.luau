@@ -22,12 +22,6 @@ local GAME_PASS_DEFINITIONS: { [string]: GamePassDefinition } = {
 		gamePassId = 1862816353,
 		cashMultiplier = 2,
 	},
-	Cash3x = {
-		id = "Cash3x",
-		displayName = "3x Cash",
-		gamePassId = 1862017586,
-		cashMultiplier = 3,
-	},
 	Cash4x = {
 		id = "Cash4x",
 		displayName = "4x Cash",
@@ -40,13 +34,19 @@ local GAME_PASS_DEFINITIONS: { [string]: GamePassDefinition } = {
 		gamePassId = 1863146224,
 		cashMultiplier = 6,
 	},
+	Cash8x = {
+		id = "Cash8x",
+		displayName = "8x Cash",
+		gamePassId = 1860143051,
+		cashMultiplier = 8,
+	},
 }
 
 local CASH_MULTIPLIER_GAME_PASS_KEYS: { string } = {
 	"Cash2x",
-	"Cash3x",
 	"Cash4x",
 	"Cash6x",
+	"Cash8x",
 }
 
 local GamePassConfig = {}
