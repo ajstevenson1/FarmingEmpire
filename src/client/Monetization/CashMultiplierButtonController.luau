@@ -16,7 +16,6 @@ local ROOT_GUI_NAME = "GUI"
 local HUD_NAME = "HUD"
 local RIGHT_CONTAINER_NAME = "Right"
 local BUTTON_NAME = "2x Cash"
-local OWNED_SUFFIX_TEXT = "Owned"
 
 local hasStarted = false
 local nextPurchaseDefinition: GamePassDefinition? = nil
@@ -87,14 +86,13 @@ local function renderButton(button: GuiButtonLike, purchaseDefinition: GamePassD
 	nextPurchaseDefinition = purchaseDefinition
 
 	if purchaseDefinition == nil then
-		local definitions = GamePassConfig.getCashMultiplierDefinitions()
-		local highestDefinition = definitions[#definitions]
-		promptDefinition = highestDefinition
-		setButtonText(button, if highestDefinition == nil then OWNED_SUFFIX_TEXT else `{highestDefinition.displayName} {OWNED_SUFFIX_TEXT}`)
+		promptDefinition = nil
+		button.Visible = false
 		return
 	end
 
 	promptDefinition = purchaseDefinition
+	button.Visible = true
 	setButtonText(button, purchaseDefinition.displayName)
 end
 
@@ -132,9 +130,14 @@ function CashMultiplierButtonController.start()
 			return
 		end
 
-		for _, definition in ipairs(GamePassConfig.getCashMultiplierDefinitions()) do
+		local definitions = GamePassConfig.getCashMultiplierDefinitions()
+		for index, definition in ipairs(definitions) do
 			if definition.gamePassId == gamePassId then
-				refreshButton(button)
+				if index == #definitions then
+					renderButton(button, nil)
+				else
+					refreshButton(button)
+				end
 				return
 			end
 		end
