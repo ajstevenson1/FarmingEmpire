@@ -1,8 +1,10 @@
 --!strict
 
 local ShopTypes = require(script.Parent.ShopTypes)
+local inventoryFolder = script.Parent.Parent:WaitForChild("Inventory") :: Folder
 local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
 local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
+local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
@@ -15,9 +17,6 @@ type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local RESTOCK_INTERVAL_SECONDS = 5 * 60
-local TREE_IMAGE_ASSET_ID = "80078631350858"
-local MILL_IMAGE_ASSET_ID = "120573464445068"
-local WINDMILL_IMAGE_ASSET_ID = "120573464445068"
 local EMPTY_DEVELOPER_PRODUCT_ID = ""
 
 local shopIds: { ShopId } = {
@@ -36,6 +35,7 @@ local definitionsById: { [ShopId]: ShopDefinition } = {
 		nameLabelName = "NameLabel",
 		timerLabelName = "TimerLabel",
 		restockIntervalSeconds = RESTOCK_INTERVAL_SECONDS,
+		usesStock = true,
 	}),
 	MillsShop = table.freeze({
 		id = "MillsShop",
@@ -46,6 +46,7 @@ local definitionsById: { [ShopId]: ShopDefinition } = {
 		nameLabelName = "NameLabel",
 		timerLabelName = "TimerLabel",
 		restockIntervalSeconds = RESTOCK_INTERVAL_SECONDS,
+		usesStock = true,
 	}),
 	WindmillShop = table.freeze({
 		id = "WindmillShop",
@@ -56,10 +57,15 @@ local definitionsById: { [ShopId]: ShopDefinition } = {
 		nameLabelName = "NameLabel",
 		timerLabelName = "TimerLabel",
 		restockIntervalSeconds = RESTOCK_INTERVAL_SECONDS,
+		usesStock = false,
 	}),
 }
 
 local productsByShopId: { [ShopId]: { ShopProductDefinition } } = {}
+
+local function getProductImageAssetId(productId: ShopProductId): string
+	return ItemCatalog.getItemDefinition(productId).imageAssetId
+end
 
 local treeProducts: { ShopProductDefinition } = {}
 for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
@@ -67,7 +73,7 @@ for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTre
 		id = treeDefinition.id,
 		shopId = "TreesShop",
 		itemId = treeDefinition.id,
-		imageAssetId = TREE_IMAGE_ASSET_ID,
+		imageAssetId = getProductImageAssetId(treeDefinition.id :: ShopProductId),
 		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
 		price = treeDefinition.price,
 		priceCurrency = "Cash",
@@ -85,7 +91,7 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 		id = millDefinition.id,
 		shopId = "MillsShop",
 		itemId = millDefinition.id,
-		imageAssetId = MILL_IMAGE_ASSET_ID,
+		imageAssetId = getProductImageAssetId(millDefinition.id :: ShopProductId),
 		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
 		price = millDefinition.price,
 		priceCurrency = "Cash",
@@ -103,7 +109,7 @@ for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDe
 		id = windmillDefinition.id,
 		shopId = "WindmillShop",
 		itemId = windmillDefinition.id,
-		imageAssetId = WINDMILL_IMAGE_ASSET_ID,
+		imageAssetId = getProductImageAssetId(windmillDefinition.id :: ShopProductId),
 		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
 		price = windmillDefinition.price,
 		priceCurrency = "Apple",

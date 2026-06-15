@@ -11,10 +11,12 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before starting sell")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
 local HudTooltipModule = require(script.Parent.Parent.UI.HudTooltip)
 local PlacedBuildingTargeting = require(script.Parent.PlacedBuildingTargeting)
@@ -39,6 +41,7 @@ local hasStarted = false
 local widgets: Widgets? = nil
 local selectionView: StructureSelectionView? = nil
 local currentSellTarget: BasePart? = nil
+local currentBlockedSellTarget: BasePart? = nil
 local hudTooltip: HudTooltip? = nil
 local connections: { RBXScriptConnection } = {}
 local disconnectModeObserver: (() -> ())? = nil
@@ -50,6 +53,7 @@ local MONEY_RICH_TEXT_COLOR = "#40FF70"
 local DESKTOP_SELL_TOOLTIP_TEXT = "Click to sell"
 local GAMEPAD_SELL_TOOLTIP_TEXT = "Press right trigger to sell"
 local MOBILE_SELL_TOOLTIP_TEXT = "Tap to select"
+local CANNOT_SELL_WINDMILLS_TOOLTIP_TEXT = "Windmills can't be sold. Use pickup mode to move them."
 local SELL_CANCEL_KEYCODE = Enum.KeyCode.ButtonB
 local SELL_CONFIRM_KEYCODE = Enum.KeyCode.ButtonR2
 
@@ -67,6 +71,7 @@ end
 
 local function clearSellTarget()
 	currentSellTarget = nil
+	currentBlockedSellTarget = nil
 
 	local currentSelectionView = selectionView
 	if currentSelectionView ~= nil then
@@ -85,13 +90,37 @@ local function escapeRichText(text: string): string
 	return escapedText
 end
 
-local function getSellTargetTooltipText(sellTarget: BasePart): string?
-	local rawBuildingId = sellTarget:GetAttribute(ITEM_ID_ATTRIBUTE)
+local function getBuildingIdFromTarget(target: BasePart): BuildingId?
+	local rawBuildingId = target:GetAttribute(ITEM_ID_ATTRIBUTE)
 	if type(rawBuildingId) ~= "string" or not BuildingCatalog.hasBuildingDefinition(rawBuildingId) then
 		return nil
 	end
 
-	local buildingDefinition = BuildingCatalog.getBuildingDefinition(rawBuildingId :: BuildingId)
+	return rawBuildingId :: BuildingId
+end
+
+local function isBlockedSellTarget(target: BasePart): boolean
+	local buildingId = getBuildingIdFromTarget(target)
+	return buildingId ~= nil and WindmillConfig.isWindmillBuildingId(buildingId)
+end
+
+local function setBlockedSellTarget(blockedTarget: BasePart)
+	currentSellTarget = nil
+	currentBlockedSellTarget = blockedTarget
+
+	local currentSelectionView = selectionView
+	if currentSelectionView ~= nil then
+		currentSelectionView:hide()
+	end
+end
+
+local function getSellTargetTooltipText(sellTarget: BasePart): string?
+	local buildingId = getBuildingIdFromTarget(sellTarget)
+	if buildingId == nil then
+		return nil
+	end
+
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	if ClientInputProfile.usesGamepadControls() then
 		return string.format(
 			"Press right trigger to sell %s for <font color=\"%s\">+$%d</font>",
@@ -117,6 +146,12 @@ local function updateSellTooltip()
 
 	if not isSellModeEnabled() then
 		tooltip:hide(SELL_TOOLTIP_OWNER_ID)
+		return
+	end
+
+	local blockedSellTarget = currentBlockedSellTarget
+	if blockedSellTarget ~= nil and blockedSellTarget.Parent ~= nil then
+		tooltip:show(CANNOT_SELL_WINDMILLS_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
 		return
 	end
 
@@ -152,8 +187,11 @@ local function updateSellSelection()
 
 	if ClientInputProfile.usesTouchControls() then
 		local sellTarget = currentSellTarget
+		local blockedSellTarget = currentBlockedSellTarget
 		if sellTarget ~= nil and sellTarget.Parent ~= nil then
 			currentSelectionView:show(sellTarget)
+		elseif blockedSellTarget ~= nil and blockedSellTarget.Parent ~= nil then
+			currentSelectionView:hide()
 		else
 			clearSellTarget()
 		end
@@ -168,7 +206,14 @@ local function updateSellSelection()
 		return
 	end
 
+	if isBlockedSellTarget(sellTarget) then
+		setBlockedSellTarget(sellTarget)
+		updateSellTooltip()
+		return
+	end
+
 	currentSellTarget = sellTarget
+	currentBlockedSellTarget = nil
 	currentSelectionView:show(sellTarget)
 	updateSellTooltip()
 end
@@ -317,6 +362,12 @@ function SellController.start()
 			return
 		end
 
+		if isBlockedSellTarget(tappedTarget) then
+			setBlockedSellTarget(tappedTarget)
+			updateSellTooltip()
+			return
+		end
+
 		if currentSellTarget == tappedTarget then
 			requestSellRemote:FireServer(tappedTarget)
 			clearSellTarget()
@@ -325,6 +376,7 @@ function SellController.start()
 		end
 
 		currentSellTarget = tappedTarget
+		currentBlockedSellTarget = nil
 		local currentSelectionView = selectionView
 		if currentSelectionView ~= nil then
 			currentSelectionView:show(tappedTarget)

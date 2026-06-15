@@ -6,16 +6,19 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
+local HudNotificationController = require(script.Parent.Parent.Notifications.HudNotificationController)
 local RewardClaimEffects = require(script.Parent.RewardClaimEffects)
 
 type DailyRewardSnapshot = PlaytimeRewardsTypes.DailyRewardSnapshot
@@ -67,6 +70,7 @@ local renderFrame: ((Frame, ScreenGui, RemoteFunction, boolean) -> ())? = nil
 local cachedRootGui: ScreenGui? = nil
 local cachedGetRewardsSnapshot: RemoteFunction? = nil
 local cachedClaimReward: RemoteFunction? = nil
+local wasToastEligibleRewardReady = false
 
 local function getRootGui(): ScreenGui
 	local localPlayer = Players.LocalPlayer
@@ -230,16 +234,23 @@ local function formatDuration(seconds: number): string
 	return string.format("%02d:%02d", minutes, remainingSeconds)
 end
 
+local function formatRewardAmount(amount: number): string
+	return NumberFormatter.formatAbbreviated(amount, {
+		decimalPlaces = 1,
+		trimTrailingZeros = true,
+	})
+end
+
 local function formatRewardEntry(rewardEntry: PlaytimeRewardEntry): string
 	if rewardEntry.kind == "Cash" then
-		return string.format("%d Cash", rewardEntry.amount)
+		return "$" .. formatRewardAmount(rewardEntry.amount)
 	elseif rewardEntry.kind == "Resource" then
 		local definition = ResourceCatalog.getResourceDefinition(rewardEntry.resourceId)
-		return string.format("%d %s", rewardEntry.amount, definition.displayName)
+		return string.format("%s %s", formatRewardAmount(rewardEntry.amount), definition.displayName)
 	end
 
 	local definition = ItemCatalog.getItemDefinition(rewardEntry.itemId)
-	return string.format("%dx %s", rewardEntry.amount, definition.displayName)
+	return string.format("%sx %s", formatRewardAmount(rewardEntry.amount), definition.displayName)
 end
 
 local function formatRewardEntries(rewardEntries: { PlaytimeRewardEntry }): string
@@ -338,8 +349,39 @@ local function canClaimAny(snapshot: RewardsSnapshot): boolean
 	return canClaimPlaytime(snapshot.playtime) or canClaimDaily(snapshot.daily)
 end
 
+local function getClaimableDailyRewardIndex(snapshot: DailyRewardsSnapshot): number?
+	if snapshot.claimableRewardIndex ~= nil then
+		return snapshot.claimableRewardIndex
+	end
+
+	for _, rewardSnapshot in ipairs(snapshot.rewardSnapshots) do
+		if getDailyRewardState(rewardSnapshot, snapshot) == "Claimable" then
+			return rewardSnapshot.rewardIndex
+		end
+	end
+
+	return nil
+end
+
+local function shouldShowRewardReadyToast(snapshot: RewardsSnapshot): boolean
+	if canClaimPlaytime(snapshot.playtime) then
+		return true
+	end
+
+	local claimableDailyRewardIndex = getClaimableDailyRewardIndex(snapshot.daily)
+	return claimableDailyRewardIndex ~= nil and claimableDailyRewardIndex ~= 1
+end
+
 local function getPreferredOpenCategory(snapshot: RewardsSnapshot): RewardCategory
-	return if canClaimDaily(snapshot.daily) then "Daily" else activeCategory
+	local canClaimPlaytimeReward = canClaimPlaytime(snapshot.playtime)
+	local canClaimDailyReward = canClaimDaily(snapshot.daily)
+	if canClaimPlaytimeReward and not canClaimDailyReward then
+		return "Playtime"
+	elseif canClaimDailyReward and not canClaimPlaytimeReward then
+		return "Daily"
+	end
+
+	return activeCategory
 end
 
 local function getCategorySnapshot(snapshot: RewardsSnapshot, category: RewardCategory): PlaytimeRewardsSnapshot | DailyRewardsSnapshot
@@ -633,7 +675,7 @@ local function renderRewardTile(tile: GuiObject, rewardSnapshot: RewardSnapshot,
 		latestSnapshot = claimResult.snapshot
 		RewardClaimEffects.play(rootGui)
 		renderTabs(frame)
-		if claimResult.success then
+		if claimResult.success and latestSnapshot ~= nil and not canClaimAny(latestSnapshot :: RewardsSnapshot) then
 			FrameManager.close(REWARDS_FRAME_ID)
 		end
 		local notification = getNotificationIndicator(rootGui)
@@ -777,13 +819,19 @@ local function renderRewardGrid(frame: Frame, rootGui: ScreenGui, claimReward: R
 end
 
 local function renderNotificationIndicator(rootGui: ScreenGui)
+	local snapshot = latestSnapshot
+	local isRewardReady = snapshot ~= nil and canClaimAny(snapshot) and not isClaimPending
 	local notification = getNotificationIndicator(rootGui)
-	if notification == nil then
-		return
+	if notification ~= nil then
+		notification.Visible = isRewardReady
 	end
 
-	local snapshot = latestSnapshot
-	notification.Visible = snapshot ~= nil and canClaimAny(snapshot) and not isClaimPending
+	local isToastEligibleRewardReady = isRewardReady and shouldShowRewardReadyToast(snapshot :: RewardsSnapshot)
+	if isToastEligibleRewardReady and not wasToastEligibleRewardReady then
+		HudNotificationController.showToast("You Have A Reward Ready!", "Reward")
+	end
+
+	wasToastEligibleRewardReady = isToastEligibleRewardReady
 end
 
 renderFrame = function(frame: Frame, rootGui: ScreenGui, claimReward: RemoteFunction, animateGrid: boolean)

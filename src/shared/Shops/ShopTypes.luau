@@ -25,6 +25,7 @@ export type ShopDefinition = {
 	nameLabelName: string,
 	timerLabelName: string,
 	restockIntervalSeconds: number,
+	usesStock: boolean,
 }
 
 export type ShopProductDefinition = {
@@ -48,6 +49,7 @@ export type ShopRestockState = {
 
 export type ShopSnapshot = {
 	shopsById: { [ShopId]: ShopRestockState },
+	ownedProductIdsByShopId: { [ShopId]: { [ShopProductId]: boolean } },
 }
 
 export type ShopOpenedPayload = {
@@ -65,6 +67,7 @@ export type ShopPurchaseStatus =
 	| "InsufficientResources"
 	| "TooFar"
 	| "InvalidQuantity"
+	| "AlreadyOwned"
 
 export type ShopPurchaseRequest = {
 	shopId: ShopId,

@@ -10,6 +10,7 @@ local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
@@ -25,6 +26,7 @@ local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils"
 local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingId = BuildingTypes.BuildingId
 type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
@@ -79,6 +81,7 @@ export type PlayerData = {
 	resources: { [ResourceId]: number },
 	placedBuildings: { PlacedBuildingData },
 	unlockedPlotTiles: { PlotTileCoordinate },
+	ownedWindmillIds: { [BuildingId]: boolean },
 	inventory: PlayerInventoryData?,
 	offline: PlayerOfflineData,
 	settings: SettingsValues,
@@ -92,8 +95,8 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON80"
-local CURRENT_SCHEMA_VERSION = 2
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON81"
+local CURRENT_SCHEMA_VERSION = 3
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -225,6 +228,21 @@ local function sanitizeBuildingId(value: unknown): BuildingId?
 	end
 
 	return value :: BuildingId
+end
+
+local function sanitizeOwnedWindmillIds(rawOwnedWindmillIds: unknown): { [BuildingId]: boolean }
+	local ownedWindmillIds: { [BuildingId]: boolean } = {}
+	if type(rawOwnedWindmillIds) ~= "table" then
+		return ownedWindmillIds
+	end
+
+	for rawWindmillId, rawIsOwned in pairs(rawOwnedWindmillIds :: { [string]: unknown }) do
+		if type(rawWindmillId) == "string" and rawIsOwned == true and WindmillConfig.isWindmillBuildingId(rawWindmillId) then
+			ownedWindmillIds[rawWindmillId :: BuildingId] = true
+		end
+	end
+
+	return ownedWindmillIds
 end
 
 local function cloneTileCoordinate(tileCoordinate: PlotTileCoordinate): PlotTileCoordinate
@@ -398,6 +416,7 @@ local function createDefaultData(): PlayerData
 		resources = resources,
 		placedBuildings = {},
 		unlockedPlotTiles = buildStarterUnlockedTiles(),
+		ownedWindmillIds = {},
 		inventory = nil,
 		offline = {
 			lastSeenAt = 0,
@@ -676,6 +695,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		resources = sanitizeResources(rawDataTable.resources),
 		placedBuildings = sanitizePlacedBuildings(rawDataTable.placedBuildings),
 		unlockedPlotTiles = sanitizeUnlockedPlotTiles(rawDataTable.unlockedPlotTiles),
+		ownedWindmillIds = sanitizeOwnedWindmillIds(rawDataTable.ownedWindmillIds),
 		inventory = sanitizeInventory(rawDataTable.inventory),
 		offline = sanitizeOfflineData(rawDataTable.offline),
 		settings = SettingsConfig.sanitizeValues(rawDataTable.settings),
@@ -706,6 +726,8 @@ local function cloneData(data: PlayerData): PlayerData
 	for _, unlockedPlotTile in ipairs(data.unlockedPlotTiles) do
 		table.insert(unlockedPlotTiles, cloneTileCoordinate(unlockedPlotTile))
 	end
+
+	local ownedWindmillIds = sanitizeOwnedWindmillIds(data.ownedWindmillIds)
 
 	local inventory: PlayerInventoryData? = nil
 	if data.inventory ~= nil then
@@ -749,6 +771,7 @@ local function cloneData(data: PlayerData): PlayerData
 		resources = resources,
 		placedBuildings = placedBuildings,
 		unlockedPlotTiles = sanitizeUnlockedPlotTiles(unlockedPlotTiles),
+		ownedWindmillIds = ownedWindmillIds,
 		inventory = inventory,
 		offline = {
 			lastSeenAt = sanitizeTimestamp(data.offline.lastSeenAt),

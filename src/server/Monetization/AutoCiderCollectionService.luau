@@ -214,4 +214,8 @@ function AutoCiderCollectionService.start()
 	startCollectionLoop()
 end
 
+function AutoCiderCollectionService.isEnabledForPlayer(player: Player): boolean
+	return isAutoCiderEnabled(player)
+end
+
 return table.freeze(AutoCiderCollectionService)

@@ -118,6 +118,15 @@ local function getSafeOfflineMillTileBonusScale(): number
 	return scale
 end
 
+local function getSafeOfflineEarningsMultiplier(): number
+	local multiplier = OfflineEarningsConfig.offlineEarningsMultiplier
+	if isInvalidNumber(multiplier) or multiplier < 0 then
+		return 1
+	end
+
+	return multiplier
+end
+
 local function getOfflineMillMultiplier(rateMultiplier: number): number
 	local baseMultiplier = getSafeOfflineMillBaseMultiplier()
 	local tileBonus = math.max(0, rateMultiplier - 1) * getSafeOfflineMillTileBonusScale()
@@ -166,7 +175,7 @@ function OfflineCiderRateCalculator.calculateCiderPerSecond(buildings: { Offline
 		ciderPerSecond += boostedMillCiderPerSecond + orchardBonusCiderPerSecond
 	end
 
-	return math.max(0, ciderPerSecond * getSafeWindmillMultiplier(windmillMultiplier))
+	return math.max(0, ciderPerSecond * getSafeWindmillMultiplier(windmillMultiplier) * getSafeOfflineEarningsMultiplier())
 end
 
 function OfflineCiderRateCalculator.calculateCiderPerHour(buildings: { OfflineRateBuilding }, windmillMultiplier: number?): number

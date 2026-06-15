@@ -6,10 +6,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsCodeFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAssetUtils = require(buildingsCodeFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
 local BuildingTypes = require(buildingsCodeFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingDefinition = BuildingTypes.BuildingDefinition
 type ItemDefinition = InventoryTypes.ItemDefinition
@@ -28,6 +30,7 @@ local VALID_OUTLINE_COLOR = Color3.fromRGB(112, 212, 123)
 local INVALID_OUTLINE_COLOR = Color3.fromRGB(205, 91, 91)
 local PREVIEW_MODEL_NAME = "PlacementPreviewModel"
 local PREVIEW_HIGHLIGHT_PART_NAME = "PlacementBox"
+local ROTATE_PART_NAME = "Rotate"
 
 local PlacementPreviewView = {}
 PlacementPreviewView.__index = PlacementPreviewView
@@ -36,10 +39,38 @@ local function getPreviewSourceModel(buildingDefinition: BuildingDefinition): Mo
 	return BuildingAssetUtils.getPlacementPreviewModel(buildingDefinition)
 end
 
-local function applyPreviewVisualState(model: Model, isValid: boolean)
+local function getRotatingWeldedParts(buildingDefinition: BuildingDefinition, model: Model): { [BasePart]: boolean }
+	if not WindmillConfig.isWindmillBuildingId(buildingDefinition.id) then
+		return {}
+	end
+
+	local rotatePart = model:FindFirstChild(ROTATE_PART_NAME, true)
+	if rotatePart == nil or not rotatePart:IsA("BasePart") then
+		return {}
+	end
+
+	local rotatingParts: { [BasePart]: boolean } = {}
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("WeldConstraint") then
+			local part0 = descendant.Part0
+			local part1 = descendant.Part1
+			if part0 == rotatePart and part1 ~= nil then
+				rotatingParts[part1] = true
+			elseif part1 == rotatePart and part0 ~= nil then
+				rotatingParts[part0] = true
+			end
+		end
+	end
+
+	rotatingParts[rotatePart] = nil
+	return rotatingParts
+end
+
+local function applyPreviewVisualState(buildingDefinition: BuildingDefinition, model: Model, isValid: boolean)
+	local rotatingWeldedParts = getRotatingWeldedParts(buildingDefinition, model)
 	for _, descendant in ipairs(model:GetDescendants()) do
 		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
+			descendant.Anchored = rotatingWeldedParts[descendant] ~= true
 			descendant.CanCollide = false
 			descendant.CanQuery = false
 			descendant.CanTouch = false
@@ -105,7 +136,7 @@ function PlacementPreviewView:show(buildingDefinition: BuildingDefinition, _item
 	end
 
 	previewModel:PivotTo(placementCFrame)
-	applyPreviewVisualState(previewModel, isValid)
+	applyPreviewVisualState(buildingDefinition, previewModel, isValid)
 
 	self._selectionBox.Adornee = self._previewHighlightTarget or previewModel.PrimaryPart
 	self._selectionBox.Color3 = if isValid then VALID_OUTLINE_COLOR else INVALID_OUTLINE_COLOR

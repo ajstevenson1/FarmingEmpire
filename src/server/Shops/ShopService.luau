@@ -5,17 +5,23 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
+local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
 local ReopenGuard = require(script.Parent.Parent.Interactions.ReopenGuard)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
+local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
+type BuildingId = BuildingTypes.BuildingId
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
@@ -156,20 +162,55 @@ local function cloneShopStockState(stockState: { [ShopProductId]: number }): { [
 	return clone
 end
 
+local function buildUnstockedShopAvailability(shopId: ShopId): { [ShopProductId]: number }
+	local stockRemainingByProductId: { [ShopProductId]: number } = {}
+	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
+		stockRemainingByProductId[productDefinition.id] = 1
+	end
+
+	return stockRemainingByProductId
+end
+
+local function buildOwnedProductIdsByShopId(player: Player): { [ShopId]: { [ShopProductId]: boolean } }
+	local ownedProductIdsByShopId: { [ShopId]: { [ShopProductId]: boolean } } = {}
+	local ownedWindmillIds = PlayerDataService.getOwnedWindmillIds(player)
+
+	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
+		local ownedProductIds: { [ShopProductId]: boolean } = {}
+		for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
+			if WindmillConfig.isWindmillBuildingId(productDefinition.itemId) and ownedWindmillIds[productDefinition.itemId :: BuildingId] == true then
+				ownedProductIds[productDefinition.id] = true
+			end
+		end
+
+		ownedProductIdsByShopId[shopId] = ownedProductIds
+	end
+
+	return ownedProductIdsByShopId
+end
+
 local function buildSnapshot(player: Player): ShopSnapshot
 	local currentTime = getCurrentTime()
 	local shopsById: { [ShopId]: ShopRestockState } = {}
 
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
 		local definition = ShopCatalog.getShopDefinition(shopId)
-		shopsById[shopId] = {
-			nextRestockAt = synchronizePlayerShopStock(player, definition, currentTime),
-			stockRemainingByProductId = cloneShopStockState(getShopStockState(player, shopId)),
-		}
+		if definition.usesStock then
+			shopsById[shopId] = {
+				nextRestockAt = synchronizePlayerShopStock(player, definition, currentTime),
+				stockRemainingByProductId = cloneShopStockState(getShopStockState(player, shopId)),
+			}
+		else
+			shopsById[shopId] = {
+				nextRestockAt = 0,
+				stockRemainingByProductId = buildUnstockedShopAvailability(shopId),
+			}
+		end
 	end
 
 	return {
 		shopsById = shopsById,
+		ownedProductIdsByShopId = buildOwnedProductIdsByShopId(player),
 	}
 end
 
@@ -282,6 +323,10 @@ end
 
 local function getStockRemaining(player: Player, shopId: ShopId, productDefinition: ShopProductDefinition): number
 	local shopDefinition = ShopCatalog.getShopDefinition(shopId)
+	if not shopDefinition.usesStock then
+		return 1
+	end
+
 	synchronizePlayerShopStock(player, shopDefinition, getCurrentTime())
 
 	local stockState = getShopStockState(player, shopId)
@@ -289,6 +334,10 @@ local function getStockRemaining(player: Player, shopId: ShopId, productDefiniti
 end
 
 local function decrementStock(player: Player, shopId: ShopId, productDefinition: ShopProductDefinition)
+	if not ShopCatalog.getShopDefinition(shopId).usesStock then
+		return
+	end
+
 	local stockState = getShopStockState(player, shopId)
 	stockState[productDefinition.id] = math.max(0, (stockState[productDefinition.id] or 0) - 1)
 end
@@ -337,6 +386,12 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 		return createPurchaseResult(player, false, "InvalidQuantity", shopId, productId)
 	end
 
+	if WindmillConfig.isWindmillBuildingId(productDefinition.itemId)
+		and PlayerDataService.playerOwnsWindmill(player, productDefinition.itemId :: BuildingId)
+	then
+		return createPurchaseResult(player, false, "AlreadyOwned", shopId, productId)
+	end
+
 	if getStockRemaining(player, shopId, productDefinition) <= 0 then
 		return createPurchaseResult(player, false, "OutOfStock", shopId, productId)
 	end
@@ -354,6 +409,9 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 
 	decrementStock(player, shopId, productDefinition)
 	InventoryService.addItem(player, productDefinition.itemId, productDefinition.quantityPerPurchase)
+	if WindmillConfig.isWindmillBuildingId(productDefinition.itemId) then
+		PlayerDataService.markWindmillOwned(player, productDefinition.itemId :: BuildingId)
+	end
 	TutorialService.handleShopPurchaseSucceeded(player, shopId, productId)
 
 	return createPurchaseResult(player, true, "Purchased", shopId, productId)
@@ -402,7 +460,9 @@ function ShopService.start()
 	local currentTime = getCurrentTime()
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
 		local definition = ShopCatalog.getShopDefinition(shopId)
-		nextRestockAtByShopId[shopId] = currentTime + definition.restockIntervalSeconds
+		if definition.usesStock then
+			nextRestockAtByShopId[shopId] = currentTime + definition.restockIntervalSeconds
+		end
 		connectShopTouch(definition)
 	end
 

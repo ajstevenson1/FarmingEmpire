@@ -8,6 +8,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local AutoCiderCollectionService = require(script.Parent.Parent.Monetization.AutoCiderCollectionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
@@ -20,6 +21,7 @@ local COLLECTION_MARGIN_STUDS = 1.5
 local COLLECTION_VERTICAL_TOLERANCE_STUDS = 7
 local COLLECTION_COOLDOWN_SECONDS = 2
 local MIN_HORIZONTAL_MOVEMENT_STUDS = 0.2
+local CIDER_RESOURCE_ID = "Cider"
 
 local WALKOVER_PRODUCTION_BEHAVIORS: { [string]: boolean } = {
 	InputProcessor = true,
@@ -145,6 +147,14 @@ local function isOwnedPartOnAssignedPlot(player: Player, part: BasePart): boolea
 	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
 end
 
+local function shouldSkipManualCollection(player: Player, part: BasePart): boolean
+	if part:GetAttribute(BuildingAttributeNames.productionOutputName) ~= CIDER_RESOURCE_ID then
+		return false
+	end
+
+	return AutoCiderCollectionService.isEnabledForPlayer(player)
+end
+
 local function collectForPlayer(player: Player, rootPart: BasePart, currentTime: number, isMoving: boolean)
 	if not isMoving then
 		return
@@ -155,6 +165,7 @@ local function collectForPlayer(player: Player, rootPart: BasePart, currentTime:
 			and isOwnedPartOnAssignedPlot(player, part)
 			and isRootOverPart(rootPart, part)
 			and canCollectFromPart(player, part, currentTime)
+			and not shouldSkipManualCollection(player, part)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then

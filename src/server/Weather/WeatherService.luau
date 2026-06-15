@@ -19,6 +19,7 @@ type WeatherEventDefinition = WeatherTypes.WeatherEventDefinition
 type WeatherEventId = WeatherTypes.WeatherEventId
 type WeatherCycleState = WeatherTypes.WeatherCycleState
 type WeatherSnapshot = WeatherTypes.WeatherSnapshot
+type ActiveEventChangedListener = (WeatherEventDefinition?) -> ()
 
 type GlobalWeatherAction = "Start" | "Stop"
 
@@ -41,6 +42,7 @@ local randomGenerator = Random.new()
 local seenMessageIds: { [string]: boolean } = {}
 local seenMessageIdOrder: { string } = {}
 local subscriptionConnection: RBXScriptConnection? = nil
+local activeEventChangedListeners: { ActiveEventChangedListener } = {}
 
 local function getCurrentTime(): number
 	return Workspace:GetServerTimeNow()
@@ -68,6 +70,18 @@ end
 
 local function broadcastSnapshot()
 	Remotes.getWeatherRemotes().weatherUpdated:FireAllClients(createSnapshot())
+end
+
+local function notifyActiveEventChanged()
+	for _, listener in ipairs(activeEventChangedListeners) do
+		local success, result = pcall(function()
+			listener(activeEventDefinition)
+		end)
+
+		if not success then
+			warn(string.format("Weather active-event listener failed: %s", tostring(result)))
+		end
+	end
 end
 
 local function rememberMessageId(messageId: string): boolean
@@ -135,6 +149,7 @@ local function setWaitingState()
 	WeatherModifierService.setActiveEvent(nil)
 	WeatherEnvironmentService.clearEvent()
 	ProductionService.refreshWeatherModifiers()
+	notifyActiveEventChanged()
 end
 
 local function setActiveState(eventDefinition: WeatherEventDefinition, durationSeconds: number?)
@@ -145,6 +160,7 @@ local function setActiveState(eventDefinition: WeatherEventDefinition, durationS
 	WeatherModifierService.setActiveEvent(eventDefinition)
 	WeatherEnvironmentService.applyEvent(eventDefinition)
 	ProductionService.refreshWeatherModifiers()
+	notifyActiveEventChanged()
 end
 
 local function applyGlobalWeatherMessage(message: GlobalWeatherMessage)
@@ -308,6 +324,11 @@ end
 
 function WeatherService.getSnapshot(): WeatherSnapshot
 	return createSnapshot()
+end
+
+function WeatherService.observeActiveEventChanged(listener: ActiveEventChangedListener)
+	table.insert(activeEventChangedListeners, listener)
+	listener(activeEventDefinition)
 end
 
 function WeatherService.stop()

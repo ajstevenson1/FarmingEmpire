@@ -7,6 +7,7 @@ local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
+local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
@@ -15,20 +16,25 @@ type ItemId = InventoryTypes.ItemId
 type PlaytimeRewardDefinition = PlaytimeRewardsTypes.PlaytimeRewardDefinition
 type ResourceId = ResourceTypes.ResourceId
 
-local function cash(amount: number): PlaytimeRewardsTypes.CashRewardEntry
+local LOW_CASH_IMAGE_ASSET_ID = "rbxassetid://135766925654117"
+local GOOD_CASH_IMAGE_ASSET_ID = "rbxassetid://137040413837813"
+local APPLE_IMAGE_ASSET_ID = "rbxassetid://139993068118457"
+local CIDER_IMAGE_ASSET_ID = "rbxassetid://89438227381661"
+
+local function cash(amount: number, imageAssetId: string): PlaytimeRewardsTypes.CashRewardEntry
 	return table.freeze({
 		kind = "Cash",
 		amount = amount,
-		imageAssetId = "",
+		imageAssetId = imageAssetId,
 	})
 end
 
-local function resource(resourceId: ResourceId, amount: number): PlaytimeRewardsTypes.ResourceRewardEntry
+local function resource(resourceId: ResourceId, amount: number, imageAssetId: string?): PlaytimeRewardsTypes.ResourceRewardEntry
 	return table.freeze({
 		kind = "Resource",
 		resourceId = resourceId,
 		amount = amount,
-		imageAssetId = "",
+		imageAssetId = imageAssetId or "",
 	})
 end
 
@@ -37,7 +43,7 @@ local function item(itemId: ItemId, amount: number): PlaytimeRewardsTypes.ItemRe
 		kind = "Item",
 		itemId = itemId,
 		amount = amount,
-		imageAssetId = "",
+		imageAssetId = ItemCatalog.getItemDefinition(itemId).imageAssetId,
 	})
 end
 
@@ -46,13 +52,13 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewardIndex = 1,
 		displayName = "Reward 1",
 		requiredPlaytimeSeconds = 5 * 60,
-		rewards = table.freeze({ cash(1000) }),
+		rewards = table.freeze({ cash(1000, LOW_CASH_IMAGE_ASSET_ID) }),
 	}),
 	table.freeze({
 		rewardIndex = 2,
 		displayName = "Reward 2",
 		requiredPlaytimeSeconds = 10 * 60,
-		rewards = table.freeze({ resource("Apple", 1000) }),
+		rewards = table.freeze({ resource("Apple", 1000, APPLE_IMAGE_ASSET_ID) }),
 	}),
 	table.freeze({
 		rewardIndex = 3,
@@ -64,7 +70,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewardIndex = 4,
 		displayName = "Reward 4",
 		requiredPlaytimeSeconds = 20 * 60,
-		rewards = table.freeze({ resource("Cider", 2500) }),
+		rewards = table.freeze({ resource("Cider", 2500, CIDER_IMAGE_ASSET_ID) }),
 	}),
 	table.freeze({
 		rewardIndex = 5,
@@ -88,7 +94,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewardIndex = 8,
 		displayName = "Reward 8",
 		requiredPlaytimeSeconds = 75 * 60,
-		rewards = table.freeze({ cash(10000) }),
+		rewards = table.freeze({ cash(10000, GOOD_CASH_IMAGE_ASSET_ID) }),
 	}),
 	table.freeze({
 		rewardIndex = 9,
@@ -100,7 +106,7 @@ local rewardDefinitions: { PlaytimeRewardDefinition } = table.freeze({
 		rewardIndex = 10,
 		displayName = "Reward 10",
 		requiredPlaytimeSeconds = 120 * 60,
-		rewards = table.freeze({ resource("Apple", 10000) }),
+		rewards = table.freeze({ resource("Apple", 10000, APPLE_IMAGE_ASSET_ID) }),
 	}),
 	table.freeze({
 		rewardIndex = 11,

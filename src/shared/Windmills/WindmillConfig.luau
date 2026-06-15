@@ -21,6 +21,7 @@ export type WindmillDefinition = {
 	category: WindmillCategory,
 	displayName: string,
 	description: string,
+	visualAssetName: string,
 	price: number,
 	sellPrice: number,
 	stockPerRestock: number,
@@ -35,6 +36,7 @@ local function createWindmillDefinition(
 	category: WindmillCategory,
 	displayName: string,
 	description: string,
+	visualAssetName: string,
 	price: number,
 	offlineEarningsMultiplierBonus: number,
 	ciderSellCashMultiplierBonus: number
@@ -44,9 +46,10 @@ local function createWindmillDefinition(
 		category = category,
 		displayName = displayName,
 		description = description,
+		visualAssetName = visualAssetName,
 		price = price,
-		sellPrice = math.floor(price * 0.5),
-		stockPerRestock = 3,
+		sellPrice = 0,
+		stockPerRestock = 1,
 		placementSize = WINDMILL_PLACEMENT_SIZE,
 		boosts = table.freeze({
 			offlineEarningsMultiplierBonus = offlineEarningsMultiplierBonus,
@@ -59,20 +62,82 @@ local windmillDefinitions: { WindmillDefinition } = table.freeze({
 	createWindmillDefinition(
 		"OfflineEarningsWindmill",
 		"Offline",
-		"Basic AFK Windmill",
+		"Old AFK Windmill",
 		"Boosts offline cider earnings by 10%.",
+		"OldWindmill",
 		1000,
 		0.1,
 		0
 	),
 	createWindmillDefinition(
+		"ModernAFKWindmill",
+		"Offline",
+		"Modern AFK Windmill",
+		"Boosts offline cider earnings by 30%.",
+		"ModernWindmill",
+		15000,
+		0.3,
+		0
+	),
+	createWindmillDefinition(
+		"GoldAFKWindmill",
+		"Offline",
+		"Gold AFK Windmill",
+		"Boosts offline cider earnings by 70%.",
+		"GoldWindmill",
+		225000,
+		0.7,
+		0
+	),
+	createWindmillDefinition(
+		"DiamondAFKWindmill",
+		"Offline",
+		"Diamond AFK Windmill",
+		"Boosts offline cider earnings by 120%.",
+		"DiamondWindmill",
+		1500000,
+		1.2,
+		0
+	),
+	createWindmillDefinition(
 		"CiderCashWindmill",
 		"Cash",
-		"Cash Windmill",
+		"Old Cash Windmill",
 		"Boosts cash earned from selling cider by 10%.",
-		500,
+		"OldWindmill",
+		2500,
 		0,
 		0.1
+	),
+	createWindmillDefinition(
+		"ModernCashWindmill",
+		"Cash",
+		"Modern Cash Windmill",
+		"Boosts cash earned from selling cider by 30%.",
+		"ModernWindmill",
+		45000,
+		0,
+		0.3
+	),
+	createWindmillDefinition(
+		"GoldCashWindmill",
+		"Cash",
+		"Gold Cash Windmill",
+		"Boosts cash earned from selling cider by 70%.",
+		"GoldWindmill",
+		570000,
+		0,
+		0.7
+	),
+	createWindmillDefinition(
+		"DiamondCashWindmill",
+		"Cash",
+		"Diamond Cash Windmill",
+		"Boosts cash earned from selling cider by 120%.",
+		"DiamondWindmill",
+		2800000,
+		0,
+		1.2
 	),
 })
 

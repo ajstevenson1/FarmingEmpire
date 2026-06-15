@@ -93,6 +93,9 @@ type TutorialRemotes = {
 type WeatherRemotes = {
 	weatherUpdated: RemoteEvent,
 	getWeatherSnapshot: RemoteFunction,
+	moneyDropSpawned: RemoteEvent,
+	requestMoneyDropPickup: RemoteEvent,
+	moneyDropResolved: RemoteEvent,
 }
 
 local cachedInventoryRemotes: InventoryRemotes? = nil
@@ -393,6 +396,9 @@ function Remotes.getWeatherRemotes(): WeatherRemotes
 	cachedWeatherRemotes = {
 		weatherUpdated = getOrCreateRemoteEvent(weatherFolder, RemoteNames.weatherUpdatedEventName),
 		getWeatherSnapshot = getOrCreateRemoteFunction(weatherFolder, RemoteNames.getWeatherSnapshotFunctionName),
+		moneyDropSpawned = getOrCreateRemoteEvent(weatherFolder, RemoteNames.moneyDropSpawnedEventName),
+		requestMoneyDropPickup = getOrCreateRemoteEvent(weatherFolder, RemoteNames.requestMoneyDropPickupEventName),
+		moneyDropResolved = getOrCreateRemoteEvent(weatherFolder, RemoteNames.moneyDropResolvedEventName),
 	}
 
 	return cachedWeatherRemotes

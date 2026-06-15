@@ -8,10 +8,13 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
+local uiFolder = sharedFolder:WaitForChild("UI") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+local ButtonSoundConfig = require(uiFolder:WaitForChild("ButtonSoundConfig") :: ModuleScript)
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
+local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
@@ -27,13 +30,14 @@ export type RenderProduct = {
 	stockRemaining: number,
 	canAfford: boolean,
 	effectivePrice: number,
+	isOwned: boolean,
 }
 
 type ShopWidgets = {
 	frame: Frame,
 	template: GuiObject,
 	scrollingFrame: ScrollingFrame,
-	timerLabel: TextLabel,
+	timerLabel: TextLabel?,
 	closeButton: GuiButton,
 }
 
@@ -41,7 +45,7 @@ export type ShopMenuView = {
 	_widgetsByShopId: { [ShopId]: ShopWidgets },
 	_purchaseCallbacks: { (ShopProductId) -> () },
 	_closeCallbacks: { (ShopId) -> () },
-	_rowFramesByShopId: { [ShopId]: { GuiObject } },
+	_rowFramesByShopId: { [ShopId]: { [string]: GuiObject } },
 	_robuxPriceTextByDeveloperProductId: { [string]: string },
 	_pendingRobuxPriceFetchByDeveloperProductId: { [string]: boolean },
 	getFrame: (self: ShopMenuView, shopId: ShopId) -> Frame,
@@ -87,6 +91,7 @@ local ITEM_NAME_LABEL_NAMES: { string } = { "ItemName", "Name", "NameLabel", "Ti
 local ITEM_STOCK_LABEL_NAMES: { string } = { "ItemStock", "Stock", "StockLabel" }
 local ITEM_PRICE_LABEL_NAMES: { string } = { "ItemPrice", "Price", "PriceLabel" }
 local BUY_BUTTON_NAMES: { string } = { "BuyButton", "Buy", "PurchaseButton", "Purchase" }
+local ROBUX_BUTTON_NAMES: { string } = { "RobuxButton", "Robux", "PremiumButton" }
 local GENERATED_WINDMILL_PRODUCT_ATTRIBUTE = "GeneratedWindmillProduct"
 local WINDMILL_BUY_CONNECTED_ATTRIBUTE = "WindmillBuyConnected"
 local WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE = "WindmillBuyProductId"
@@ -95,6 +100,8 @@ local PRODUCT_IMAGE_PREFIX = "rbxassetid://"
 local PRODUCT_THUMBNAIL_PREFIX = "rbxthumb://"
 local ROBUX_PRICE_UNAVAILABLE_TEXT = "N/A"
 local ROBUX_PRICE_LOADING_TEXT = "..."
+local OWNED_BUTTON_TEXT = "Owned"
+local OWNED_BUTTON_COLOR = Color3.fromRGB(37, 145, 65)
 
 local ShopMenuView = {}
 ShopMenuView.__index = ShopMenuView
@@ -210,6 +217,26 @@ local function setOptionalNamedText(parent: Instance, names: { string }, text: s
 	end
 end
 
+local function setOptionalNamedTextVisible(parent: Instance, names: { string }, isVisible: boolean)
+	local label = findFirstTextLabel(parent, names)
+	if label ~= nil then
+		label.Visible = isVisible
+	end
+end
+
+local function setOptionalGuiButtonVisible(parent: Instance, names: { string }, isVisible: boolean)
+	local button = findFirstGuiButton(parent, names)
+	if button == nil then
+		return
+	end
+
+	button.Visible = isVisible
+	button.Active = isVisible
+	if not isVisible then
+		button:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, true)
+	end
+end
+
 local function setButtonText(button: GuiButton, text: string)
 	local mainText = findTextLabel(button, "Text")
 	if mainText ~= nil then
@@ -221,6 +248,25 @@ local function setButtonText(button: GuiButton, text: string)
 	local tripleText = findTextLabel(button, "TripleText")
 	if tripleText ~= nil then
 		tripleText.Text = text
+	end
+end
+
+local function setGuiBackgroundColor(instance: Instance, color: Color3)
+	if instance:IsA("GuiObject") then
+		instance.BackgroundColor3 = color
+	end
+end
+
+local function applyOwnedButtonState(button: GuiButton)
+	button.Active = false
+	button.AutoButtonColor = false
+	button:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, true)
+	setButtonText(button, OWNED_BUTTON_TEXT)
+	setGuiBackgroundColor(button, OWNED_BUTTON_COLOR)
+
+	local design = button:FindFirstChild("Design")
+	if design ~= nil then
+		setGuiBackgroundColor(design, OWNED_BUTTON_COLOR)
 	end
 end
 
@@ -275,8 +321,14 @@ local function createShopWidgets(framesFolder: Instance, templatesFolder: Folder
 	template.Visible = false
 
 	local design = findRequiredChild(frame, "Design")
-	local timerLabel = findRequiredChild(design, "Timer")
-	assert(timerLabel:IsA("TextLabel"), string.format("%s must be a TextLabel", timerLabel:GetFullName()))
+	local timerLabel: TextLabel? = nil
+	local timerChild = design:FindFirstChild("Timer")
+	if timerChild ~= nil then
+		assert(timerChild:IsA("TextLabel"), string.format("%s must be a TextLabel", timerChild:GetFullName()))
+		timerLabel = timerChild
+	elseif ShopCatalog.getShopDefinition(shopId).usesStock then
+		error(string.format("%s.Timer is required for stocked shops.", design:GetFullName()))
+	end
 
 	local scrollingFrame = findRequiredChild(frame, "ScrollingFrame")
 	assert(scrollingFrame:IsA("ScrollingFrame"), string.format("%s must be a ScrollingFrame", scrollingFrame:GetFullName()))
@@ -391,11 +443,17 @@ local function connectProductBuyButton(self: ShopMenuView, row: GuiObject, rende
 		return
 	end
 
+	buyButton:SetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE, renderProduct.productDefinition.id)
+	if renderProduct.isOwned then
+		applyOwnedButtonState(buyButton)
+		return
+	end
+
 	local isInStock = renderProduct.stockRemaining > 0
 	local canBuy = isInStock and renderProduct.canAfford
-	buyButton.Active = canBuy
+	buyButton.Active = true
 	buyButton.AutoButtonColor = canBuy
-	buyButton:SetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE, renderProduct.productDefinition.id)
+	buyButton:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, not canBuy)
 	setButtonText(buyButton, formatPlainAmount(renderProduct.effectivePrice))
 
 	if buyButton:GetAttribute(WINDMILL_BUY_CONNECTED_ATTRIBUTE) == true then
@@ -404,10 +462,6 @@ local function connectProductBuyButton(self: ShopMenuView, row: GuiObject, rende
 
 	buyButton:SetAttribute(WINDMILL_BUY_CONNECTED_ATTRIBUTE, true)
 	buyButton.Activated:Connect(function()
-		if not buyButton.Active then
-			return
-		end
-
 		local productId = buyButton:GetAttribute(WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE)
 		if type(productId) ~= "string" then
 			return
@@ -424,8 +478,13 @@ local function populateWindmillProductRow(self: ShopMenuView, row: GuiObject, re
 	row.Visible = true
 	setProductImage(row, renderProduct.productDefinition.imageAssetId)
 	setOptionalNamedText(row, ITEM_NAME_LABEL_NAMES, renderProduct.displayName)
-	setOptionalNamedText(row, ITEM_STOCK_LABEL_NAMES, formatStock(renderProduct.stockRemaining))
-	setOptionalNamedText(row, ITEM_PRICE_LABEL_NAMES, formatPlainAmount(renderProduct.effectivePrice))
+	setOptionalNamedTextVisible(row, ITEM_STOCK_LABEL_NAMES, false)
+	setOptionalNamedText(
+		row,
+		ITEM_PRICE_LABEL_NAMES,
+		if renderProduct.isOwned then OWNED_BUTTON_TEXT else formatPlainAmount(renderProduct.effectivePrice)
+	)
+	setOptionalGuiButtonVisible(row, ROBUX_BUTTON_NAMES, not renderProduct.isOwned)
 	connectProductBuyButton(self, row, renderProduct)
 end
 
@@ -463,38 +522,60 @@ local function createWindmillCategoryHeader(category: WindmillCategory, layoutOr
 	return header
 end
 
-local function renderWindmillProducts(self: ShopMenuView, shopWidgets: ShopWidgets, products: { RenderProduct })
+local function renderWindmillProducts(
+	self: ShopMenuView,
+	shopWidgets: ShopWidgets,
+	products: { RenderProduct },
+	activeRowKeys: { [string]: boolean }
+)
 	local groupedProducts = groupWindmillProductsByCategory(products)
 	local layoutOrder = 1
+	local rowFrames = self._rowFramesByShopId[WINDMILL_SHOP_ID]
 
 	for _, category in ipairs(WINDMILL_CATEGORY_ORDER) do
-		local header = createWindmillCategoryHeader(category, layoutOrder)
-		header.Parent = shopWidgets.scrollingFrame
-		table.insert(self._rowFramesByShopId[WINDMILL_SHOP_ID], header)
+		local headerKey = "Header:" .. category
+		activeRowKeys[headerKey] = true
+
+		local header = rowFrames[headerKey]
+		if header == nil then
+			header = createWindmillCategoryHeader(category, layoutOrder)
+			header.Parent = shopWidgets.scrollingFrame
+			rowFrames[headerKey] = header
+		else
+			header.LayoutOrder = layoutOrder
+			header.Visible = true
+		end
 		layoutOrder += 1
 
 		local categoryProducts = groupedProducts[category]
 		for index, renderProduct in ipairs(categoryProducts) do
-			local row = createWindmillProductRow(self, renderProduct, layoutOrder + index - 1)
-			row.Parent = shopWidgets.scrollingFrame
-			table.insert(self._rowFramesByShopId[WINDMILL_SHOP_ID], row)
+			local productKey = renderProduct.productDefinition.id
+			activeRowKeys[productKey] = true
+
+			local row = rowFrames[productKey]
+			if row == nil then
+				row = createWindmillProductRow(self, renderProduct, layoutOrder + index - 1)
+				row.Parent = shopWidgets.scrollingFrame
+				rowFrames[productKey] = row
+			else
+				row.LayoutOrder = layoutOrder + index - 1
+				populateWindmillProductRow(self, row, renderProduct)
+			end
 		end
 
 		layoutOrder += #categoryProducts
 	end
 end
 
-local function createProductRow(
+local function populateProductRow(
 	self: ShopMenuView,
-	shopWidgets: ShopWidgets,
+	row: GuiObject,
 	renderProduct: RenderProduct
-): GuiObject
+)
 	local productDefinition = renderProduct.productDefinition
-	local row = shopWidgets.template:Clone()
 	row.Name = productDefinition.id
 	row.LayoutOrder = productDefinition.sortOrder
 	row.Visible = true
-	row.Parent = shopWidgets.scrollingFrame
 
 	local itemImage = findRequiredDescendant(row, "ItemImage")
 	if itemImage:IsA("ImageLabel") then
@@ -514,19 +595,10 @@ local function createProductRow(
 
 	local isInStock = renderProduct.stockRemaining > 0
 	local canBuy = isInStock and renderProduct.canAfford
-	buyButton.Active = canBuy
+	buyButton.Active = true
 	buyButton.AutoButtonColor = canBuy
+	buyButton:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, not canBuy)
 	setButtonText(buyButton, formatCash(renderProduct.effectivePrice))
-
-	buyButton.Activated:Connect(function()
-		if not canBuy then
-			return
-		end
-
-		for _, callback in ipairs(self._purchaseCallbacks) do
-			callback(productDefinition.id)
-		end
-	end)
 
 	local robuxButton = findRequiredDescendant(row, "RobuxButton")
 	assert(robuxButton:IsA("GuiButton"), string.format("%s must be a GuiButton", robuxButton:GetFullName()))
@@ -535,6 +607,27 @@ local function createProductRow(
 		getDeveloperProductPriceText(productDefinition.developerProductId, self._robuxPriceTextByDeveloperProductId)
 	)
 	fetchDeveloperProductPriceAsync(self, productDefinition.developerProductId)
+end
+
+local function createProductRow(
+	self: ShopMenuView,
+	shopWidgets: ShopWidgets,
+	renderProduct: RenderProduct
+): GuiObject
+	local productDefinition = renderProduct.productDefinition
+	local row = shopWidgets.template:Clone()
+	row.Parent = shopWidgets.scrollingFrame
+
+	populateProductRow(self, row, renderProduct)
+
+	local buyButton = findRequiredDescendant(row, "BuyButton")
+	assert(buyButton:IsA("GuiButton"), string.format("%s must be a GuiButton", buyButton:GetFullName()))
+
+	buyButton.Activated:Connect(function()
+		for _, callback in ipairs(self._purchaseCallbacks) do
+			callback(productDefinition.id)
+		end
+	end)
 
 	return row
 end
@@ -581,21 +674,35 @@ function ShopMenuView:render(shopId: ShopId, secondsUntilRestock: number, produc
 	local shopWidgets = self._widgetsByShopId[shopId]
 	local minutes = math.floor(secondsUntilRestock / 60)
 	local seconds = secondsUntilRestock % 60
-	shopWidgets.timerLabel.Text = string.format("%02d:%02d", minutes, seconds)
+	if shopWidgets.timerLabel ~= nil then
+		shopWidgets.timerLabel.Visible = ShopCatalog.getShopDefinition(shopId).usesStock
+		shopWidgets.timerLabel.Text = string.format("%02d:%02d", minutes, seconds)
+	end
 
 	local rowFrames = self._rowFramesByShopId[shopId]
-	for _, rowFrame in ipairs(rowFrames) do
-		rowFrame:Destroy()
-	end
-	table.clear(rowFrames)
+	local activeRowKeys: { [string]: boolean } = {}
 
 	if shopId == WINDMILL_SHOP_ID then
-		renderWindmillProducts(self, shopWidgets, products)
-		return
+		renderWindmillProducts(self, shopWidgets, products, activeRowKeys)
+	else
+		for _, renderProduct in ipairs(products) do
+			local productKey = renderProduct.productDefinition.id
+			activeRowKeys[productKey] = true
+
+			local row = rowFrames[productKey]
+			if row == nil then
+				rowFrames[productKey] = createProductRow(self, shopWidgets, renderProduct)
+			else
+				populateProductRow(self, row, renderProduct)
+			end
+		end
 	end
 
-	for _, renderProduct in ipairs(products) do
-		table.insert(rowFrames, createProductRow(self, shopWidgets, renderProduct))
+	for rowKey, rowFrame in pairs(rowFrames) do
+		if activeRowKeys[rowKey] ~= true then
+			rowFrame:Destroy()
+			rowFrames[rowKey] = nil
+		end
 	end
 end
 
@@ -609,7 +716,7 @@ end
 
 function ShopMenuView:destroy()
 	for _, rowFrames in pairs(self._rowFramesByShopId) do
-		for _, rowFrame in ipairs(rowFrames) do
+		for _, rowFrame in pairs(rowFrames) do
 			rowFrame:Destroy()
 		end
 		table.clear(rowFrames)

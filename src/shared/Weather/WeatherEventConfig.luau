@@ -30,7 +30,7 @@ WeatherEventConfig.eventsById = table.freeze({
 	Rain = table.freeze({
 		id = "Rain",
 		weight = 100,
-		displayMessage = '<b><font color="#7CCBFF">Rain event!</font></b> Apple production is 50% faster. Windmills spin 100% faster.',
+		displayMessage = '<b><font color="#7CCBFF">Rain event!</font></b> Apple production is 50% faster.',
 		sky = table.freeze({
 			activeSkyName = "Rain",
 			defaultSkyName = "Sky",
@@ -53,6 +53,53 @@ WeatherEventConfig.eventsById = table.freeze({
 		}),
 		windmillModifier = table.freeze({
 			rotationSpeedMultiplier = 2,
+		}),
+	}),
+	Money = table.freeze({
+		id = "Money",
+		weight = 85,
+		displayMessage = '<b><font color="#FFE15A">Money event!</font></b> Cash is falling from the sky.',
+		sky = table.freeze({
+			activeSkyName = "Sky",
+			defaultSkyName = "Sky",
+		}),
+		particles = table.freeze({
+			topParticleName = "Money",
+			topTargetName = "WeatherPart",
+			bottomParticleName = nil,
+			bottomTargetName = nil,
+			cloneCount = 8,
+		}),
+		moneyDrops = table.freeze({
+			spawnIntervalSeconds = 1,
+			spawnAreaTargetName = "WeatherPart",
+			spawnAreaScale = 0.4,
+			collectionRadiusStuds = 6,
+			serverValidationRadiusStuds = 14,
+			fallSeconds = 1.75,
+			tiers = table.freeze({
+				table.freeze({
+					id = "Small",
+					modelName = "SmallMoney",
+					rewardCash = 500,
+					lifetimeSeconds = 30,
+					weight = 67,
+				}),
+				table.freeze({
+					id = "Medium",
+					modelName = "MediumMoney",
+					rewardCash = 5000,
+					lifetimeSeconds = 25,
+					weight = 30,
+				}),
+				table.freeze({
+					id = "Big",
+					modelName = "BigMoney",
+					rewardCash = 50000,
+					lifetimeSeconds = 20,
+					weight = 3,
+				}),
+			}),
 		}),
 	}),
 })

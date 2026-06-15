@@ -78,11 +78,11 @@ local function createSingleMillVisualConfig(assetName: string): SingleBuildingVi
 	}) :: SingleBuildingVisualConfig
 end
 
-local function createSingleWindmillVisualConfig(): SingleBuildingVisualConfig
+local function createSingleWindmillVisualConfig(assetName: string): SingleBuildingVisualConfig
 	return table.freeze({
 		kind = "Single",
 		categoryFolderName = WINDMILLS_CATEGORY_FOLDER_NAME,
-		assetName = WINDMILL_ASSET_NAME,
+		assetName = assetName,
 		fallbackAssetName = WINDMILL_ASSET_NAME,
 	}) :: SingleBuildingVisualConfig
 end
@@ -147,7 +147,7 @@ local function createWindmillDefinition(windmillDefinition: WindmillDefinition):
 			statusText = "Boost active",
 		}),
 		offlineEarningsConfig = nil,
-		visualConfig = createSingleWindmillVisualConfig(),
+		visualConfig = createSingleWindmillVisualConfig(windmillDefinition.visualAssetName),
 		harvestVisualConfig = nil,
 	})
 end

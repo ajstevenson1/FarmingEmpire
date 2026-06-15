@@ -1,6 +1,6 @@
 --!strict
 
-export type WeatherEventId = "Rain"
+export type WeatherEventId = "Rain" | "Money"
 
 export type WeatherSkyConfig = {
 	activeSkyName: string,
@@ -10,9 +10,27 @@ export type WeatherSkyConfig = {
 export type WeatherParticlesConfig = {
 	topParticleName: string,
 	topTargetName: string,
-	bottomParticleName: string,
-	bottomTargetName: string,
+	bottomParticleName: string?,
+	bottomTargetName: string?,
 	cloneCount: number,
+}
+
+export type WeatherMoneyDropTierConfig = {
+	id: string,
+	modelName: string,
+	rewardCash: number,
+	lifetimeSeconds: number,
+	weight: number,
+}
+
+export type WeatherMoneyDropConfig = {
+	spawnIntervalSeconds: number,
+	spawnAreaTargetName: string,
+	spawnAreaScale: number?,
+	collectionRadiusStuds: number,
+	serverValidationRadiusStuds: number,
+	fallSeconds: number,
+	tiers: { WeatherMoneyDropTierConfig },
 }
 
 export type WeatherCloudConfig = {
@@ -44,6 +62,19 @@ export type WeatherEventDefinition = {
 	clouds: WeatherCloudConfig?,
 	productionModifier: WeatherProductionModifierConfig?,
 	windmillModifier: WeatherWindmillModifierConfig?,
+	moneyDrops: WeatherMoneyDropConfig?,
+}
+
+export type MoneyDropSpawnPayload = {
+	id: string,
+	tierId: string,
+	modelName: string,
+	rewardCash: number,
+	spawnPosition: Vector3,
+	expiresAt: number,
+	lifetimeSeconds: number,
+	fallSeconds: number,
+	collectionRadiusStuds: number,
 }
 
 export type WeatherCycleState = "Waiting" | "Active"

@@ -41,7 +41,13 @@ export type BuildingId =
 	| "DyingForgeMill"
 	| "DeepSpaceMill"
 	| "OfflineEarningsWindmill"
+	| "ModernAFKWindmill"
+	| "GoldAFKWindmill"
+	| "DiamondAFKWindmill"
 	| "CiderCashWindmill"
+	| "ModernCashWindmill"
+	| "GoldCashWindmill"
+	| "DiamondCashWindmill"
 
 export type PlacementRotationQuarterTurns = number
 

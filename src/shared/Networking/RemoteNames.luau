@@ -61,6 +61,9 @@ local RemoteNames = {
 	getTutorialSnapshotFunctionName = "GetTutorialSnapshot",
 	weatherUpdatedEventName = "WeatherUpdated",
 	getWeatherSnapshotFunctionName = "GetWeatherSnapshot",
+	moneyDropSpawnedEventName = "MoneyDropSpawned",
+	requestMoneyDropPickupEventName = "RequestMoneyDropPickup",
+	moneyDropResolvedEventName = "MoneyDropResolved",
 }
 
 return table.freeze(RemoteNames)

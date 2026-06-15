@@ -27,9 +27,9 @@ export type WindmillBillboardView = {
 	destroy: (self: WindmillBillboardView) -> (),
 }
 
-local TEMPLATE_NAME_BY_BUILDING_ID: { [BuildingId]: string } = {
-	OfflineEarningsWindmill = "OfflineWindmill",
-	CiderCashWindmill = "CashWindmill",
+local TEMPLATE_NAME_BY_CATEGORY: { [WindmillCategory]: string } = {
+	Offline = "OfflineWindmill",
+	Cash = "CashWindmill",
 }
 
 local BOOST_LABEL_NAMES: { string } = { "Boost", "BoostLabel", "Multiplier", "MultiplierLabel", "Value", "ValueLabel" }
@@ -80,9 +80,9 @@ local function findCategoryTextLabel(
 end
 
 local function getTemplateName(buildingId: BuildingId): string
-	local templateName = TEMPLATE_NAME_BY_BUILDING_ID[buildingId]
-	assert(templateName ~= nil, string.format("No windmill billboard template configured for %s", buildingId))
-	return templateName
+	local definition = WindmillConfig.getDefinition(buildingId)
+	assert(definition ~= nil, string.format("Windmill definition missing for %s", buildingId))
+	return TEMPLATE_NAME_BY_CATEGORY[definition.category]
 end
 
 local function createWidgets(part: BasePart): WindmillBillboardWidgets

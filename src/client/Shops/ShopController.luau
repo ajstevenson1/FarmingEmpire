@@ -13,20 +13,24 @@ local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 local EconomyTypes = require(economyFolder:WaitForChild("EconomyTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
+local ResourceCatalog = require(resourcesFolder:WaitForChild("ResourceCatalog") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local FrameManager = require(script.Parent.Parent.UI.FrameManager)
+local HudNotificationController = require(script.Parent.Parent.Notifications.HudNotificationController)
 local ShopMenuView = require(script.Parent.ShopMenuView)
 local TutorialClientState = require(script.Parent.Parent.Tutorial.TutorialClientState)
 
 type EconomySnapshot = EconomyTypes.EconomySnapshot
+type ResourceId = ResourceTypes.ResourceId
 type ResourceSnapshot = ResourceTypes.ResourceSnapshot
 type ShopId = ShopTypes.ShopId
 type ShopOpenedPayload = ShopTypes.ShopOpenedPayload
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
 type ShopPurchaseResult = ShopTypes.ShopPurchaseResult
+type ShopPurchaseStatus = ShopTypes.ShopPurchaseStatus
 type ShopSnapshot = ShopTypes.ShopSnapshot
 type RenderProduct = ShopMenuView.RenderProduct
 type ShopMenuViewInstance = ShopMenuView.ShopMenuView
@@ -39,6 +43,7 @@ local latestResourceSnapshot: ResourceSnapshot? = nil
 local latestCash = 0
 local isPurchasePending = false
 local freeTutorialProductIdByShopId: { [ShopId]: ShopProductId } = {}
+local hasInitializedRestockNotifications = false
 
 local function getShopRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
@@ -71,6 +76,11 @@ local function getClosedPanelPosition(panel: Frame): UDim2
 end
 
 local function getSecondsUntilRestock(snapshot: ShopSnapshot, shopId: ShopId): number
+	local definition = ShopCatalog.getShopDefinition(shopId)
+	if not definition.usesStock then
+		return 0
+	end
+
 	local state = snapshot.shopsById[shopId]
 	if state == nil then
 		return 0
@@ -100,15 +110,24 @@ local function syncSnapshotStockForShop(snapshot: ShopSnapshot, shopId: ShopId, 
 	end
 end
 
+local function notifyShopRestocked(shopId: ShopId)
+	local definition = ShopCatalog.getShopDefinition(shopId)
+	HudNotificationController.showToast(string.format("%s Restocked!", definition.displayName), "Success")
+end
+
 local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 	local currentTime = Workspace:GetServerTimeNow()
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
+		local definition = ShopCatalog.getShopDefinition(shopId)
+		if not definition.usesStock then
+			continue
+		end
+
 		local state = snapshot.shopsById[shopId]
 		if state == nil then
 			continue
 		end
 
-		local definition = ShopCatalog.getShopDefinition(shopId)
 		local shouldReset = false
 		while state.nextRestockAt <= currentTime do
 			state.nextRestockAt += definition.restockIntervalSeconds
@@ -116,7 +135,12 @@ local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 		end
 
 		syncSnapshotStockForShop(snapshot, shopId, shouldReset)
+		if shouldReset and hasInitializedRestockNotifications then
+			notifyShopRestocked(shopId)
+		end
 	end
+
+	hasInitializedRestockNotifications = true
 end
 
 local function getAvailableCurrencyAmount(
@@ -132,7 +156,7 @@ local function getAvailableCurrencyAmount(
 		return 0
 	end
 
-	return resourceSnapshot.amountsByResourceId[productDefinition.priceCurrency] or 0
+	return resourceSnapshot.amountsByResourceId[productDefinition.priceCurrency :: ResourceId] or 0
 end
 
 local function buildRenderProducts(
@@ -146,6 +170,8 @@ local function buildRenderProducts(
 	if shopState == nil then
 		return products
 	end
+	local ownedProductIds: { [ShopProductId]: boolean } = snapshot.ownedProductIdsByShopId[shopId] or {}
+	local shopDefinition = ShopCatalog.getShopDefinition(shopId)
 
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		local itemDefinition = ItemCatalog.getItemDefinition(productDefinition.itemId)
@@ -153,12 +179,15 @@ local function buildRenderProducts(
 				or TutorialClientState.shouldUseFreePurchase(shopId, productDefinition.id)
 			then 0
 			else productDefinition.price
+		local isOwned = ownedProductIds[productDefinition.id] == true
+		local stockRemaining = if shopDefinition.usesStock then shopState.stockRemainingByProductId[productDefinition.id] or 0 else 1
 		table.insert(products, {
 			productDefinition = productDefinition,
 			displayName = itemDefinition.displayName,
-			stockRemaining = shopState.stockRemainingByProductId[productDefinition.id] or 0,
-			canAfford = getAvailableCurrencyAmount(productDefinition, cash, resourceSnapshot) >= effectivePrice,
+			stockRemaining = stockRemaining,
+			canAfford = not isOwned and getAvailableCurrencyAmount(productDefinition, cash, resourceSnapshot) >= effectivePrice,
 			effectivePrice = effectivePrice,
+			isOwned = isOwned,
 		})
 	end
 
@@ -169,14 +198,79 @@ local function buildRenderProducts(
 	return products
 end
 
+local function formatPurchasedMessage(productDefinition: ShopProductDefinition): string
+	local itemDefinition = ItemCatalog.getItemDefinition(productDefinition.itemId)
+	return string.format("Bought %d %s!", productDefinition.quantityPerPurchase, itemDefinition.displayName)
+end
+
+local function formatInsufficientResourceMessage(productDefinition: ShopProductDefinition): string
+	if productDefinition.priceCurrency == "Cash" then
+		return "Not Enough Cash!"
+	end
+
+	local resourceDefinition = ResourceCatalog.getResourceDefinition(productDefinition.priceCurrency :: ResourceId)
+	return string.format("Not Enough %s!", resourceDefinition.displayName)
+end
+
+local function getFailedPurchaseMessage(status: ShopPurchaseStatus, productDefinition: ShopProductDefinition?): string
+	if status == "InsufficientCash" then
+		return "Not Enough Cash!"
+	elseif status == "InsufficientResources" and productDefinition ~= nil then
+		return formatInsufficientResourceMessage(productDefinition)
+	elseif status == "InsufficientResources" then
+		return "Not Enough Resources!"
+	elseif status == "OutOfStock" then
+		return "Out Of Stock!"
+	elseif status == "TooFar" then
+		return "Too Far From Shop!"
+	elseif status == "InvalidQuantity" then
+		return "Invalid Quantity!"
+	elseif status == "AlreadyOwned" then
+		return "Already Owned!"
+	elseif status == "InvalidProduct" then
+		return "Invalid Product!"
+	elseif status == "InvalidShop" then
+		return "Invalid Shop!"
+	end
+
+	return "Purchase Failed!"
+end
+
+local function showPurchaseNotification(result: ShopPurchaseResult)
+	local shopId = result.shopId
+	local productId = result.productId
+	local productDefinition = if shopId ~= nil and productId ~= nil
+		then ShopCatalog.getShopProductDefinition(shopId, productId)
+		else nil
+
+	if result.success then
+		if productDefinition ~= nil then
+			HudNotificationController.showToast(formatPurchasedMessage(productDefinition), "Success")
+		else
+			HudNotificationController.showToast("Purchase Complete!", "Success")
+		end
+		return
+	end
+
+	HudNotificationController.showToast(getFailedPurchaseMessage(result.status, productDefinition), "Error")
+end
+
 local function renderIfReady(view: ShopMenuViewInstance)
 	local shopId = activeShopId
 	local snapshot = latestSnapshot
-	if shopId == nil or snapshot == nil then
+	if snapshot == nil then
 		return
 	end
 
 	advanceRestockIfNeeded(snapshot)
+
+	if shopId == nil then
+		return
+	end
+
+	if not FrameManager.isOpen(shopId) then
+		return
+	end
 
 	local definition = ShopCatalog.getShopDefinition(shopId)
 	view:render(
@@ -217,10 +311,16 @@ function ShopController.start()
 
 	view:connectCloseRequested(function(shopId: ShopId)
 		freeTutorialProductIdByShopId[shopId] = nil
+		if activeShopId == shopId then
+			activeShopId = nil
+		end
 		FrameManager.close(shopId)
 	end)
 	FrameManager.observeFrameClosed(function(frameId: string)
 		if ShopCatalog.isShopId(frameId) then
+			if activeShopId == frameId then
+				activeShopId = nil
+			end
 			shopClosed:FireServer(frameId)
 		end
 	end)
@@ -246,6 +346,7 @@ function ShopController.start()
 		latestResourceSnapshot = getResourceSnapshot:InvokeServer() :: ResourceSnapshot
 		isPurchasePending = false
 		renderIfReady(view)
+		showPurchaseNotification(result)
 
 		if result.success and shouldCloseAfterTutorialPurchase then
 			freeTutorialProductIdByShopId[shopId] = nil
@@ -261,8 +362,8 @@ function ShopController.start()
 		else
 			freeTutorialProductIdByShopId[payload.shopId] = nil
 		end
-		renderIfReady(view)
 		FrameManager.open(payload.shopId)
+		renderIfReady(view)
 	end)
 
 	economyUpdated.OnClientEvent:Connect(function(economySnapshot: EconomySnapshot)

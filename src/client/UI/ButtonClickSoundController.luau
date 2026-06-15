@@ -96,6 +96,10 @@ local function getButtonSoundKey(button: GuiButtonLike): ButtonSoundKey
 	return "Click"
 end
 
+local function shouldSuppressButtonSound(button: GuiButtonLike): boolean
+	return button:GetAttribute(ButtonSoundConfig.SuppressSoundAttributeName) == true
+end
+
 local function unbindButton(button: GuiButtonLike)
 	local connection = boundConnectionsByButton[button]
 	if connection == nil then
@@ -112,6 +116,10 @@ local function bindButton(button: GuiButtonLike)
 	end
 
 	boundConnectionsByButton[button] = button.Activated:Connect(function()
+		if shouldSuppressButtonSound(button) then
+			return
+		end
+
 		playButtonSound(getButtonSoundKey(button))
 	end)
 

@@ -63,6 +63,7 @@ local function findWidgets(definition: ShopDefinition): WorldShopWidgets?
 	end
 
 	nameLabel.Text = definition.displayName
+	timerLabel.Visible = definition.usesStock
 
 	return {
 		nameLabel = nameLabel,
@@ -73,12 +74,16 @@ end
 local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 	local currentTime = Workspace:GetServerTimeNow()
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
+		local definition = ShopCatalog.getShopDefinition(shopId)
+		if not definition.usesStock then
+			continue
+		end
+
 		local state = snapshot.shopsById[shopId]
 		if state == nil then
 			continue
 		end
 
-		local definition = ShopCatalog.getShopDefinition(shopId)
 		local shouldResetStock = false
 		while state.nextRestockAt <= currentTime do
 			state.nextRestockAt += definition.restockIntervalSeconds
@@ -132,7 +137,11 @@ local function render()
 	advanceRestockIfNeeded(snapshot)
 
 	for shopId, widgets in pairs(widgetsByShopId) do
-		widgets.timerLabel.Text = string.format("Restock: %s", formatSeconds(getSecondsUntilRestock(snapshot, shopId)))
+		local definition = ShopCatalog.getShopDefinition(shopId)
+		widgets.timerLabel.Visible = definition.usesStock
+		if definition.usesStock then
+			widgets.timerLabel.Text = string.format("Restock: %s", formatSeconds(getSecondsUntilRestock(snapshot, shopId)))
+		end
 	end
 end
 

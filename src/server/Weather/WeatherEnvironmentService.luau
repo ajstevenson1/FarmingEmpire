@@ -178,7 +178,13 @@ function WeatherEnvironmentService.applyEvent(eventDefinition: WeatherEventDefin
 	clearParticles()
 	applySky(eventDefinition.sky.activeSkyName)
 	cloneParticles(eventDefinition.particles.topParticleName, eventDefinition.particles.topTargetName, eventDefinition.particles.cloneCount)
-	cloneParticles(eventDefinition.particles.bottomParticleName, eventDefinition.particles.bottomTargetName, eventDefinition.particles.cloneCount)
+
+	local bottomParticleName = eventDefinition.particles.bottomParticleName
+	local bottomTargetName = eventDefinition.particles.bottomTargetName
+	if bottomParticleName ~= nil and bottomTargetName ~= nil then
+		cloneParticles(bottomParticleName, bottomTargetName, eventDefinition.particles.cloneCount)
+	end
+
 	tweenClouds(eventDefinition.clouds)
 end
 

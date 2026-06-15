@@ -519,6 +519,10 @@ local function handleSellRequest(player: Player, requestedTarget: unknown)
 		return
 	end
 
+	if WindmillConfig.isWindmillBuildingId(validatedTarget.buildingId) then
+		return
+	end
+
 	local storedOutput = ProductionService.getStoredOutput(validatedTarget.part)
 	if storedOutput ~= nil then
 		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)

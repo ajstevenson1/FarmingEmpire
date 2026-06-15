@@ -10,6 +10,7 @@ local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
+local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
@@ -24,6 +25,7 @@ local PlotExpansionTypes = require(plotsFolder:WaitForChild("PlotExpansionTypes"
 local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
+local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
@@ -342,6 +344,17 @@ local function cloneOfflineData(offline: PlayerOfflineData): PlayerOfflineData
 		pendingCider = sanitizeAmount(offline.pendingCider),
 		ciderPerSecondSnapshot = sanitizeRate(offline.ciderPerSecondSnapshot),
 	}
+end
+
+local function cloneOwnedWindmillIds(ownedWindmillIds: { [BuildingId]: boolean }): { [BuildingId]: boolean }
+	local clone: { [BuildingId]: boolean } = {}
+	for windmillId, isOwned in pairs(ownedWindmillIds) do
+		if isOwned and WindmillConfig.isWindmillBuildingId(windmillId) then
+			clone[windmillId] = true
+		end
+	end
+
+	return clone
 end
 
 local function clonePlaytimeRewardsData(playtimeRewards: PlayerPlaytimeRewardsData): PlayerPlaytimeRewardsData
@@ -687,6 +700,34 @@ function PlayerDataService.setOfflineCiderPerSecondSnapshot(player: Player, cide
 	end
 
 	record.data.offline.ciderPerSecondSnapshot = sanitizedSnapshot
+	markDirty(record)
+end
+
+function PlayerDataService.getOwnedWindmillIds(player: Player): { [BuildingId]: boolean }
+	local record = loadPlayerData(player)
+	return cloneOwnedWindmillIds(record.data.ownedWindmillIds)
+end
+
+function PlayerDataService.playerOwnsWindmill(player: Player, windmillId: BuildingId): boolean
+	if not WindmillConfig.isWindmillBuildingId(windmillId) then
+		return false
+	end
+
+	local record = loadPlayerData(player)
+	return record.data.ownedWindmillIds[windmillId] == true
+end
+
+function PlayerDataService.markWindmillOwned(player: Player, windmillId: BuildingId)
+	if not WindmillConfig.isWindmillBuildingId(windmillId) then
+		return
+	end
+
+	local record = loadPlayerData(player)
+	if record.data.ownedWindmillIds[windmillId] == true then
+		return
+	end
+
+	record.data.ownedWindmillIds[windmillId] = true
 	markDirty(record)
 end
 

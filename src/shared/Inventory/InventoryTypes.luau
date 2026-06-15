@@ -33,7 +33,13 @@ export type ItemId =
 	| "DyingForgeMill"
 	| "DeepSpaceMill"
 	| "OfflineEarningsWindmill"
+	| "ModernAFKWindmill"
+	| "GoldAFKWindmill"
+	| "DiamondAFKWindmill"
 	| "CiderCashWindmill"
+	| "ModernCashWindmill"
+	| "GoldCashWindmill"
+	| "DiamondCashWindmill"
 export type ItemKind = "Tool" | "Placeable"
 
 export type ItemDefinition = {
@@ -43,6 +49,7 @@ export type ItemDefinition = {
 	maxStack: number,
 	inventoryOrder: number,
 	toolAssetName: string?,
+	imageAssetId: string,
 }
 
 export type InventoryEntry = {

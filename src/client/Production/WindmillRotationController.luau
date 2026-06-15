@@ -26,7 +26,7 @@ type TrackedWindmill = {
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local CURRENT_VISUAL_MODEL_NAME = "CurrentVisual"
 local ROTATE_PART_NAME = "Rotate"
-local BASE_ROTATION_RADIANS_PER_SECOND = math.rad(90)
+local BASE_ROTATION_RADIANS_PER_SECOND = -math.rad(90)
 
 local hasStarted = false
 local rotationSpeedMultiplier = 1

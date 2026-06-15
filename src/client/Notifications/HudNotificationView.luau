@@ -1,33 +1,66 @@
 --!strict
 
 local Players = game:GetService("Players")
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local notificationsFolder = sharedFolder:WaitForChild("Notifications") :: Folder
+local NotificationConfig = require(notificationsFolder:WaitForChild("NotificationConfig") :: ModuleScript)
 local NotificationTypes = require(notificationsFolder:WaitForChild("NotificationTypes") :: ModuleScript)
 
 type NotificationPayload = NotificationTypes.NotificationPayload
+type NotificationVariant = NotificationTypes.NotificationVariant
+type ToastStyle = NotificationConfig.ToastStyle
 
 type Widgets = {
-	container: GuiObject,
-	textLabel: TextLabel,
+	adminContainer: GuiObject,
+	adminTextLabel: TextLabel,
+	toastContainer: GuiObject,
+	toastTemplate: TextLabel,
 }
 
 export type HudNotificationView = {
 	_widgets: Widgets,
-	show: (self: HudNotificationView, notification: NotificationPayload) -> (),
+	_activeToasts: { TextLabel },
+	_toastSequence: number,
+	showAdminAnnouncement: (self: HudNotificationView, notification: NotificationPayload) -> (),
+	showToast: (self: HudNotificationView, notification: NotificationPayload) -> (),
 }
 
 local HUD_NAME = "HUD"
-local NOTIFICATION_NAME = "Notification"
+local ADMIN_NOTIFICATION_NAME = "AdminAbuse"
+local TOAST_NOTIFICATION_NAME = "Notification"
 local TEXT_LABEL_NAME = "Text"
+local STROKE_NAME = "Stroke"
 
 local DEFAULT_TYPEWRITER_CHARACTERS_PER_SECOND = 32
-local DEFAULT_DURATION_SECONDS = 5
+local DEFAULT_ADMIN_DURATION_SECONDS = 5
+local DEFAULT_TOAST_VARIANT: NotificationVariant = "Info"
+local TOAST_FADE_EASING = TweenInfo.new(
+	NotificationConfig.toastFadeSeconds,
+	Enum.EasingStyle.Quad,
+	Enum.EasingDirection.Out
+)
 
 local HudNotificationView = {}
 HudNotificationView.__index = HudNotificationView
+
+local function getTextStroke(textLabel: TextLabel): UIStroke?
+	local namedStroke = textLabel:FindFirstChild(STROKE_NAME)
+	if namedStroke ~= nil then
+		assert(namedStroke:IsA("UIStroke"), string.format("%s.%s must be a UIStroke", textLabel:GetFullName(), STROKE_NAME))
+		return namedStroke
+	end
+
+	return textLabel:FindFirstChildOfClass("UIStroke")
+end
+
+local function getRequiredTextLabel(parent: Instance, childName: string, pathForError: string): TextLabel
+	local child = parent:WaitForChild(childName)
+	assert(child:IsA("TextLabel"), string.format("%s must be a TextLabel", pathForError))
+	return child
+end
 
 local function getWidgets(): Widgets
 	local localPlayer = Players.LocalPlayer
@@ -40,15 +73,17 @@ local function getWidgets(): Widgets
 	local hud = rootGui:WaitForChild(HUD_NAME)
 	assert(hud:IsA("GuiObject"), "GUI.HUD must be a GuiObject")
 
-	local notification = hud:WaitForChild(NOTIFICATION_NAME)
-	assert(notification:IsA("GuiObject"), "GUI.HUD.Notification must be a GuiObject")
+	local adminNotification = hud:WaitForChild(ADMIN_NOTIFICATION_NAME)
+	assert(adminNotification:IsA("GuiObject"), "GUI.HUD.AdminAbuse must be a GuiObject")
 
-	local textLabel = notification:WaitForChild(TEXT_LABEL_NAME)
-	assert(textLabel:IsA("TextLabel"), "GUI.HUD.Notification.Text must be a TextLabel")
+	local toastNotification = hud:WaitForChild(TOAST_NOTIFICATION_NAME)
+	assert(toastNotification:IsA("GuiObject"), "GUI.HUD.Notification must be a GuiObject")
 
 	return {
-		container = notification,
-		textLabel = textLabel,
+		adminContainer = adminNotification,
+		adminTextLabel = getRequiredTextLabel(adminNotification, TEXT_LABEL_NAME, "GUI.HUD.AdminAbuse.Text"),
+		toastContainer = toastNotification,
+		toastTemplate = getRequiredTextLabel(toastNotification, TEXT_LABEL_NAME, "GUI.HUD.Notification.Text"),
 	}
 end
 
@@ -98,39 +133,137 @@ local function playTypewriter(textLabel: TextLabel, text: string, charactersPerS
 	end
 end
 
+local function getToastStyle(variant: NotificationVariant?): ToastStyle
+	local toastVariant = variant or DEFAULT_TOAST_VARIANT
+	return NotificationConfig.toastStyles[toastVariant]
+end
+
+local function getDisplayDurationSeconds(notification: NotificationPayload, defaultDurationSeconds: number): number
+	return if notification.durationSeconds > 0 then notification.durationSeconds else defaultDurationSeconds
+end
+
+local function removeActiveToast(self: HudNotificationView, toast: TextLabel)
+	for index, activeToast in ipairs(self._activeToasts) do
+		if activeToast == toast then
+			table.remove(self._activeToasts, index)
+			break
+		end
+	end
+
+	if toast.Parent ~= nil then
+		toast:Destroy()
+	end
+end
+
+local function enforceToastLimit(self: HudNotificationView)
+	while #self._activeToasts > NotificationConfig.toastMaxActive do
+		local oldestToast = table.remove(self._activeToasts, 1)
+		if oldestToast ~= nil and oldestToast.Parent ~= nil then
+			oldestToast:Destroy()
+		end
+	end
+end
+
+local function applyToastStyle(toast: TextLabel, variant: NotificationVariant?)
+	local style = getToastStyle(variant)
+	toast.TextColor3 = style.textColor
+
+	local stroke = getTextStroke(toast)
+	if stroke ~= nil then
+		stroke.Color = style.strokeColor
+		stroke.Transparency = 0
+	end
+end
+
+local function resetToastTransparency(toast: TextLabel)
+	toast.TextTransparency = 0
+	toast.TextStrokeTransparency = 0
+
+	local stroke = getTextStroke(toast)
+	if stroke ~= nil then
+		stroke.Transparency = 0
+	end
+end
+
+local function fadeToast(toast: TextLabel)
+	if toast.Parent == nil then
+		return
+	end
+
+	TweenService:Create(toast, TOAST_FADE_EASING, {
+		TextTransparency = 1,
+		TextStrokeTransparency = 1,
+	}):Play()
+
+	local stroke = getTextStroke(toast)
+	if stroke ~= nil then
+		TweenService:Create(stroke, TOAST_FADE_EASING, {
+			Transparency = 1,
+		}):Play()
+	end
+end
+
 function HudNotificationView.new(): HudNotificationView
 	local self = setmetatable({
 		_widgets = getWidgets(),
+		_activeToasts = {},
+		_toastSequence = 0,
 	}, HudNotificationView) :: HudNotificationView
 
-	self._widgets.container.Visible = false
-	self._widgets.textLabel.Text = ""
+	self._widgets.adminContainer.Visible = false
+	self._widgets.adminTextLabel.Text = ""
+	self._widgets.toastContainer.Visible = true
+	self._widgets.toastTemplate.Text = ""
+	self._widgets.toastTemplate.Visible = false
 
 	return self
 end
 
-function HudNotificationView:show(notification: NotificationPayload)
+function HudNotificationView:showAdminAnnouncement(notification: NotificationPayload)
 	local widgets = self._widgets
-	widgets.container.Visible = true
+	widgets.adminContainer.Visible = true
 
 	if notification.effect == "Typewriter" then
-		widgets.textLabel.Text = ""
+		widgets.adminTextLabel.Text = ""
 		playTypewriter(
-			widgets.textLabel,
+			widgets.adminTextLabel,
 			notification.text,
 			notification.typewriterCharactersPerSecond or DEFAULT_TYPEWRITER_CHARACTERS_PER_SECOND
 		)
 	else
-		widgets.textLabel.Text = notification.text
+		widgets.adminTextLabel.Text = notification.text
 	end
 
-	local displayDurationSeconds = if notification.durationSeconds > 0
-		then notification.durationSeconds
-		else DEFAULT_DURATION_SECONDS
-	task.wait(displayDurationSeconds)
+	task.wait(getDisplayDurationSeconds(notification, DEFAULT_ADMIN_DURATION_SECONDS))
 
-	widgets.textLabel.Text = ""
-	widgets.container.Visible = false
+	widgets.adminTextLabel.Text = ""
+	widgets.adminContainer.Visible = false
+end
+
+function HudNotificationView:showToast(notification: NotificationPayload)
+	self._toastSequence += 1
+
+	local toast = self._widgets.toastTemplate:Clone()
+	toast.Name = string.format("Notification%d", self._toastSequence)
+	toast.LayoutOrder = self._toastSequence
+	toast.Text = notification.text
+	toast.Visible = true
+	resetToastTransparency(toast)
+	applyToastStyle(toast, notification.variant)
+	toast.Parent = self._widgets.toastContainer
+
+	table.insert(self._activeToasts, toast)
+	enforceToastLimit(self)
+
+	local displayDurationSeconds = getDisplayDurationSeconds(notification, NotificationConfig.toastDurationSeconds)
+	local fadeDelaySeconds = math.min(NotificationConfig.toastFadeDelaySeconds, displayDurationSeconds)
+	task.delay(fadeDelaySeconds, function()
+		fadeToast(toast)
+	end)
+
+	task.delay(displayDurationSeconds, function()
+		removeActiveToast(self, toast)
+	end)
 end
 
 return HudNotificationView
