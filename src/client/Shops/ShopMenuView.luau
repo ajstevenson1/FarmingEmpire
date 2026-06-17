@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
+local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 local uiFolder = sharedFolder:WaitForChild("UI") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
@@ -14,14 +15,17 @@ local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local ButtonSoundConfig = require(uiFolder:WaitForChild("ButtonSoundConfig") :: ModuleScript)
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
+local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local ShopCatalog = require(shopsFolder:WaitForChild("ShopCatalog") :: ModuleScript)
 local ShopTypes = require(shopsFolder:WaitForChild("ShopTypes") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type BuildingId = BuildingTypes.BuildingId
+type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
+type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 type WindmillCategory = WindmillConfig.WindmillCategory
 
 export type RenderProduct = {
@@ -44,6 +48,7 @@ type ShopWidgets = {
 export type ShopMenuView = {
 	_widgetsByShopId: { [ShopId]: ShopWidgets },
 	_purchaseCallbacks: { (ShopProductId) -> () },
+	_robuxPurchaseCallbacks: { (ShopProductId) -> () },
 	_closeCallbacks: { (ShopId) -> () },
 	_rowFramesByShopId: { [ShopId]: { [string]: GuiObject } },
 	_robuxPriceTextByDeveloperProductId: { [string]: string },
@@ -52,6 +57,7 @@ export type ShopMenuView = {
 	render: (self: ShopMenuView, shopId: ShopId, secondsUntilRestock: number, products: { RenderProduct }) -> (),
 	connectCloseRequested: (self: ShopMenuView, listener: (ShopId) -> ()) -> (),
 	connectPurchaseRequested: (self: ShopMenuView, listener: (ShopProductId) -> ()) -> (),
+	connectRobuxPurchaseRequested: (self: ShopMenuView, listener: (ShopProductId) -> ()) -> (),
 	destroy: (self: ShopMenuView) -> (),
 }
 
@@ -90,18 +96,33 @@ local ITEM_IMAGE_NAMES: { string } = { "ItemImage", "Image", "Icon" }
 local ITEM_NAME_LABEL_NAMES: { string } = { "ItemName", "Name", "NameLabel", "Title", "TitleLabel" }
 local ITEM_STOCK_LABEL_NAMES: { string } = { "ItemStock", "Stock", "StockLabel" }
 local ITEM_PRICE_LABEL_NAMES: { string } = { "ItemPrice", "Price", "PriceLabel" }
+local ITEM_DESCRIPTION_LABEL_NAMES: { string } = { "Desc", "Description", "DescriptionLabel" }
+local PER_SECOND_LABEL_NAMES: { string } = { "PerSec" }
 local BUY_BUTTON_NAMES: { string } = { "BuyButton", "Buy", "PurchaseButton", "Purchase" }
 local ROBUX_BUTTON_NAMES: { string } = { "RobuxButton", "Robux", "PremiumButton" }
 local GENERATED_WINDMILL_PRODUCT_ATTRIBUTE = "GeneratedWindmillProduct"
 local WINDMILL_BUY_CONNECTED_ATTRIBUTE = "WindmillBuyConnected"
 local WINDMILL_BUY_PRODUCT_ID_ATTRIBUTE = "WindmillBuyProductId"
+local ROBUX_BUY_CONNECTED_ATTRIBUTE = "RobuxBuyConnected"
 
 local PRODUCT_IMAGE_PREFIX = "rbxassetid://"
 local PRODUCT_THUMBNAIL_PREFIX = "rbxthumb://"
 local ROBUX_PRICE_UNAVAILABLE_TEXT = "N/A"
 local ROBUX_PRICE_LOADING_TEXT = "..."
+local ROBUX_PRICE_PREFIX = " "
 local OWNED_BUTTON_TEXT = "Owned"
 local OWNED_BUTTON_COLOR = Color3.fromRGB(37, 145, 65)
+
+local productionRatePerSecondByProductId: { [ShopProductId]: number } = {}
+
+for _, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+	productionRatePerSecondByProductId[treeDefinition.id :: ShopProductId] = treeDefinition.fruitPerInterval
+		/ ProgressionConfig.getTreeProduceIntervalSeconds()
+end
+
+for _, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+	productionRatePerSecondByProductId[millDefinition.id :: ShopProductId] = millDefinition.outputAmount
+end
 
 local ShopMenuView = {}
 ShopMenuView.__index = ShopMenuView
@@ -284,6 +305,25 @@ local function formatPlainAmount(amount: number): string
 	})
 end
 
+local function formatPerSecond(ratePerSecond: number): string
+	return string.format("%s/s", NumberFormatter.formatAbbreviated(math.max(0, ratePerSecond), {
+		decimalPlaces = 1,
+		trimTrailingZeros = true,
+	}))
+end
+
+local function formatPercent(percent: number): string
+	local roundedWholePercent = math.floor(percent + 0.5)
+	if math.abs(percent - roundedWholePercent) < 0.05 then
+		return tostring(roundedWholePercent)
+	end
+
+	return NumberFormatter.formatAbbreviated(math.max(0, percent), {
+		decimalPlaces = 1,
+		trimTrailingZeros = true,
+	})
+end
+
 local function formatStock(stockRemaining: number): string
 	return string.format("Stock: %d", math.max(0, math.floor(stockRemaining)))
 end
@@ -304,12 +344,17 @@ local function getImageAssetText(imageAssetId: string): string
 	return string.format("rbxthumb://type=Asset&id=%s&w=420&h=420", imageAssetId)
 end
 
-local function getDeveloperProductPriceText(developerProductId: string, priceCache: { [string]: string }): string
-	if developerProductId == "" then
+local function getDeveloperProductPriceText(developerProductId: number?, priceCache: { [string]: string }): string
+	if developerProductId == nil then
 		return ROBUX_PRICE_UNAVAILABLE_TEXT
 	end
 
-	return priceCache[developerProductId] or ROBUX_PRICE_LOADING_TEXT
+	local priceText = priceCache[tostring(developerProductId)] or ROBUX_PRICE_LOADING_TEXT
+	if priceText == ROBUX_PRICE_UNAVAILABLE_TEXT then
+		return ROBUX_PRICE_UNAVAILABLE_TEXT
+	end
+
+	return ROBUX_PRICE_PREFIX .. priceText
 end
 
 local function createShopWidgets(framesFolder: Instance, templatesFolder: Folder, shopId: ShopId): ShopWidgets
@@ -345,45 +390,40 @@ local function createShopWidgets(framesFolder: Instance, templatesFolder: Folder
 	}
 end
 
-local function fetchDeveloperProductPriceAsync(self: ShopMenuView, developerProductId: string)
-	if developerProductId == "" then
+local function fetchDeveloperProductPriceAsync(self: ShopMenuView, developerProductId: number?)
+	if developerProductId == nil then
 		return
 	end
 
-	if self._robuxPriceTextByDeveloperProductId[developerProductId] ~= nil then
+	local developerProductIdKey = tostring(developerProductId)
+	if self._robuxPriceTextByDeveloperProductId[developerProductIdKey] ~= nil then
 		return
 	end
 
-	if self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] == true then
+	if self._pendingRobuxPriceFetchByDeveloperProductId[developerProductIdKey] == true then
 		return
 	end
 
-	local productId = tonumber(developerProductId)
-	if productId == nil then
-		self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
-		return
-	end
-
-	self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] = true
+	self._pendingRobuxPriceFetchByDeveloperProductId[developerProductIdKey] = true
 	task.spawn(function()
 		local success, productInfo = pcall(function()
-			return MarketplaceService:GetProductInfo(productId, Enum.InfoType.Product)
+			return MarketplaceService:GetProductInfo(developerProductId, Enum.InfoType.Product)
 		end)
 
-		self._pendingRobuxPriceFetchByDeveloperProductId[developerProductId] = nil
+		self._pendingRobuxPriceFetchByDeveloperProductId[developerProductIdKey] = nil
 		if not success or type(productInfo) ~= "table" then
-			self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
+			self._robuxPriceTextByDeveloperProductId[developerProductIdKey] = ROBUX_PRICE_UNAVAILABLE_TEXT
 			return
 		end
 
 		local productInfoTable = productInfo :: { [string]: unknown }
 		local priceInRobux = productInfoTable.PriceInRobux
 		if type(priceInRobux) ~= "number" then
-			self._robuxPriceTextByDeveloperProductId[developerProductId] = ROBUX_PRICE_UNAVAILABLE_TEXT
+			self._robuxPriceTextByDeveloperProductId[developerProductIdKey] = ROBUX_PRICE_UNAVAILABLE_TEXT
 			return
 		end
 
-		self._robuxPriceTextByDeveloperProductId[developerProductId] = NumberFormatter.formatFull(priceInRobux)
+		self._robuxPriceTextByDeveloperProductId[developerProductIdKey] = NumberFormatter.formatFull(priceInRobux)
 	end)
 end
 
@@ -395,6 +435,25 @@ local function getWindmillCategory(renderProduct: RenderProduct): WindmillCatego
 
 	local windmillDefinition = WindmillConfig.getDefinition(itemId :: BuildingId)
 	return if windmillDefinition == nil then nil else windmillDefinition.category
+end
+
+local function getWindmillDescriptionText(renderProduct: RenderProduct): string
+	local itemId = renderProduct.productDefinition.itemId
+	if not WindmillConfig.isWindmillBuildingId(itemId) then
+		return ""
+	end
+
+	local windmillDefinition = WindmillConfig.getDefinition(itemId :: BuildingId)
+	if windmillDefinition == nil then
+		return ""
+	end
+
+	local category = windmillDefinition.category
+	local boost = if category == "Offline"
+		then windmillDefinition.boosts.offlineEarningsMultiplierBonus
+		else windmillDefinition.boosts.ciderSellCashMultiplierBonus
+
+	return string.format("+%s%% %s", formatPercent(boost * 100), category)
 end
 
 local function groupWindmillProductsByCategory(products: { RenderProduct }): { [WindmillCategory]: { RenderProduct } }
@@ -478,6 +537,7 @@ local function populateWindmillProductRow(self: ShopMenuView, row: GuiObject, re
 	row.Visible = true
 	setProductImage(row, renderProduct.productDefinition.imageAssetId)
 	setOptionalNamedText(row, ITEM_NAME_LABEL_NAMES, renderProduct.displayName)
+	setOptionalNamedText(row, ITEM_DESCRIPTION_LABEL_NAMES, getWindmillDescriptionText(renderProduct))
 	setOptionalNamedTextVisible(row, ITEM_STOCK_LABEL_NAMES, false)
 	setOptionalNamedText(
 		row,
@@ -589,6 +649,8 @@ local function populateProductRow(
 	setRequiredNamedText(row, "ItemName", renderProduct.displayName)
 	setRequiredNamedText(row, "ItemStock", formatStock(renderProduct.stockRemaining))
 	setRequiredNamedText(row, "ItemPrice", formatCash(renderProduct.effectivePrice))
+	local ratePerSecond = productionRatePerSecondByProductId[productDefinition.id]
+	setOptionalNamedText(row, PER_SECOND_LABEL_NAMES, if ratePerSecond == nil then "" else formatPerSecond(ratePerSecond))
 
 	local buyButton = findRequiredDescendant(row, "BuyButton")
 	assert(buyButton:IsA("GuiButton"), string.format("%s must be a GuiButton", buyButton:GetFullName()))
@@ -602,6 +664,10 @@ local function populateProductRow(
 
 	local robuxButton = findRequiredDescendant(row, "RobuxButton")
 	assert(robuxButton:IsA("GuiButton"), string.format("%s must be a GuiButton", robuxButton:GetFullName()))
+	local canBuyWithRobux = productDefinition.developerProductId ~= nil and isInStock
+	robuxButton.Active = canBuyWithRobux
+	robuxButton.AutoButtonColor = canBuyWithRobux
+	robuxButton:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, not canBuyWithRobux)
 	setButtonText(
 		robuxButton,
 		getDeveloperProductPriceText(productDefinition.developerProductId, self._robuxPriceTextByDeveloperProductId)
@@ -622,12 +688,27 @@ local function createProductRow(
 
 	local buyButton = findRequiredDescendant(row, "BuyButton")
 	assert(buyButton:IsA("GuiButton"), string.format("%s must be a GuiButton", buyButton:GetFullName()))
+	local robuxButton = findRequiredDescendant(row, "RobuxButton")
+	assert(robuxButton:IsA("GuiButton"), string.format("%s must be a GuiButton", robuxButton:GetFullName()))
 
 	buyButton.Activated:Connect(function()
 		for _, callback in ipairs(self._purchaseCallbacks) do
 			callback(productDefinition.id)
 		end
 	end)
+
+	if robuxButton:GetAttribute(ROBUX_BUY_CONNECTED_ATTRIBUTE) ~= true then
+		robuxButton:SetAttribute(ROBUX_BUY_CONNECTED_ATTRIBUTE, true)
+		robuxButton.Activated:Connect(function()
+			if productDefinition.developerProductId == nil then
+				return
+			end
+
+			for _, callback in ipairs(self._robuxPurchaseCallbacks) do
+				callback(productDefinition.id)
+			end
+		end)
+	end
 
 	return row
 end
@@ -645,6 +726,7 @@ function ShopMenuView.new(): ShopMenuView
 	local self = setmetatable({
 		_widgetsByShopId = widgetsByShopId,
 		_purchaseCallbacks = {},
+		_robuxPurchaseCallbacks = {},
 		_closeCallbacks = {},
 		_rowFramesByShopId = {
 			TreesShop = {},
@@ -712,6 +794,10 @@ end
 
 function ShopMenuView:connectPurchaseRequested(listener: (ShopProductId) -> ())
 	table.insert(self._purchaseCallbacks, listener)
+end
+
+function ShopMenuView:connectRobuxPurchaseRequested(listener: (ShopProductId) -> ())
+	table.insert(self._robuxPurchaseCallbacks, listener)
 end
 
 function ShopMenuView:destroy()

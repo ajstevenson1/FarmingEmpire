@@ -75,6 +75,10 @@ export type PlayerTutorialData = {
 	completed: boolean,
 }
 
+export type DeveloperProductReceiptData = {
+	processedPurchaseIds: { [string]: boolean },
+}
+
 export type PlayerData = {
 	schemaVersion: number,
 	economy: PlayerEconomyData,
@@ -88,6 +92,7 @@ export type PlayerData = {
 	playtimeRewards: PlayerPlaytimeRewardsData,
 	dailyRewards: PlayerDailyRewardsData,
 	tutorial: PlayerTutorialData,
+	developerProductReceipts: DeveloperProductReceiptData,
 }
 
 export type LoadResult = {
@@ -95,8 +100,8 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON81"
-local CURRENT_SCHEMA_VERSION = 3
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON94"
+local CURRENT_SCHEMA_VERSION = 4
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -176,6 +181,27 @@ local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
 	return {
 		stepIndex = stepIndex,
 		completed = rawTutorialValues.completed == true,
+	}
+end
+
+local function sanitizeDeveloperProductReceiptData(rawReceiptData: unknown): DeveloperProductReceiptData
+	local processedPurchaseIds: { [string]: boolean } = {}
+	local rawReceiptValues: { [string]: unknown } = {}
+	if type(rawReceiptData) == "table" then
+		rawReceiptValues = rawReceiptData :: { [string]: unknown }
+	end
+
+	local rawProcessedPurchaseIds = rawReceiptValues.processedPurchaseIds
+	if type(rawProcessedPurchaseIds) == "table" then
+		for rawPurchaseId, rawIsProcessed in pairs(rawProcessedPurchaseIds :: { [string]: unknown }) do
+			if type(rawPurchaseId) == "string" and rawPurchaseId ~= "" and rawIsProcessed == true then
+				processedPurchaseIds[rawPurchaseId] = true
+			end
+		end
+	end
+
+	return {
+		processedPurchaseIds = processedPurchaseIds,
 	}
 end
 
@@ -438,6 +464,9 @@ local function createDefaultData(): PlayerData
 		tutorial = {
 			stepIndex = 1,
 			completed = false,
+		},
+		developerProductReceipts = {
+			processedPurchaseIds = {},
 		},
 	}
 end
@@ -702,6 +731,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		playtimeRewards = sanitizePlaytimeRewardsData(rawPlaytimeRewards),
 		dailyRewards = sanitizeDailyRewardsData(rawDailyRewards),
 		tutorial = sanitizeTutorialData(rawDataTable.tutorial),
+		developerProductReceipts = sanitizeDeveloperProductReceiptData(rawDataTable.developerProductReceipts),
 	}
 end
 
@@ -791,6 +821,7 @@ local function cloneData(data: PlayerData): PlayerData
 			totalClaims = sanitizeAmount(data.dailyRewards.totalClaims),
 		},
 		tutorial = sanitizeTutorialData(data.tutorial),
+		developerProductReceipts = sanitizeDeveloperProductReceiptData(data.developerProductReceipts),
 	}
 end
 

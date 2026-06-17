@@ -6,6 +6,7 @@ local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Fo
 local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local ShopDeveloperProductConfig = require(script.Parent:WaitForChild("ShopDeveloperProductConfig") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 
 type ShopDefinition = ShopTypes.ShopDefinition
@@ -17,7 +18,6 @@ type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local RESTOCK_INTERVAL_SECONDS = 5 * 60
-local EMPTY_DEVELOPER_PRODUCT_ID = ""
 
 local shopIds: { ShopId } = {
 	"TreesShop",
@@ -74,7 +74,7 @@ for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTre
 		shopId = "TreesShop",
 		itemId = treeDefinition.id,
 		imageAssetId = getProductImageAssetId(treeDefinition.id :: ShopProductId),
-		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
+		developerProductId = ShopDeveloperProductConfig.getDeveloperProductId(treeDefinition.id :: ShopProductId),
 		price = treeDefinition.price,
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
@@ -92,7 +92,7 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 		shopId = "MillsShop",
 		itemId = millDefinition.id,
 		imageAssetId = getProductImageAssetId(millDefinition.id :: ShopProductId),
-		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
+		developerProductId = ShopDeveloperProductConfig.getDeveloperProductId(millDefinition.id :: ShopProductId),
 		price = millDefinition.price,
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
@@ -110,9 +110,9 @@ for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDe
 		shopId = "WindmillShop",
 		itemId = windmillDefinition.id,
 		imageAssetId = getProductImageAssetId(windmillDefinition.id :: ShopProductId),
-		developerProductId = EMPTY_DEVELOPER_PRODUCT_ID,
+		developerProductId = ShopDeveloperProductConfig.getDeveloperProductId(windmillDefinition.id :: ShopProductId),
 		price = windmillDefinition.price,
-		priceCurrency = "Apple",
+		priceCurrency = "Cider",
 		quantityPerPurchase = 1,
 		stockPerRestock = windmillDefinition.stockPerRestock,
 		sortOrder = 10 + index - 1,
@@ -122,11 +122,15 @@ end
 productsByShopId.WindmillShop = table.freeze(windmillProducts)
 
 local productsByShopIdAndProductId: { [ShopId]: { [ShopProductId]: ShopProductDefinition } } = {}
+local productsByDeveloperProductId: { [number]: ShopProductDefinition } = {}
 
 for shopId, shopProducts in pairs(productsByShopId) do
 	local productsById: { [ShopProductId]: ShopProductDefinition } = {}
 	for _, productDefinition in ipairs(shopProducts) do
 		productsById[productDefinition.id] = productDefinition
+		if productDefinition.developerProductId ~= nil then
+			productsByDeveloperProductId[productDefinition.developerProductId] = productDefinition
+		end
 	end
 
 	productsByShopIdAndProductId[shopId] = table.freeze(productsById)
@@ -162,6 +166,10 @@ function ShopCatalog.getShopProductDefinition(shopId: ShopId, productId: ShopPro
 	end
 
 	return productsById[productId]
+end
+
+function ShopCatalog.getShopProductDefinitionByDeveloperProductId(developerProductId: number): ShopProductDefinition?
+	return productsByDeveloperProductId[developerProductId]
 end
 
 function ShopCatalog.isShopId(value: string): boolean

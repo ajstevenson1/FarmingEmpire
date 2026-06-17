@@ -30,6 +30,7 @@ local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") ::
 type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
 type HotbarSlotData = PlayerDataStore.HotbarSlotData
+type DeveloperProductReceiptData = PlayerDataStore.DeveloperProductReceiptData
 export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
 export type PlayerTutorialData = PlayerDataStore.PlayerTutorialData
@@ -392,6 +393,19 @@ local function cloneDailyRewardsData(dailyRewards: PlayerDailyRewardsData): Play
 		lastClaimUnixTime = sanitizeDuration(dailyRewards.lastClaimUnixTime),
 		nextRewardIndex = nextRewardIndex,
 		totalClaims = sanitizeAmount(dailyRewards.totalClaims),
+	}
+end
+
+local function cloneDeveloperProductReceiptData(receiptData: DeveloperProductReceiptData): DeveloperProductReceiptData
+	local processedPurchaseIds: { [string]: boolean } = {}
+	for purchaseId, isProcessed in pairs(receiptData.processedPurchaseIds) do
+		if isProcessed and purchaseId ~= "" then
+			processedPurchaseIds[purchaseId] = true
+		end
+	end
+
+	return {
+		processedPurchaseIds = processedPurchaseIds,
 	}
 end
 
@@ -892,6 +906,31 @@ function PlayerDataService.getTutorialData(player: Player): PlayerTutorialData
 		stepIndex = record.data.tutorial.stepIndex,
 		completed = record.data.tutorial.completed,
 	}
+end
+
+function PlayerDataService.hasProcessedDeveloperProductPurchase(player: Player, purchaseId: string): boolean
+	if purchaseId == "" then
+		return false
+	end
+
+	local record = loadPlayerData(player)
+	return record.data.developerProductReceipts.processedPurchaseIds[purchaseId] == true
+end
+
+function PlayerDataService.markDeveloperProductPurchaseProcessed(player: Player, purchaseId: string)
+	if purchaseId == "" then
+		return
+	end
+
+	local record = loadPlayerData(player)
+	if record.data.developerProductReceipts.processedPurchaseIds[purchaseId] == true then
+		return
+	end
+
+	local receiptData = cloneDeveloperProductReceiptData(record.data.developerProductReceipts)
+	receiptData.processedPurchaseIds[purchaseId] = true
+	record.data.developerProductReceipts = receiptData
+	markDirty(record)
 end
 
 function PlayerDataService.setTutorialStep(player: Player, stepIndex: number)

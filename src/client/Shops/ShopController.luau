@@ -1,5 +1,7 @@
 --!strict
 
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -38,6 +40,7 @@ type ShopMenuViewInstance = ShopMenuView.ShopMenuView
 local MENU_FRAME_GROUP = "Menu"
 local hasStarted = false
 local activeShopId: ShopId? = nil
+local localPlayer = Players.LocalPlayer
 local latestSnapshot: ShopSnapshot? = nil
 local latestResourceSnapshot: ResourceSnapshot? = nil
 local latestCash = 0
@@ -45,14 +48,15 @@ local isPurchasePending = false
 local freeTutorialProductIdByShopId: { [ShopId]: ShopProductId } = {}
 local hasInitializedRestockNotifications = false
 
-local function getShopRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction, RemoteFunction)
+local function getShopRemotes(): (RemoteEvent, RemoteEvent, RemoteFunction, RemoteFunction, RemoteEvent)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local shopFolder = rootFolder:WaitForChild(RemoteNames.shopFolderName) :: Folder
 	local shopOpened = shopFolder:WaitForChild(RemoteNames.shopOpenedEventName) :: RemoteEvent
 	local shopClosed = shopFolder:WaitForChild(RemoteNames.shopClosedEventName) :: RemoteEvent
 	local getShopSnapshot = shopFolder:WaitForChild(RemoteNames.getShopSnapshotFunctionName) :: RemoteFunction
 	local requestShopPurchase = shopFolder:WaitForChild(RemoteNames.requestShopPurchaseFunctionName) :: RemoteFunction
-	return shopOpened, shopClosed, getShopSnapshot, requestShopPurchase
+	local shopPurchaseCompleted = shopFolder:WaitForChild(RemoteNames.shopPurchaseCompletedEventName) :: RemoteEvent
+	return shopOpened, shopClosed, getShopSnapshot, requestShopPurchase, shopPurchaseCompleted
 end
 
 local function getEconomyRemotes(): (RemoteEvent, RemoteFunction)
@@ -236,6 +240,25 @@ local function getFailedPurchaseMessage(status: ShopPurchaseStatus, productDefin
 	return "Purchase Failed!"
 end
 
+local function getCurrentStockRemaining(shopId: ShopId, productDefinition: ShopProductDefinition): number
+	local snapshot = latestSnapshot
+	if snapshot == nil then
+		return 0
+	end
+
+	local shopDefinition = ShopCatalog.getShopDefinition(shopId)
+	if not shopDefinition.usesStock then
+		return 1
+	end
+
+	local shopState = snapshot.shopsById[shopId]
+	if shopState == nil then
+		return 0
+	end
+
+	return shopState.stockRemainingByProductId[productDefinition.id] or 0
+end
+
 local function showPurchaseNotification(result: ShopPurchaseResult)
 	local shopId = result.shopId
 	local productId = result.productId
@@ -301,7 +324,7 @@ function ShopController.start()
 		})
 	end
 
-	local shopOpened, shopClosed, getShopSnapshot, requestShopPurchase = getShopRemotes()
+	local shopOpened, shopClosed, getShopSnapshot, requestShopPurchase, shopPurchaseCompleted = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
 	local resourceUpdated, getResourceSnapshot = getResourceRemotes()
 	latestSnapshot = getShopSnapshot:InvokeServer() :: ShopSnapshot
@@ -352,6 +375,41 @@ function ShopController.start()
 			freeTutorialProductIdByShopId[shopId] = nil
 			FrameManager.close(shopId)
 		end
+	end)
+
+	view:connectRobuxPurchaseRequested(function(productId: ShopProductId)
+		local shopId = activeShopId
+		if shopId == nil or isPurchasePending then
+			return
+		end
+
+		local productDefinition = ShopCatalog.getShopProductDefinition(shopId, productId)
+		if productDefinition == nil then
+			HudNotificationController.showToast("Invalid Product!", "Error")
+			return
+		end
+
+		local developerProductId = productDefinition.developerProductId
+		if developerProductId == nil then
+			HudNotificationController.showToast("Robux Purchase Unavailable!", "Error")
+			return
+		end
+
+		if getCurrentStockRemaining(shopId, productDefinition) <= 0 then
+			HudNotificationController.showToast("Out Of Stock!", "Error")
+			return
+		end
+
+		MarketplaceService:PromptProductPurchase(localPlayer, developerProductId)
+	end)
+
+	shopPurchaseCompleted.OnClientEvent:Connect(function(result: ShopPurchaseResult)
+		latestSnapshot = result.snapshot
+		local refreshedEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
+		latestCash = refreshedEconomySnapshot.cash
+		latestResourceSnapshot = getResourceSnapshot:InvokeServer() :: ResourceSnapshot
+		renderIfReady(view)
+		showPurchaseNotification(result)
 	end)
 
 	shopOpened.OnClientEvent:Connect(function(payload: ShopOpenedPayload)

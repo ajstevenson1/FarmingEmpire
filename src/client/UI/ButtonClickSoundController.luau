@@ -12,7 +12,7 @@ local uiFolder = sharedFolder:WaitForChild("UI") :: Folder
 local ButtonSoundConfig = require(uiFolder:WaitForChild("ButtonSoundConfig") :: ModuleScript)
 
 type GuiButtonLike = TextButton | ImageButton
-type ButtonSoundKey = "Click" | "Buy"
+type ButtonSoundKey = "Click" | "Buy" | "Store"
 
 export type ButtonClickSoundController = {
 	start: () -> (),
@@ -27,10 +27,12 @@ local boundConnectionsByButton: { [GuiButtonLike]: RBXScriptConnection } = {}
 local soundPoolsByKey: { [ButtonSoundKey]: { Sound } } = {
 	Click = {},
 	Buy = {},
+	Store = {},
 }
 local nextSoundIndexByKey: { [ButtonSoundKey]: number } = {
 	Click = 1,
 	Buy = 1,
+	Store = 1,
 }
 
 local function isGuiButtonLike(instance: Instance): boolean
@@ -42,12 +44,20 @@ local function getSoundName(soundKey: ButtonSoundKey): string
 		return ButtonSoundConfig.BuySoundName
 	end
 
+	if soundKey == "Store" then
+		return ButtonSoundConfig.StoreOpenSoundName
+	end
+
 	return ButtonSoundConfig.ClickSoundName
 end
 
 local function getSoundId(soundKey: ButtonSoundKey): string
 	if soundKey == "Buy" then
 		return ButtonSoundConfig.BuySoundId
+	end
+
+	if soundKey == "Store" then
+		return ButtonSoundConfig.StoreOpenSoundId
 	end
 
 	return ButtonSoundConfig.ClickSoundId
@@ -89,6 +99,10 @@ local function playButtonSound(soundKey: ButtonSoundKey)
 end
 
 local function getButtonSoundKey(button: GuiButtonLike): ButtonSoundKey
+	if CollectionService:HasTag(button, ButtonSoundConfig.StoreTagName) then
+		return "Store"
+	end
+
 	if CollectionService:HasTag(button, ButtonSoundConfig.BuyTagName) then
 		return "Buy"
 	end
@@ -191,6 +205,7 @@ function ButtonClickSoundController.destroy()
 	end
 	nextSoundIndexByKey.Click = 1
 	nextSoundIndexByKey.Buy = 1
+	nextSoundIndexByKey.Store = 1
 
 	hasStarted = false
 end

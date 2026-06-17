@@ -48,6 +48,7 @@ local RemoteNames = {
 	shopClosedEventName = "ShopClosed",
 	getShopSnapshotFunctionName = "GetShopSnapshot",
 	requestShopPurchaseFunctionName = "RequestShopPurchase",
+	shopPurchaseCompletedEventName = "ShopPurchaseCompleted",
 	setAutoCiderEnabledEventName = "SetAutoCiderEnabled",
 	getSettingsSnapshotFunctionName = "GetSettingsSnapshot",
 	settingChangedEventName = "SettingChanged",

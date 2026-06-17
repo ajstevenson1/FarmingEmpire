@@ -33,7 +33,7 @@ export type ShopProductDefinition = {
 	shopId: ShopId,
 	itemId: ItemId,
 	imageAssetId: string,
-	developerProductId: string,
+	developerProductId: number?,
 	price: number,
 	priceCurrency: ShopPriceCurrency,
 	quantityPerPurchase: number,

@@ -62,6 +62,7 @@ type ShopRemotes = {
 	shopClosed: RemoteEvent,
 	getShopSnapshot: RemoteFunction,
 	requestShopPurchase: RemoteFunction,
+	shopPurchaseCompleted: RemoteEvent,
 }
 
 type MonetizationRemotes = {
@@ -311,6 +312,7 @@ function Remotes.getShopRemotes(): ShopRemotes
 		shopClosed = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopClosedEventName),
 		getShopSnapshot = getOrCreateRemoteFunction(shopFolder, RemoteNames.getShopSnapshotFunctionName),
 		requestShopPurchase = getOrCreateRemoteFunction(shopFolder, RemoteNames.requestShopPurchaseFunctionName),
+		shopPurchaseCompleted = getOrCreateRemoteEvent(shopFolder, RemoteNames.shopPurchaseCompletedEventName),
 	}
 
 	return cachedShopRemotes

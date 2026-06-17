@@ -13,28 +13,28 @@ type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 type WindmillDefinition = WindmillConfig.WindmillDefinition
 
 local SCYTHE_IMAGE_ASSET_ID = "rbxassetid://86007084151897"
-local TREE_IMAGE_ASSET_ID = "80078631350858"
-local MILL_IMAGE_ASSET_ID = "120573464445068"
-local WINDMILL_IMAGE_ASSET_ID = "120573464445068"
+local TREE_IMAGE_ASSET_ID = "rbxassetid://80078631350858"
+local MILL_IMAGE_ASSET_ID = "rbxassetid://110522443839275"
+local WINDMILL_IMAGE_ASSET_ID = "rbxassetid://120573464445068"
 
 local itemImageAssetIdsById: { [ItemId]: string } = table.freeze({
 	Scythe = SCYTHE_IMAGE_ASSET_ID,
 
-	OakTree = TREE_IMAGE_ASSET_ID,
-	BirchTree = "98598565581161",
-	CherryTree = "106367240675182",
-	GoldenTree = "126731029644470",
-	EmeraldTree = "108265574984029",
-	SapphireTree = "135876124547625",
-	DiamondTree = "88480342912822",
-	InfernoTree = "119430470644235",
-	FrostbiteTree = "94568696899208",
-	VoidfruitTree = "130844815001202",
-	FalloutTree = "136381373989446",
-	RainbowPrismTree = "101813367203312",
-	GhostwoodTree = "76743627812405",
-	CandyTree = "120972165059320",
-	CyberTree = "127029151232213",
+	OakTree = "rbxassetid://100736351086243",
+	BirchTree = "rbxassetid://98598565581161",
+	CherryTree = "rbxassetid://106367240675182",
+	GoldenTree = "rbxassetid://126731029644470",
+	EmeraldTree = "rbxassetid://108265574984029",
+	SapphireTree = "rbxassetid://135876124547625",
+	DiamondTree = "rbxassetid://88480342912822",
+	InfernoTree = "rbxassetid://119430470644235",
+	FrostbiteTree = "rbxassetid://94568696899208",
+	VoidfruitTree = "rbxassetid://130844815001202",
+	FalloutTree = "rbxassetid://136381373989446",
+	RainbowPrismTree = "rbxassetid://101813367203312",
+	GhostwoodTree = "rbxassetid://76743627812405",
+	CandyTree = "rbxassetid://73127433981881",
+	CyberTree = "rbxassetid://127029151232213",
 
 	CiderMill = MILL_IMAGE_ASSET_ID,
 	CopperCiderMill = MILL_IMAGE_ASSET_ID,
@@ -52,14 +52,14 @@ local itemImageAssetIdsById: { [ItemId]: string } = table.freeze({
 	DyingForgeMill = MILL_IMAGE_ASSET_ID,
 	DeepSpaceMill = MILL_IMAGE_ASSET_ID,
 
-	OfflineEarningsWindmill = WINDMILL_IMAGE_ASSET_ID,
-	ModernAFKWindmill = WINDMILL_IMAGE_ASSET_ID,
-	GoldAFKWindmill = WINDMILL_IMAGE_ASSET_ID,
-	DiamondAFKWindmill = WINDMILL_IMAGE_ASSET_ID,
-	CiderCashWindmill = WINDMILL_IMAGE_ASSET_ID,
-	ModernCashWindmill = WINDMILL_IMAGE_ASSET_ID,
-	GoldCashWindmill = WINDMILL_IMAGE_ASSET_ID,
-	DiamondCashWindmill = WINDMILL_IMAGE_ASSET_ID,
+	OfflineEarningsWindmill = "rbxassetid://75744019440681",
+	ModernAFKWindmill = "rbxassetid://97254974522636",
+	GoldAFKWindmill = "rbxassetid://126676149091790",
+	DiamondAFKWindmill = "rbxassetid://74704325017182",
+	CiderCashWindmill = "rbxassetid://75744019440681",
+	ModernCashWindmill = "rbxassetid://97254974522636",
+	GoldCashWindmill = "rbxassetid://126676149091790",
+	DiamondCashWindmill = "rbxassetid://74704325017182",
 })
 
 local function getImageAssetId(itemId: ItemId): string

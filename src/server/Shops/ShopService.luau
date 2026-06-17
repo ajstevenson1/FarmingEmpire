@@ -354,6 +354,14 @@ local function trySpendProductPrice(player: Player, productDefinition: ShopProdu
 	return ResourceService.tryConsumeResource(player, productDefinition.priceCurrency, price)
 end
 
+local function grantProductToPlayer(player: Player, productDefinition: ShopProductDefinition)
+	InventoryService.addItem(player, productDefinition.itemId, productDefinition.quantityPerPurchase)
+	if WindmillConfig.isWindmillBuildingId(productDefinition.itemId) then
+		PlayerDataService.markWindmillOwned(player, productDefinition.itemId :: BuildingId)
+	end
+	TutorialService.handleShopPurchaseSucceeded(player, productDefinition.shopId, productDefinition.id)
+end
+
 local function handlePurchaseRequest(player: Player, request: unknown): ShopPurchaseResult
 	if type(request) ~= "table" then
 		return createPurchaseResult(player, false, "InvalidShop", nil, nil)
@@ -408,11 +416,7 @@ local function handlePurchaseRequest(player: Player, request: unknown): ShopPurc
 	end
 
 	decrementStock(player, shopId, productDefinition)
-	InventoryService.addItem(player, productDefinition.itemId, productDefinition.quantityPerPurchase)
-	if WindmillConfig.isWindmillBuildingId(productDefinition.itemId) then
-		PlayerDataService.markWindmillOwned(player, productDefinition.itemId :: BuildingId)
-	end
-	TutorialService.handleShopPurchaseSucceeded(player, shopId, productId)
+	grantProductToPlayer(player, productDefinition)
 
 	return createPurchaseResult(player, true, "Purchased", shopId, productId)
 end
@@ -435,6 +439,51 @@ local function connectShopTouch(definition: ShopDefinition)
 end
 
 local ShopService = {}
+
+function ShopService.grantDeveloperProductPurchase(player: Player, developerProductId: number): boolean
+	local productDefinition = ShopCatalog.getShopProductDefinitionByDeveloperProductId(developerProductId)
+	if productDefinition == nil then
+		warn(string.format("[ShopService] No shop product mapped to Developer Product %d.", developerProductId))
+		return false
+	end
+
+	if productDefinition.quantityPerPurchase <= 0 then
+		warn(string.format("[ShopService] Product %s has invalid quantity.", productDefinition.id))
+		return false
+	end
+
+	if WindmillConfig.isWindmillBuildingId(productDefinition.itemId)
+		and PlayerDataService.playerOwnsWindmill(player, productDefinition.itemId :: BuildingId)
+	then
+		return true
+	end
+
+	local stockRemaining = getStockRemaining(player, productDefinition.shopId, productDefinition)
+	if stockRemaining > 0 then
+		decrementStock(player, productDefinition.shopId, productDefinition)
+	elseif ShopCatalog.getShopDefinition(productDefinition.shopId).usesStock then
+		warn(string.format(
+			"[ShopService] Granting paid product %s even though the local stock snapshot is empty.",
+			productDefinition.id
+		))
+	end
+
+	grantProductToPlayer(player, productDefinition)
+	return true
+end
+
+function ShopService.notifyDeveloperProductPurchaseCompleted(player: Player, developerProductId: number): boolean
+	local productDefinition = ShopCatalog.getShopProductDefinitionByDeveloperProductId(developerProductId)
+	if productDefinition == nil then
+		return false
+	end
+
+	Remotes.getShopRemotes().shopPurchaseCompleted:FireClient(
+		player,
+		createPurchaseResult(player, true, "Purchased", productDefinition.shopId, productDefinition.id)
+	)
+	return true
+end
 
 function ShopService.start()
 	if hasStarted then

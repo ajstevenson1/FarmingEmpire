@@ -4,10 +4,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
+local loadingFolder = sharedFolder:WaitForChild("Loading") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local tutorialFolder = sharedFolder:WaitForChild("Tutorial") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 
+local LoadingGate = require(loadingFolder:WaitForChild("LoadingGate") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local TutorialTypes = require(tutorialFolder:WaitForChild("TutorialTypes") :: ModuleScript)
@@ -21,6 +23,8 @@ local TutorialTargetResolver = require(script.Parent.TutorialTargetResolver)
 
 type TutorialStepPayload = TutorialTypes.TutorialStepPayload
 type InventorySnapshot = InventoryTypes.InventorySnapshot
+
+local LOADING_GATE_TIMEOUT_SECONDS = 12
 
 local hasStarted = false
 local hudView: TutorialHudView.TutorialHudView? = nil
@@ -194,14 +198,14 @@ local function applyPayload(payload: TutorialStepPayload)
 	updateEquipStepSpotlight(InventoryController.getLatestSnapshot())
 end
 
-local TutorialController = {}
-
-function TutorialController.start()
-	if hasStarted then
-		return
+local function waitForLoadingScreenCleared()
+	if not LoadingGate.waitUntilCleared(LOADING_GATE_TIMEOUT_SECONDS) then
+		warn("TutorialController loading gate timed out; starting tutorial anyway.")
 	end
+end
 
-	hasStarted = true
+local function startTutorialAfterLoadingCleared()
+	waitForLoadingScreenCleared()
 
 	local stepUpdated, tapContinue, skipRequested, getSnapshot = getTutorialRemotes()
 	hudView = TutorialHudView.new()
@@ -226,6 +230,17 @@ function TutorialController.start()
 	end)
 
 	applyPayload(getSnapshot:InvokeServer() :: TutorialStepPayload)
+end
+
+local TutorialController = {}
+
+function TutorialController.start()
+	if hasStarted then
+		return
+	end
+
+	hasStarted = true
+	task.spawn(startTutorialAfterLoadingCleared)
 end
 
 return table.freeze(TutorialController)
