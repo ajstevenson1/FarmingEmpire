@@ -11,12 +11,14 @@ local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
+local tutorialFolder = sharedFolder:WaitForChild("Tutorial") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local PlaytimeRewardsConfig = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsConfig") :: ModuleScript)
 local DailyRewardsConfig = require(playtimeRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
+local TutorialFunnelTypes = require(tutorialFolder:WaitForChild("TutorialFunnelTypes") :: ModuleScript)
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
@@ -39,6 +41,7 @@ type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingsValues = SettingsConfig.SettingsValues
 type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 type PlayerDailyRewardsData = PlaytimeRewardsTypes.PlayerDailyRewardsData
+type TutorialCompletionSource = TutorialFunnelTypes.TutorialCompletionSource
 
 export type PlayerEconomyData = {
 	cash: number,
@@ -75,6 +78,22 @@ export type PlayerTutorialData = {
 	completed: boolean,
 }
 
+export type PlayerTutorialFunnelStepData = {
+	stepId: number,
+	reachedAtUnix: number,
+	completedAtUnix: number?,
+	completionSource: TutorialCompletionSource?,
+}
+
+export type PlayerTutorialFunnelData = {
+	version: number,
+	startedAtUnix: number,
+	completedAtUnix: number?,
+	skippedAtUnix: number?,
+	skippedAtStepId: number?,
+	steps: { PlayerTutorialFunnelStepData },
+}
+
 export type DeveloperProductReceiptData = {
 	processedPurchaseIds: { [string]: boolean },
 }
@@ -92,6 +111,7 @@ export type PlayerData = {
 	playtimeRewards: PlayerPlaytimeRewardsData,
 	dailyRewards: PlayerDailyRewardsData,
 	tutorial: PlayerTutorialData,
+	tutorialFunnel: PlayerTutorialFunnelData,
 	developerProductReceipts: DeveloperProductReceiptData,
 }
 
@@ -100,8 +120,9 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_DEV_LEBRON94"
-local CURRENT_SCHEMA_VERSION = 4
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_PROD"
+local CURRENT_SCHEMA_VERSION = 5
+local TUTORIAL_FUNNEL_VERSION = 1
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -167,6 +188,14 @@ local function sanitizeDuration(value: unknown): number
 	return value
 end
 
+local function sanitizeTimestamp(value: unknown): number
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value < 0 then
+		return 0
+	end
+
+	return math.floor(value)
+end
+
 local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
 	local rawTutorialValues: { [string]: unknown } = {}
 	if type(rawTutorial) == "table" then
@@ -181,6 +210,106 @@ local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
 	return {
 		stepIndex = stepIndex,
 		completed = rawTutorialValues.completed == true,
+	}
+end
+
+local function sanitizeTutorialCompletionSource(value: unknown): TutorialCompletionSource?
+	if value == "TapContinue"
+		or value == "AutoContinue"
+		or value == "Proximity"
+		or value == "ShopOpened"
+		or value == "ShopPurchase"
+		or value == "BuildingPlaced"
+		or value == "ItemEquipped"
+		or value == "ResourceAdded"
+		or value == "CiderSold"
+		or value == "AlreadySatisfied"
+	then
+		return value :: TutorialCompletionSource
+	end
+
+	return nil
+end
+
+local function sanitizeOptionalTimestamp(value: unknown): number?
+	if value == nil then
+		return nil
+	end
+
+	local timestamp = sanitizeTimestamp(value)
+	if timestamp <= 0 then
+		return nil
+	end
+
+	return timestamp
+end
+
+local function sanitizeTutorialFunnelStepData(rawStepData: unknown): PlayerTutorialFunnelStepData?
+	if type(rawStepData) ~= "table" then
+		return nil
+	end
+
+	local rawStepValues = rawStepData :: { [string]: unknown }
+	local rawStepId = rawStepValues.stepId
+	if type(rawStepId) ~= "number" or rawStepId ~= math.floor(rawStepId) or rawStepId <= 0 then
+		return nil
+	end
+
+	local completedAtUnix = sanitizeOptionalTimestamp(rawStepValues.completedAtUnix)
+	return {
+		stepId = rawStepId,
+		reachedAtUnix = sanitizeTimestamp(rawStepValues.reachedAtUnix),
+		completedAtUnix = completedAtUnix,
+		completionSource = if completedAtUnix == nil then nil else sanitizeTutorialCompletionSource(rawStepValues.completionSource),
+	}
+end
+
+local function sanitizeTutorialFunnelSteps(rawSteps: unknown): { PlayerTutorialFunnelStepData }
+	local steps: { PlayerTutorialFunnelStepData } = {}
+	local seenStepIds: { [number]: boolean } = {}
+	if type(rawSteps) ~= "table" then
+		return steps
+	end
+
+	for _, rawStepData in ipairs(rawSteps :: { unknown }) do
+		local stepData = sanitizeTutorialFunnelStepData(rawStepData)
+		if stepData ~= nil and seenStepIds[stepData.stepId] ~= true then
+			seenStepIds[stepData.stepId] = true
+			table.insert(steps, stepData)
+		end
+	end
+
+	table.sort(steps, function(leftStep, rightStep)
+		return leftStep.stepId < rightStep.stepId
+	end)
+
+	return steps
+end
+
+local function sanitizeTutorialFunnelData(rawFunnel: unknown): PlayerTutorialFunnelData
+	local rawFunnelValues: { [string]: unknown } = {}
+	if type(rawFunnel) == "table" then
+		rawFunnelValues = rawFunnel :: { [string]: unknown }
+	end
+
+	local skippedAtUnix = sanitizeOptionalTimestamp(rawFunnelValues.skippedAtUnix)
+	local skippedAtStepId: number? = nil
+	local rawSkippedAtStepId = rawFunnelValues.skippedAtStepId
+	if skippedAtUnix ~= nil
+		and type(rawSkippedAtStepId) == "number"
+		and rawSkippedAtStepId == math.floor(rawSkippedAtStepId)
+		and rawSkippedAtStepId > 0
+	then
+		skippedAtStepId = rawSkippedAtStepId
+	end
+
+	return {
+		version = TUTORIAL_FUNNEL_VERSION,
+		startedAtUnix = sanitizeTimestamp(rawFunnelValues.startedAtUnix),
+		completedAtUnix = sanitizeOptionalTimestamp(rawFunnelValues.completedAtUnix),
+		skippedAtUnix = skippedAtUnix,
+		skippedAtStepId = skippedAtStepId,
+		steps = sanitizeTutorialFunnelSteps(rawFunnelValues.steps),
 	}
 end
 
@@ -203,14 +332,6 @@ local function sanitizeDeveloperProductReceiptData(rawReceiptData: unknown): Dev
 	return {
 		processedPurchaseIds = processedPurchaseIds,
 	}
-end
-
-local function sanitizeTimestamp(value: unknown): number
-	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or value < 0 then
-		return 0
-	end
-
-	return math.floor(value)
 end
 
 local function sanitizeRewardIndex(value: unknown, cycleLength: number): number?
@@ -464,6 +585,14 @@ local function createDefaultData(): PlayerData
 		tutorial = {
 			stepIndex = 1,
 			completed = false,
+		},
+		tutorialFunnel = {
+			version = TUTORIAL_FUNNEL_VERSION,
+			startedAtUnix = 0,
+			completedAtUnix = nil,
+			skippedAtUnix = nil,
+			skippedAtStepId = nil,
+			steps = {},
 		},
 		developerProductReceipts = {
 			processedPurchaseIds = {},
@@ -731,6 +860,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		playtimeRewards = sanitizePlaytimeRewardsData(rawPlaytimeRewards),
 		dailyRewards = sanitizeDailyRewardsData(rawDailyRewards),
 		tutorial = sanitizeTutorialData(rawDataTable.tutorial),
+		tutorialFunnel = sanitizeTutorialFunnelData(rawDataTable.tutorialFunnel),
 		developerProductReceipts = sanitizeDeveloperProductReceiptData(rawDataTable.developerProductReceipts),
 	}
 end
@@ -821,6 +951,7 @@ local function cloneData(data: PlayerData): PlayerData
 			totalClaims = sanitizeAmount(data.dailyRewards.totalClaims),
 		},
 		tutorial = sanitizeTutorialData(data.tutorial),
+		tutorialFunnel = sanitizeTutorialFunnelData(data.tutorialFunnel),
 		developerProductReceipts = sanitizeDeveloperProductReceiptData(data.developerProductReceipts),
 	}
 end

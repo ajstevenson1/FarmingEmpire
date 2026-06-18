@@ -12,6 +12,7 @@ local shopsFolder = sharedFolder:WaitForChild("Shops") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local TutorialConfig = require(tutorialFolder:WaitForChild("TutorialConfig") :: ModuleScript)
+local TutorialFunnelTypes = require(tutorialFolder:WaitForChild("TutorialFunnelTypes") :: ModuleScript)
 local TutorialTypes = require(tutorialFolder:WaitForChild("TutorialTypes") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
@@ -23,9 +24,11 @@ local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+local TutorialFunnelService = require(script.Parent.TutorialFunnelService)
 
 type TutorialData = TutorialTypes.TutorialData
 type TutorialStepPayload = TutorialTypes.TutorialStepPayload
+type TutorialCompletionSource = TutorialFunnelTypes.TutorialCompletionSource
 type ItemId = InventoryTypes.ItemId
 type ResourceId = ResourceTypes.ResourceId
 type ShopId = ShopTypes.ShopId
@@ -183,12 +186,18 @@ end
 
 local TutorialService = {}
 
-local function completeTutorial(player: Player)
+local function completeTutorial(player: Player, completionSource: TutorialCompletionSource)
+	local currentData = PlayerDataService.getTutorialData(player)
+	if currentData.completed then
+		return
+	end
+
+	TutorialFunnelService.completeTutorial(player, currentData.stepIndex, completionSource)
 	PlayerDataService.completeTutorial(player)
 	sendStep(player)
 end
 
-local function advanceToStep(player: Player, stepIndex: number)
+local function advanceToStep(player: Player, stepIndex: number, completionSource: TutorialCompletionSource)
 	local currentData = PlayerDataService.getTutorialData(player)
 	if currentData.completed then
 		return
@@ -196,21 +205,23 @@ local function advanceToStep(player: Player, stepIndex: number)
 
 	local finalStepIndex = TutorialConfig.getFinalStepIndex()
 	if stepIndex > finalStepIndex then
-		completeTutorial(player)
+		completeTutorial(player, completionSource)
 		return
 	end
 
+	TutorialFunnelService.completeStep(player, currentData.stepIndex, completionSource)
 	PlayerDataService.setTutorialStep(player, stepIndex)
+	TutorialFunnelService.reachStep(player, stepIndex)
 	sendStep(player)
 end
 
-local function advanceIfCurrentStep(player: Player, expectedStepIndex: number)
+local function advanceIfCurrentStep(player: Player, expectedStepIndex: number, completionSource: TutorialCompletionSource)
 	local data = PlayerDataService.getTutorialData(player)
 	if data.completed or data.stepIndex ~= expectedStepIndex then
 		return
 	end
 
-	advanceToStep(player, expectedStepIndex + 1)
+	advanceToStep(player, expectedStepIndex + 1, completionSource)
 end
 
 local function advancePastAlreadySatisfiedSteps(player: Player)
@@ -223,25 +234,25 @@ local function advancePastAlreadySatisfiedSteps(player: Player)
 		end
 
 		if data.stepIndex == 4 and hasItem(player, OAK_TREE_ITEM_ID) then
-			advanceToStep(player, 5)
+			advanceToStep(player, 5, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 6 and hasItem(player, CIDER_MILL_ITEM_ID) then
-			advanceToStep(player, 7)
+			advanceToStep(player, 7, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 8 and hasPlacedBuilding(player, OAK_TREE_ITEM_ID :: BuildingId) then
-			advanceToStep(player, 9)
+			advanceToStep(player, 9, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 9 and hasPlacedBuilding(player, CIDER_MILL_ITEM_ID :: BuildingId) then
-			advanceToStep(player, 10)
+			advanceToStep(player, 10, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 10 and InventoryService.getEquippedItemId(player) == SCYTHE_ITEM_ID then
-			advanceToStep(player, 11)
+			advanceToStep(player, 11, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 11 and ResourceService.getResourceAmount(player, "Apple") > 0 then
-			advanceToStep(player, 12)
+			advanceToStep(player, 12, "AlreadySatisfied")
 			didAdvance = true
 		elseif data.stepIndex == 13 and ResourceService.getResourceAmount(player, "Cider") > 0 then
-			advanceToStep(player, 14)
+			advanceToStep(player, 14, "AlreadySatisfied")
 			didAdvance = true
 		end
 	end
@@ -250,6 +261,11 @@ end
 local function initializePlayer(player: Player)
 	PlayerDataService.waitForData(player)
 	advancePastAlreadySatisfiedSteps(player)
+	local data = PlayerDataService.getTutorialData(player)
+	if not data.completed then
+		TutorialFunnelService.reachStep(player, data.stepIndex)
+	end
+
 	sendStep(player)
 end
 
@@ -263,11 +279,11 @@ local function startProximityLoop()
 				end
 
 				if data.stepIndex == 2 and isPlayerNearShopArea(player) then
-					advanceToStep(player, 3)
+					advanceToStep(player, 3, "Proximity")
 				elseif data.stepIndex == 7 and isPlayerNearAssignedPlot(player) then
-					advanceToStep(player, 8)
+					advanceToStep(player, 8, "Proximity")
 				elseif data.stepIndex == 14 and isPlayerNearPart(player, getSellTouchPart(), NEAR_DISTANCE_STUDS) then
-					advanceToStep(player, 15)
+					advanceToStep(player, 15, "Proximity")
 				end
 			end
 
@@ -294,27 +310,32 @@ function TutorialService.start()
 			or data.stepIndex == 17
 			or data.stepIndex == TutorialConfig.getFinalStepIndex()
 		then
-			advanceIfCurrentStep(player, data.stepIndex)
+			local completionSource: TutorialCompletionSource = if data.stepIndex == TutorialConfig.getFinalStepIndex()
+				then "AutoContinue"
+				else "TapContinue"
+			advanceIfCurrentStep(player, data.stepIndex, completionSource)
 		end
 	end)
 	tutorialRemotes.tutorialSkipRequested.OnServerEvent:Connect(function(player: Player)
 		local data = PlayerDataService.getTutorialData(player)
 		if not data.completed then
-			completeTutorial(player)
+			TutorialFunnelService.skipTutorial(player, data.stepIndex)
+			PlayerDataService.completeTutorial(player)
+			sendStep(player)
 		end
 	end)
 
 	InventoryService.observeEquippedItemChanged(function(player: Player, itemId: ItemId?)
 		if itemId == SCYTHE_ITEM_ID then
-			advanceIfCurrentStep(player, 10)
+			advanceIfCurrentStep(player, 10, "ItemEquipped")
 		end
 	end)
 
 	ResourceService.observeResourceAdded(function(player: Player, resourceId: ResourceId, _amount: number)
 		if resourceId == "Apple" then
-			advanceIfCurrentStep(player, 11)
+			advanceIfCurrentStep(player, 11, "ResourceAdded")
 		elseif resourceId == "Cider" then
-			advanceIfCurrentStep(player, 13)
+			advanceIfCurrentStep(player, 13, "ResourceAdded")
 		end
 	end)
 
@@ -331,12 +352,12 @@ function TutorialService.handleShopOpened(player: Player, shopId: ShopId)
 	local data = PlayerDataService.getTutorialData(player)
 	if shopId == "TreesShop" then
 		if data.stepIndex == 2 then
-			advanceToStep(player, 4)
+			advanceToStep(player, 4, "ShopOpened")
 			return
 		end
-		advanceIfCurrentStep(player, 3)
+		advanceIfCurrentStep(player, 3, "ShopOpened")
 	elseif shopId == "MillsShop" then
-		advanceIfCurrentStep(player, 5)
+		advanceIfCurrentStep(player, 5, "ShopOpened")
 	end
 end
 
@@ -359,26 +380,26 @@ end
 
 function TutorialService.handleShopPurchaseSucceeded(player: Player, _shopId: ShopId, productId: ShopProductId)
 	if productId == OAK_TREE_ITEM_ID then
-		advanceIfCurrentStep(player, 4)
+		advanceIfCurrentStep(player, 4, "ShopPurchase")
 	elseif productId == CIDER_MILL_ITEM_ID then
-		advanceIfCurrentStep(player, 6)
+		advanceIfCurrentStep(player, 6, "ShopPurchase")
 	end
 end
 
 function TutorialService.handleBuildingPlaced(player: Player, buildingId: BuildingId)
 	if buildingId == OAK_TREE_ITEM_ID then
-		advanceIfCurrentStep(player, 8)
+		advanceIfCurrentStep(player, 8, "BuildingPlaced")
 	elseif buildingId == CIDER_MILL_ITEM_ID then
-		advanceIfCurrentStep(player, 9)
+		advanceIfCurrentStep(player, 9, "BuildingPlaced")
 	end
 end
 
 function TutorialService.handleCiderSellOpened(player: Player)
-	advanceIfCurrentStep(player, 15)
+	advanceIfCurrentStep(player, 15, "ShopOpened")
 end
 
 function TutorialService.handleCiderSold(player: Player)
-	advanceIfCurrentStep(player, 16)
+	advanceIfCurrentStep(player, 16, "CiderSold")
 end
 
 return table.freeze(TutorialService)

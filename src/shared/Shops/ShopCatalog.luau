@@ -13,11 +13,12 @@ type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
 type ShopProductDefinition = ShopTypes.ShopProductDefinition
 type ShopProductId = ShopTypes.ShopProductId
+type ShopStockRollConfig = ShopTypes.ShopStockRollConfig
 type MillTierDefinition = ProgressionConfig.MillTierDefinition
 type TreeTierDefinition = ProgressionConfig.TreeTierDefinition
 type WindmillDefinition = WindmillConfig.WindmillDefinition
 
-local RESTOCK_INTERVAL_SECONDS = 5 * 60
+local RESTOCK_INTERVAL_SECONDS = 3 * 60
 
 local shopIds: { ShopId } = {
 	"TreesShop",
@@ -67,6 +68,14 @@ local function getProductImageAssetId(productId: ShopProductId): string
 	return ItemCatalog.getItemDefinition(productId).imageAssetId
 end
 
+local function createFixedStock(stockPerRestock: number): ShopStockRollConfig
+	return table.freeze({
+		appearanceChance = 1,
+		minQuantity = stockPerRestock,
+		maxQuantity = stockPerRestock,
+	})
+end
+
 local treeProducts: { ShopProductDefinition } = {}
 for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
 	table.insert(treeProducts, table.freeze({
@@ -78,7 +87,7 @@ for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTre
 		price = treeDefinition.price,
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
-		stockPerRestock = treeDefinition.stockPerRestock,
+		stock = treeDefinition.stock,
 		sortOrder = 10 + index - 1,
 		description = treeDefinition.description,
 	}))
@@ -96,7 +105,7 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 		price = millDefinition.price,
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
-		stockPerRestock = millDefinition.stockPerRestock,
+		stock = millDefinition.stock,
 		sortOrder = 10 + index - 1,
 		description = millDefinition.description,
 	}))
@@ -114,7 +123,7 @@ for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDe
 		price = windmillDefinition.price,
 		priceCurrency = "Cider",
 		quantityPerPurchase = 1,
-		stockPerRestock = windmillDefinition.stockPerRestock,
+		stock = createFixedStock(windmillDefinition.stockPerRestock),
 		sortOrder = 10 + index - 1,
 		description = windmillDefinition.description,
 	}))

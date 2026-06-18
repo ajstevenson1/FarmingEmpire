@@ -18,6 +18,7 @@ export type TutorialBeamTarget = "None" | "OakTree" | "CiderMill" | "TreesShop" 
 export type TutorialStepDefinition = {
 	id: TutorialStepId,
 	text: string,
+	analyticsName: string,
 	tapToContinue: boolean,
 	spotlightTarget: TutorialTarget,
 	beamTarget: TutorialBeamTarget,

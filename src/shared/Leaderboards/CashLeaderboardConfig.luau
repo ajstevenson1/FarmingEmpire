@@ -14,8 +14,8 @@ local CashLeaderboardConfig: CashLeaderboardConfig = {
 	workspaceModelName = "CashLeaderboard",
 	displayBoardName = "Board",
 	scrollingFrameName = "ScrollingFrame",
-	orderedDataStoreName = "FarmingEmpire_CashLeaderboard_DEV",
-	entriesToDisplay = 10,
+	orderedDataStoreName = "FarmingEmpire_CashLeaderboard_PROD",
+	entriesToDisplay = 50,
 	refreshIntervalSeconds = 60,
 	writeFlushIntervalSeconds = 30,
 }

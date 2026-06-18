@@ -14,8 +14,8 @@ local TimeSpentLeaderboardConfig: TimeSpentLeaderboardConfig = {
 	workspaceModelName = "TimeSpentLeaderboard",
 	displayBoardName = "Board",
 	scrollingFrameName = "ScrollingFrame",
-	orderedDataStoreName = "FarmingEmpire_TimeSpentLeaderboard_DEV",
-	entriesToDisplay = 10,
+	orderedDataStoreName = "FarmingEmpire_TimeSpentLeaderboard_PROD",
+	entriesToDisplay = 50,
 	refreshIntervalSeconds = 60,
 	writeFlushIntervalSeconds = 60,
 }

@@ -43,6 +43,7 @@ local activeShopId: ShopId? = nil
 local localPlayer = Players.LocalPlayer
 local latestSnapshot: ShopSnapshot? = nil
 local latestResourceSnapshot: ResourceSnapshot? = nil
+local getShopSnapshotRemote: RemoteFunction? = nil
 local latestCash = 0
 local isPurchasePending = false
 local freeTutorialProductIdByShopId: { [ShopId]: ShopProductId } = {}
@@ -93,34 +94,15 @@ local function getSecondsUntilRestock(snapshot: ShopSnapshot, shopId: ShopId): n
 	return math.max(0, math.ceil(state.nextRestockAt - Workspace:GetServerTimeNow()))
 end
 
-local function syncSnapshotStockForShop(snapshot: ShopSnapshot, shopId: ShopId, shouldReset: boolean)
-	local state = snapshot.shopsById[shopId]
-	if state == nil then
-		return
-	end
-
-	local validProductIds: { [ShopProductId]: boolean } = {}
-	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
-		validProductIds[productDefinition.id] = true
-		if shouldReset or state.stockRemainingByProductId[productDefinition.id] == nil then
-			state.stockRemainingByProductId[productDefinition.id] = productDefinition.stockPerRestock
-		end
-	end
-
-	for productId in pairs(state.stockRemainingByProductId) do
-		if validProductIds[productId] ~= true then
-			state.stockRemainingByProductId[productId] = nil
-		end
-	end
-end
-
 local function notifyShopRestocked(shopId: ShopId)
 	local definition = ShopCatalog.getShopDefinition(shopId)
 	HudNotificationController.showToast(string.format("%s Restocked!", definition.displayName), "Success")
 end
 
-local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
+local function getExpiredRestockedShopIds(snapshot: ShopSnapshot): { ShopId }
 	local currentTime = Workspace:GetServerTimeNow()
+	local expiredShopIds: { ShopId } = {}
+
 	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
 		local definition = ShopCatalog.getShopDefinition(shopId)
 		if not definition.usesStock then
@@ -132,19 +114,37 @@ local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
 			continue
 		end
 
-		local shouldReset = false
-		while state.nextRestockAt <= currentTime do
-			state.nextRestockAt += definition.restockIntervalSeconds
-			shouldReset = true
+		if state.nextRestockAt <= currentTime then
+			table.insert(expiredShopIds, shopId)
 		end
+	end
 
-		syncSnapshotStockForShop(snapshot, shopId, shouldReset)
-		if shouldReset and hasInitializedRestockNotifications then
+	return expiredShopIds
+end
+
+local function refreshSnapshotIfRestockExpired(snapshot: ShopSnapshot): ShopSnapshot
+	local expiredShopIds = getExpiredRestockedShopIds(snapshot)
+	if #expiredShopIds <= 0 then
+		hasInitializedRestockNotifications = true
+		return snapshot
+	end
+
+	local remote = getShopSnapshotRemote
+	if remote == nil then
+		return snapshot
+	end
+
+	local refreshedSnapshot = remote:InvokeServer() :: ShopSnapshot
+	latestSnapshot = refreshedSnapshot
+
+	if hasInitializedRestockNotifications then
+		for _, shopId in ipairs(expiredShopIds) do
 			notifyShopRestocked(shopId)
 		end
 	end
 
 	hasInitializedRestockNotifications = true
+	return refreshedSnapshot
 end
 
 local function getAvailableCurrencyAmount(
@@ -285,7 +285,7 @@ local function renderIfReady(view: ShopMenuViewInstance)
 		return
 	end
 
-	advanceRestockIfNeeded(snapshot)
+	snapshot = refreshSnapshotIfRestockExpired(snapshot)
 
 	if shopId == nil then
 		return
@@ -327,6 +327,7 @@ function ShopController.start()
 	local shopOpened, shopClosed, getShopSnapshot, requestShopPurchase, shopPurchaseCompleted = getShopRemotes()
 	local economyUpdated, getEconomySnapshot = getEconomyRemotes()
 	local resourceUpdated, getResourceSnapshot = getResourceRemotes()
+	getShopSnapshotRemote = getShopSnapshot
 	latestSnapshot = getShopSnapshot:InvokeServer() :: ShopSnapshot
 	local initialEconomySnapshot = getEconomySnapshot:InvokeServer() :: EconomySnapshot
 	latestCash = initialEconomySnapshot.cash

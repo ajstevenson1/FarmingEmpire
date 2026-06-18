@@ -14,8 +14,8 @@ local CiderEarnedLeaderboardConfig: CiderEarnedLeaderboardConfig = {
 	workspaceModelName = "CiderEarnedLeaderboard",
 	displayBoardName = "Board",
 	scrollingFrameName = "ScrollingFrame",
-	orderedDataStoreName = "FarmingEmpire_CiderEarnedLeaderboard_DEV",
-	entriesToDisplay = 10,
+	orderedDataStoreName = "FarmingEmpire_CiderEarnedLeaderboard_PROD",
+	entriesToDisplay = 50,
 	refreshIntervalSeconds = 60,
 	writeFlushIntervalSeconds = 30,
 }

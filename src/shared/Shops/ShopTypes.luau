@@ -28,6 +28,12 @@ export type ShopDefinition = {
 	usesStock: boolean,
 }
 
+export type ShopStockRollConfig = {
+	appearanceChance: number,
+	minQuantity: number,
+	maxQuantity: number,
+}
+
 export type ShopProductDefinition = {
 	id: ShopProductId,
 	shopId: ShopId,
@@ -37,7 +43,7 @@ export type ShopProductDefinition = {
 	price: number,
 	priceCurrency: ShopPriceCurrency,
 	quantityPerPurchase: number,
-	stockPerRestock: number,
+	stock: ShopStockRollConfig,
 	sortOrder: number,
 	description: string,
 }

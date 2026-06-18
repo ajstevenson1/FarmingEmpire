@@ -12,7 +12,6 @@ local ShopController = require(script.Parent.ShopController)
 
 type ShopDefinition = ShopTypes.ShopDefinition
 type ShopId = ShopTypes.ShopId
-type ShopProductId = ShopTypes.ShopProductId
 type ShopSnapshot = ShopTypes.ShopSnapshot
 
 type WorldShopWidgets = {
@@ -71,41 +70,6 @@ local function findWidgets(definition: ShopDefinition): WorldShopWidgets?
 	}
 end
 
-local function advanceRestockIfNeeded(snapshot: ShopSnapshot)
-	local currentTime = Workspace:GetServerTimeNow()
-	for _, shopId in ipairs(ShopCatalog.getShopIds()) do
-		local definition = ShopCatalog.getShopDefinition(shopId)
-		if not definition.usesStock then
-			continue
-		end
-
-		local state = snapshot.shopsById[shopId]
-		if state == nil then
-			continue
-		end
-
-		local shouldResetStock = false
-		while state.nextRestockAt <= currentTime do
-			state.nextRestockAt += definition.restockIntervalSeconds
-			shouldResetStock = true
-		end
-
-		if shouldResetStock then
-			local validProductIds: { [ShopProductId]: boolean } = {}
-			for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
-				validProductIds[productDefinition.id] = true
-				state.stockRemainingByProductId[productDefinition.id] = productDefinition.stockPerRestock
-			end
-
-			for productId in pairs(state.stockRemainingByProductId) do
-				if validProductIds[productId] ~= true then
-					state.stockRemainingByProductId[productId] = nil
-				end
-			end
-		end
-	end
-end
-
 local function getSecondsUntilRestock(snapshot: ShopSnapshot, shopId: ShopId): number
 	local state = snapshot.shopsById[shopId]
 	if state == nil then
@@ -133,8 +97,6 @@ local function render()
 		end
 		return
 	end
-
-	advanceRestockIfNeeded(snapshot)
 
 	for shopId, widgets in pairs(widgetsByShopId) do
 		local definition = ShopCatalog.getShopDefinition(shopId)

@@ -34,6 +34,8 @@ type DeveloperProductReceiptData = PlayerDataStore.DeveloperProductReceiptData
 export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
 export type PlayerTutorialData = PlayerDataStore.PlayerTutorialData
+export type PlayerTutorialFunnelStepData = PlayerDataStore.PlayerTutorialFunnelStepData
+export type PlayerTutorialFunnelData = PlayerDataStore.PlayerTutorialFunnelData
 export type UnlockedPlotTileData = PlotExpansionTypes.PlotTileCoordinate
 type BuildingId = BuildingTypes.BuildingId
 type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
@@ -393,6 +395,51 @@ local function cloneDailyRewardsData(dailyRewards: PlayerDailyRewardsData): Play
 		lastClaimUnixTime = sanitizeDuration(dailyRewards.lastClaimUnixTime),
 		nextRewardIndex = nextRewardIndex,
 		totalClaims = sanitizeAmount(dailyRewards.totalClaims),
+	}
+end
+
+local function cloneTutorialFunnelData(tutorialFunnel: PlayerTutorialFunnelData): PlayerTutorialFunnelData
+	local steps: { PlayerTutorialFunnelStepData } = {}
+	for _, stepData in ipairs(tutorialFunnel.steps) do
+		local completedAtUnix: number? = nil
+		if stepData.completedAtUnix ~= nil then
+			completedAtUnix = sanitizeTimestamp(stepData.completedAtUnix)
+		end
+
+		table.insert(steps, {
+			stepId = sanitizeAmount(stepData.stepId),
+			reachedAtUnix = sanitizeTimestamp(stepData.reachedAtUnix),
+			completedAtUnix = completedAtUnix,
+			completionSource = stepData.completionSource,
+		})
+	end
+
+	table.sort(steps, function(leftStep, rightStep)
+		return leftStep.stepId < rightStep.stepId
+	end)
+
+	local completedAtUnix: number? = nil
+	if tutorialFunnel.completedAtUnix ~= nil then
+		completedAtUnix = sanitizeTimestamp(tutorialFunnel.completedAtUnix)
+	end
+
+	local skippedAtUnix: number? = nil
+	if tutorialFunnel.skippedAtUnix ~= nil then
+		skippedAtUnix = sanitizeTimestamp(tutorialFunnel.skippedAtUnix)
+	end
+
+	local skippedAtStepId: number? = nil
+	if tutorialFunnel.skippedAtStepId ~= nil then
+		skippedAtStepId = sanitizeAmount(tutorialFunnel.skippedAtStepId)
+	end
+
+	return {
+		version = sanitizeAmount(tutorialFunnel.version),
+		startedAtUnix = sanitizeTimestamp(tutorialFunnel.startedAtUnix),
+		completedAtUnix = completedAtUnix,
+		skippedAtUnix = skippedAtUnix,
+		skippedAtStepId = skippedAtStepId,
+		steps = steps,
 	}
 end
 
@@ -906,6 +953,17 @@ function PlayerDataService.getTutorialData(player: Player): PlayerTutorialData
 		stepIndex = record.data.tutorial.stepIndex,
 		completed = record.data.tutorial.completed,
 	}
+end
+
+function PlayerDataService.getTutorialFunnelData(player: Player): PlayerTutorialFunnelData
+	local record = loadPlayerData(player)
+	return cloneTutorialFunnelData(record.data.tutorialFunnel)
+end
+
+function PlayerDataService.setTutorialFunnelData(player: Player, tutorialFunnelData: PlayerTutorialFunnelData)
+	local record = loadPlayerData(player)
+	record.data.tutorialFunnel = cloneTutorialFunnelData(tutorialFunnelData)
+	markDirty(record)
 end
 
 function PlayerDataService.hasProcessedDeveloperProductPurchase(player: Player, purchaseId: string): boolean

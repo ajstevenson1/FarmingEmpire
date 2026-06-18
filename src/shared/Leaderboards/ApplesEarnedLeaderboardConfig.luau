@@ -14,8 +14,8 @@ local ApplesEarnedLeaderboardConfig: ApplesEarnedLeaderboardConfig = {
 	workspaceModelName = "ApplesEarnedLeaderboard",
 	displayBoardName = "Board",
 	scrollingFrameName = "ScrollingFrame",
-	orderedDataStoreName = "FarmingEmpire_ApplesEarnedLeaderboard_DEV",
-	entriesToDisplay = 10,
+	orderedDataStoreName = "FarmingEmpire_ApplesEarnedLeaderboard_PROD",
+	entriesToDisplay = 50,
 	refreshIntervalSeconds = 60,
 	writeFlushIntervalSeconds = 30,
 }

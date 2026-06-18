@@ -10,6 +10,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 1,
 		text = "<b>Welcome to Cider Empire!</b> Let's get you started with your first buildings.",
+		analyticsName = "Tutorial Started",
 		tapToContinue = true,
 		spotlightTarget = "None",
 		beamTarget = "None",
@@ -17,6 +18,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 2,
 		text = "Teleport to the shops.",
+		analyticsName = "Reached Shops",
 		tapToContinue = false,
 		spotlightTarget = "ShopTeleportButton",
 		beamTarget = "None",
@@ -24,6 +26,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 3,
 		text = "Walk up to the trees shop.",
+		analyticsName = "Opened Trees Shop",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "TreesShop",
@@ -31,6 +34,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 4,
 		text = 'Purchase <font color="#38d96b">1 Oak Tree</font> from the shop.',
+		analyticsName = "Purchased Oak Tree",
 		tapToContinue = false,
 		spotlightTarget = "OakTreeBuyButton",
 		beamTarget = "None",
@@ -38,6 +42,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 5,
 		text = "Now, head over to the mills shop.",
+		analyticsName = "Opened Mills Shop",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "MillsShop",
@@ -45,6 +50,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 6,
 		text = 'Purchase <font color="#38d96b">1 Cider Mill</font> from the shop.',
+		analyticsName = "Purchased Cider Mill",
 		tapToContinue = false,
 		spotlightTarget = "CiderMillBuyButton",
 		beamTarget = "None",
@@ -52,6 +58,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 7,
 		text = "Now, head back to your farm.",
+		analyticsName = "Returned To Farm",
 		tapToContinue = false,
 		spotlightTarget = "PlotTeleportButton",
 		beamTarget = "None",
@@ -59,6 +66,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 8,
 		text = "Equip your tree and place it down.",
+		analyticsName = "Placed Oak Tree",
 		tapToContinue = false,
 		spotlightTarget = "OakTreeHotbar",
 		beamTarget = "None",
@@ -66,6 +74,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 9,
 		text = "Now, place your mill down.",
+		analyticsName = "Placed Cider Mill",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "None",
@@ -73,6 +82,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 10,
 		text = "Pull out your scythe.",
+		analyticsName = "Equipped Scythe",
 		tapToContinue = false,
 		spotlightTarget = "ScytheHotbar",
 		beamTarget = "None",
@@ -80,6 +90,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 11,
 		text = "Swing at your tree to harvest.",
+		analyticsName = "Harvested Apples",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "OakTree",
@@ -87,6 +98,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 12,
 		text = "Your apples will automatically be turned into cider by your mills.",
+		analyticsName = "Continued After Cider Explanation",
 		tapToContinue = true,
 		spotlightTarget = "None",
 		beamTarget = "None",
@@ -94,6 +106,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 13,
 		text = "Walk over your mill to collect the cider.",
+		analyticsName = "Collected Cider",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "CiderMill",
@@ -101,6 +114,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 14,
 		text = "Now you need to sell your cider. Teleport to the sell stand.",
+		analyticsName = "Reached Sell Area",
 		tapToContinue = false,
 		spotlightTarget = "SellTeleportButton",
 		beamTarget = "None",
@@ -108,6 +122,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 15,
 		text = "Walk up to the sell stand.",
+		analyticsName = "Opened Sell Stand",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "SellStand",
@@ -115,6 +130,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 16,
 		text = "Sell your cider.",
+		analyticsName = "Sold Cider",
 		tapToContinue = false,
 		spotlightTarget = "CiderSellButton",
 		beamTarget = "None",
@@ -122,6 +138,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 17,
 		text = "Nice! Now you can afford more trees and mills. Make sure to buy both!",
+		analyticsName = "Continued After Expansion Tip",
 		tapToContinue = true,
 		spotlightTarget = "None",
 		beamTarget = "None",
@@ -129,6 +146,7 @@ local steps: { TutorialStepDefinition } = {
 	{
 		id = 18,
 		text = "Congrats! You are ready to start your Cider Empire!",
+		analyticsName = "Tutorial Completed",
 		tapToContinue = false,
 		spotlightTarget = "None",
 		beamTarget = "None",

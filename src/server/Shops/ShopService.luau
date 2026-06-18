@@ -19,6 +19,7 @@ local InventoryService = require(script.Parent.Parent.Inventory.InventoryService
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
+local ShopStockRoller = require(script.Parent.ShopStockRoller)
 local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 
 type BuildingId = BuildingTypes.BuildingId
@@ -35,6 +36,7 @@ local TOUCH_OPEN_DEBOUNCE_SECONDS = 1
 local MAX_PURCHASE_DISTANCE_STUDS = 40
 
 local hasStarted = false
+local stockRandom = Random.new()
 local nextRestockAtByShopId: { [ShopId]: number } = {}
 local syncedRestockAtByPlayer: { [Player]: { [ShopId]: number } } = {}
 local stockRemainingByPlayer: { [Player]: { [ShopId]: { [ShopProductId]: number } } } = {}
@@ -97,7 +99,7 @@ local function setFullShopStock(shopId: ShopId, stockState: { [ShopProductId]: n
 	local validProductIds: { [ShopProductId]: boolean } = {}
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		validProductIds[productDefinition.id] = true
-		stockState[productDefinition.id] = productDefinition.stockPerRestock
+		stockState[productDefinition.id] = ShopStockRoller.rollQuantity(productDefinition.stock, stockRandom)
 	end
 
 	for productId in pairs(stockState) do
@@ -112,7 +114,7 @@ local function fillMissingShopStock(shopId: ShopId, stockState: { [ShopProductId
 	for _, productDefinition in ipairs(ShopCatalog.getShopProducts(shopId)) do
 		validProductIds[productDefinition.id] = true
 		if stockState[productDefinition.id] == nil then
-			stockState[productDefinition.id] = productDefinition.stockPerRestock
+			stockState[productDefinition.id] = ShopStockRoller.rollQuantity(productDefinition.stock, stockRandom)
 		end
 	end
 
