@@ -163,7 +163,6 @@ function CashLeaderboardService.start()
 
 	EconomyService.observeCashChanged(function(player: Player, cash: number)
 		queueCashWrite(player.UserId, cash)
-		renderBoard()
 	end)
 
 	Players.PlayerAdded:Connect(initializePlayer)

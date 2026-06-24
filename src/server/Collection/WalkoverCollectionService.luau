@@ -6,8 +6,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local AutoCiderCollectionService = require(script.Parent.Parent.Monetization.AutoCiderCollectionService)
 local PlotService = require(script.Parent.Parent.Plots.PlotService)
 local ProductionService = require(script.Parent.Parent.Production.ProductionService)
@@ -23,12 +25,15 @@ local COLLECTION_COOLDOWN_SECONDS = 2
 local MIN_HORIZONTAL_MOVEMENT_STUDS = 0.2
 local CIDER_RESOURCE_ID = "Cider"
 
+type ResourceId = ResourceTypes.ResourceId
+
 local WALKOVER_PRODUCTION_BEHAVIORS: { [string]: boolean } = {
 	InputProcessor = true,
 }
 
 local hasStarted = false
-local collectableParts: { [BasePart]: boolean } = {}
+local collectablePartsByOwnerUserId: { [number]: { [BasePart]: boolean } } = {}
+local ownerUserIdByCollectablePart: { [BasePart]: number } = {}
 local nextAllowedCollectionByPlayerPart: { [Player]: { [BasePart]: number } } = {}
 local lastRootPositionByPlayer: { [Player]: Vector3 } = {}
 
@@ -61,8 +66,24 @@ local function shouldTrackPart(part: BasePart): boolean
 	return type(productionBehaviorId) == "string" and WALKOVER_PRODUCTION_BEHAVIORS[productionBehaviorId] == true
 end
 
+local function getPartOwnerUserId(part: BasePart): number?
+	local ownerUserId = part:GetAttribute(OWNER_USER_ID_ATTRIBUTE)
+	return if type(ownerUserId) == "number" then ownerUserId else nil
+end
+
 local function clearPartCollectionState(part: BasePart)
-	collectableParts[part] = nil
+	local ownerUserId = ownerUserIdByCollectablePart[part]
+	if ownerUserId ~= nil then
+		local collectablePartsForOwner = collectablePartsByOwnerUserId[ownerUserId]
+		if collectablePartsForOwner ~= nil then
+			collectablePartsForOwner[part] = nil
+			if next(collectablePartsForOwner) == nil then
+				collectablePartsByOwnerUserId[ownerUserId] = nil
+			end
+		end
+	end
+
+	ownerUserIdByCollectablePart[part] = nil
 
 	for _, nextAllowedByPart in pairs(nextAllowedCollectionByPlayerPart) do
 		nextAllowedByPart[part] = nil
@@ -70,24 +91,42 @@ local function clearPartCollectionState(part: BasePart)
 end
 
 local function trackPart(part: BasePart)
-	if shouldTrackPart(part) then
-		collectableParts[part] = true
-	else
-		clearPartCollectionState(part)
+	clearPartCollectionState(part)
+
+	if not shouldTrackPart(part) then
+		return
 	end
+
+	local ownerUserId = getPartOwnerUserId(part)
+	if ownerUserId == nil then
+		return
+	end
+
+	local collectablePartsForOwner = collectablePartsByOwnerUserId[ownerUserId]
+	if collectablePartsForOwner == nil then
+		collectablePartsForOwner = {}
+		collectablePartsByOwnerUserId[ownerUserId] = collectablePartsForOwner
+	end
+
+	collectablePartsForOwner[part] = true
+	ownerUserIdByCollectablePart[part] = ownerUserId
 end
 
 local function connectPartForTracking(part: BasePart)
 	trackPart(part)
 
-	local attributeConnection = part:GetAttributeChangedSignal(BuildingAttributeNames.productionBehaviorId):Connect(function()
+	local productionBehaviorConnection = part:GetAttributeChangedSignal(BuildingAttributeNames.productionBehaviorId):Connect(function()
+		trackPart(part)
+	end)
+	local ownerUserIdConnection = part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
 		trackPart(part)
 	end)
 
 	part.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
 			clearPartCollectionState(part)
-			attributeConnection:Disconnect()
+			productionBehaviorConnection:Disconnect()
+			ownerUserIdConnection:Disconnect()
 		end
 	end)
 end
@@ -160,9 +199,19 @@ local function collectForPlayer(player: Player, rootPart: BasePart, currentTime:
 		return
 	end
 
-	for part in pairs(collectableParts) do
-		if part.Parent ~= nil
-			and isOwnedPartOnAssignedPlot(player, part)
+	local collectablePartsForPlayer = collectablePartsByOwnerUserId[player.UserId]
+	if collectablePartsForPlayer == nil then
+		return
+	end
+
+	local collectedAmountsByResourceId: { [ResourceId]: number } = {}
+	for part in pairs(collectablePartsForPlayer) do
+		if part.Parent == nil then
+			clearPartCollectionState(part)
+			continue
+		end
+
+		if isOwnedPartOnAssignedPlot(player, part)
 			and isRootOverPart(rootPart, part)
 			and canCollectFromPart(player, part, currentTime)
 			and not shouldSkipManualCollection(player, part)
@@ -170,10 +219,13 @@ local function collectForPlayer(player: Player, rootPart: BasePart, currentTime:
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then
 				markSuccessfulCollection(player, part, currentTime)
-				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+				collectedAmountsByResourceId[harvestOutput.resourceId] =
+					(collectedAmountsByResourceId[harvestOutput.resourceId] or 0) + harvestOutput.amount
 			end
 		end
 	end
+
+	ResourceService.addResources(player, collectedAmountsByResourceId)
 end
 
 local function registerExistingParts()

@@ -7,10 +7,12 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local harvestFolder = sharedFolder:WaitForChild("Harvest") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local toolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 
 local AutoHarvestConfig = require(harvestFolder:WaitForChild("AutoHarvestConfig") :: ModuleScript)
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
 local HarvestEffectService = require(script.Parent.HarvestEffectService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
@@ -20,6 +22,7 @@ local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type AppleHarvestEffectPayload = HarvestEffectService.AppleHarvestEffectPayload
+type ResourceId = ResourceTypes.ResourceId
 
 type AutoHarvestPlayerState = {
 	isEnabled: boolean,
@@ -244,6 +247,7 @@ local function handleAutoHarvestRequest(player: Player, requestedTarget: unknown
 
 	local harvestedCount = 0
 	local harvestEffectPayloads: { AppleHarvestEffectPayload } = {}
+	local harvestedAmountsByResourceId: { [ResourceId]: number } = {}
 
 	for _, harvestPart in ipairs(getAutoHarvestParts(player, rootPart, placedPart, placedObjectsFolder)) do
 		if harvestedCount >= AutoHarvestConfig.maxAutoHarvestPartsPerSwing then
@@ -253,7 +257,8 @@ local function handleAutoHarvestRequest(player: Player, requestedTarget: unknown
 		local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(harvestPart)
 		if didHarvest and harvestOutput ~= nil then
 			harvestedCount += 1
-			ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+			harvestedAmountsByResourceId[harvestOutput.resourceId] =
+				(harvestedAmountsByResourceId[harvestOutput.resourceId] or 0) + harvestOutput.amount
 
 			local harvestEffectPayload = HarvestEffectService.createAppleHarvestEffectPayload(harvestPart, harvestOutput)
 			if harvestEffectPayload ~= nil then
@@ -263,6 +268,7 @@ local function handleAutoHarvestRequest(player: Player, requestedTarget: unknown
 	end
 
 	if harvestedCount > 0 then
+		ResourceService.addResources(player, harvestedAmountsByResourceId)
 		Remotes.getHarvestRemotes().scytheHarvestConfirmed:FireClient(player)
 		HarvestEffectService.fireAppleHarvestEffects(player, harvestEffectPayloads)
 	end

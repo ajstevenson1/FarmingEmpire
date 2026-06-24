@@ -1,16 +1,22 @@
 --!strict
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local localPlayer = Players.LocalPlayer
+assert(localPlayer ~= nil, "LocalPlayer must exist before starting WindmillRotationController")
+
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
+local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local weatherFolder = sharedFolder:WaitForChild("Weather") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local WeatherEventConfig = require(weatherFolder:WaitForChild("WeatherEventConfig") :: ModuleScript)
 local WeatherTypes = require(weatherFolder:WaitForChild("WeatherTypes") :: ModuleScript)
@@ -26,6 +32,8 @@ type TrackedWindmill = {
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local CURRENT_VISUAL_MODEL_NAME = "CurrentVisual"
 local ROTATE_PART_NAME = "Rotate"
+local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 local BASE_ROTATION_RADIANS_PER_SECOND = -math.rad(90)
 
 local hasStarted = false
@@ -91,9 +99,23 @@ local function receiveWeatherSnapshot(receivedSnapshot: unknown)
 	rotationSpeedMultiplier = getRotationSpeedMultiplier(receivedSnapshot :: WeatherSnapshot)
 end
 
+local function getAssignedPlotName(): string?
+	local assignedPlotName = localPlayer:GetAttribute(PlotLocator.PlayerAttributes.assignedPlotName)
+	return if type(assignedPlotName) == "string" then assignedPlotName else nil
+end
+
+local function isOwnedPartOnAssignedPlot(part: BasePart): boolean
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= localPlayer.UserId then
+		return false
+	end
+
+	local assignedPlotName = getAssignedPlotName()
+	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
+
 local function isWindmillRootPart(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
-	return type(buildingId) == "string" and WindmillConfig.isWindmillBuildingId(buildingId)
+	return type(buildingId) == "string" and WindmillConfig.isWindmillBuildingId(buildingId) and isOwnedPartOnAssignedPlot(part)
 end
 
 local function findRotatePart(rootPart: BasePart): BasePart?
@@ -139,6 +161,12 @@ local function connectPartForTracking(rootPart: BasePart)
 	rootPart:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(function()
 		refreshTrackedPart(rootPart)
 	end)
+	rootPart:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
+		refreshTrackedPart(rootPart)
+	end)
+	rootPart:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
+		refreshTrackedPart(rootPart)
+	end)
 
 	rootPart.ChildAdded:Connect(function()
 		local trackedWindmill = trackedWindmillsByRootPart[rootPart]
@@ -152,6 +180,15 @@ local function connectPartForTracking(rootPart: BasePart)
 			untrackWindmill(rootPart)
 		end
 	end)
+end
+
+local function refreshAllPlacedParts()
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") then
+			refreshTrackedPart(child)
+		end
+	end
 end
 
 local function spinTrackedWindmills(deltaTime: number)
@@ -209,6 +246,7 @@ function WindmillRotationController.start()
 	local weatherUpdated, getWeatherSnapshot = getWeatherRemotes()
 	receiveWeatherSnapshot(getWeatherSnapshot:InvokeServer())
 	weatherUpdated.OnClientEvent:Connect(receiveWeatherSnapshot)
+	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(refreshAllPlacedParts)
 
 	RunService.RenderStepped:Connect(spinTrackedWindmills)
 end

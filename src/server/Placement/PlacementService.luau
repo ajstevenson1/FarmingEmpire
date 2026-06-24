@@ -9,6 +9,7 @@ local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 local inventoryFolder = sharedFolder:WaitForChild("Inventory") :: Folder
 local placementFolder = sharedFolder:WaitForChild("Placement") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAssetUtils = require(buildingsFolder:WaitForChild("BuildingAssetUtils") :: ModuleScript)
@@ -18,6 +19,7 @@ local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: Modul
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local PlotMath = require(placementFolder:WaitForChild("PlotMath") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local Remotes = require(script.Parent.Parent.Networking.Remotes)
 local EconomyService = require(script.Parent.Parent.Economy.EconomyService)
@@ -32,6 +34,7 @@ local TutorialService = require(script.Parent.Parent.Tutorial.TutorialService)
 type BuildingId = BuildingTypes.BuildingId
 type ItemId = InventoryTypes.ItemId
 type PlacementRotationQuarterTurns = BuildingTypes.PlacementRotationQuarterTurns
+type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
 
 type PlacedBuildingData = {
@@ -457,14 +460,23 @@ local function resolveValidatedPlacedBuildingTarget(player: Player, requestedTar
 	return validatedTarget
 end
 
-local function pickupValidatedTarget(player: Player, validatedTarget: ValidatedPlacedBuildingTarget): boolean
+local function pickupValidatedTarget(
+	player: Player,
+	validatedTarget: ValidatedPlacedBuildingTarget,
+	refundedAmountsByResourceId: { [ResourceId]: number }?
+): boolean
 	if validatedTarget.part.Parent == nil then
 		return false
 	end
 
 	local storedOutput = ProductionService.getStoredOutput(validatedTarget.part)
 	if storedOutput ~= nil then
-		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
+		if refundedAmountsByResourceId ~= nil then
+			refundedAmountsByResourceId[storedOutput.resourceId] =
+				(refundedAmountsByResourceId[storedOutput.resourceId] or 0) + storedOutput.amount
+		else
+			ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
+		end
 	end
 
 	InventoryService.addItem(player, validatedTarget.buildingId :: ItemId, 1)
@@ -479,7 +491,7 @@ local function handlePickupRequest(player: Player, requestedTarget: unknown)
 		return
 	end
 
-	if pickupValidatedTarget(player, validatedTarget) then
+	if pickupValidatedTarget(player, validatedTarget, nil) then
 		savePlayerPlacedBuildings(player)
 	end
 end
@@ -502,13 +514,15 @@ local function handlePickupAllRequest(player: Player)
 	end
 
 	local didPickupAny = false
+	local refundedAmountsByResourceId: { [ResourceId]: number } = {}
 	for _, validatedTarget in ipairs(targetsToPickup) do
-		if pickupValidatedTarget(player, validatedTarget) then
+		if pickupValidatedTarget(player, validatedTarget, refundedAmountsByResourceId) then
 			didPickupAny = true
 		end
 	end
 
 	if didPickupAny then
+		ResourceService.addResources(player, refundedAmountsByResourceId)
 		savePlayerPlacedBuildings(player)
 	end
 end

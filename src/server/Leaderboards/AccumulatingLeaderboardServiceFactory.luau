@@ -41,7 +41,7 @@ function Service:_queueIncrement(userId: number, amount: number)
 
 	self._pendingIncrementsByUserId[userId] = (self._pendingIncrementsByUserId[userId] or 0) + sanitizedAmount
 	if self._latestValuesByUserId[userId] == nil then
-		self._latestValuesByUserId[userId] = self._store:getValueAsync(userId)
+		self._latestValuesByUserId[userId] = 0
 	end
 
 	self._latestValuesByUserId[userId] += sanitizedAmount
@@ -122,7 +122,9 @@ function Service:_refreshStoredEntries()
 end
 
 function Service:_initializePlayer(player: Player)
-	self._latestValuesByUserId[player.UserId] = self._store:getValueAsync(player.UserId)
+	local storedValue = self._store:getValueAsync(player.UserId)
+	local pendingIncrement = self._pendingIncrementsByUserId[player.UserId] or 0
+	self._latestValuesByUserId[player.UserId] = storedValue + pendingIncrement
 	self:_renderBoard()
 end
 
@@ -176,7 +178,6 @@ end
 
 function Service:recordAmount(player: Player, amount: number)
 	self:_queueIncrement(player.UserId, amount)
-	self:_renderBoard()
 end
 
 local AccumulatingLeaderboardServiceFactory = {}

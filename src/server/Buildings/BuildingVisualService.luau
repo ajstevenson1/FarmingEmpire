@@ -16,9 +16,9 @@ type BuildingId = BuildingTypes.BuildingId
 
 local VISUAL_MODEL_NAME = "CurrentVisual"
 local NEXT_VISUAL_MODEL_NAME = "NextVisual"
-local PREVIOUS_VISUAL_MODEL_NAME = "PreviousVisual"
 local PLACEMENT_BOX_NAME = "PlacementBox"
-local VISUAL_SWAP_OVERLAP_SECONDS = 0.05
+local VISUAL_BUILDING_ID_ATTRIBUTE = "VisualBuildingId"
+local VISUAL_STAGE_MODEL_NAME_ATTRIBUTE = "VisualStageModelName"
 
 local function setBasePartVisualProperties(basePart: BasePart, isAnchored: boolean)
 	basePart.Anchored = isAnchored
@@ -59,19 +59,25 @@ local BuildingVisualService = {}
 
 function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, buildingId: BuildingId, stageModelName: string)
 	local existingVisual = rootPart:FindFirstChild(VISUAL_MODEL_NAME)
+	if existingVisual ~= nil
+		and existingVisual:IsA("Model")
+		and existingVisual:GetAttribute(VISUAL_BUILDING_ID_ATTRIBUTE) == buildingId
+		and existingVisual:GetAttribute(VISUAL_STAGE_MODEL_NAME_ATTRIBUTE) == stageModelName
+	then
+		return
+	end
+
 	local existingNextVisual = rootPart:FindFirstChild(NEXT_VISUAL_MODEL_NAME)
 	if existingNextVisual ~= nil then
 		existingNextVisual:Destroy()
-	end
-	local existingPreviousVisual = rootPart:FindFirstChild(PREVIOUS_VISUAL_MODEL_NAME)
-	if existingPreviousVisual ~= nil then
-		existingPreviousVisual:Destroy()
 	end
 
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
 	local stageModel = BuildingAssetUtils.getVisualModel(buildingDefinition, stageModelName):Clone()
 	BuildingAssetUtils.normalizeStageModel(stageModel)
 	stageModel.Name = NEXT_VISUAL_MODEL_NAME
+	stageModel:SetAttribute(VISUAL_BUILDING_ID_ATTRIBUTE, buildingId)
+	stageModel:SetAttribute(VISUAL_STAGE_MODEL_NAME_ATTRIBUTE, stageModelName)
 	stageModel:PivotTo(rootPart.CFrame)
 
 	local rotatingWeldedParts = getRotatingWeldedParts(buildingId, stageModel)
@@ -84,19 +90,13 @@ function BuildingVisualService.setGrowthStageVisual(rootPart: BasePart, building
 		end
 	end
 
-	if existingVisual ~= nil then
-		existingVisual.Name = PREVIOUS_VISUAL_MODEL_NAME
-	end
 	stageModel.Parent = rootPart
-	stageModel.Name = VISUAL_MODEL_NAME
 
 	if existingVisual ~= nil then
-		task.delay(VISUAL_SWAP_OVERLAP_SECONDS, function()
-			if existingVisual.Parent == rootPart then
-				existingVisual:Destroy()
-			end
-		end)
+		existingVisual:Destroy()
 	end
+
+	stageModel.Name = VISUAL_MODEL_NAME
 end
 
 return table.freeze(BuildingVisualService)

@@ -6,9 +6,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local toolsFolder = sharedFolder:WaitForChild("Tools") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local ScytheConfig = require(toolsFolder:WaitForChild("ScytheConfig") :: ModuleScript)
 local ScytheSwingVolume = require(toolsFolder:WaitForChild("ScytheSwingVolume") :: ModuleScript)
 local HarvestEffectService = require(script.Parent.HarvestEffectService)
@@ -19,6 +21,7 @@ local ProductionService = require(script.Parent.Parent.Production.ProductionServ
 local ResourceService = require(script.Parent.Parent.Resources.ResourceService)
 
 type AppleHarvestEffectPayload = HarvestEffectService.AppleHarvestEffectPayload
+type ResourceId = ResourceTypes.ResourceId
 
 local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
 local PLOT_NAME_ATTRIBUTE = "PlotName"
@@ -115,16 +118,24 @@ local function handleScytheSwingRequest(player: Player)
 	end
 
 	local harvestedAny = false
+	local harvestedCount = 0
 	local harvestEffectPayloads: { AppleHarvestEffectPayload } = {}
+	local harvestedAmountsByResourceId: { [ResourceId]: number } = {}
 
 	for _, part in ipairs(getSwingOverlapParts(rootPart.CFrame, placedObjectsFolder)) do
+		if harvestedCount >= ScytheConfig.maxHarvestPartsPerSwing then
+			break
+		end
+
 		if isOwnedPartOnAssignedPlot(player, part)
 			and canHarvestWithTool(part)
 		then
 			local didHarvest, harvestOutput = ProductionService.tryHarvestPlacedBuilding(part)
 			if didHarvest and harvestOutput ~= nil then
 				harvestedAny = true
-				ResourceService.addResource(player, harvestOutput.resourceId, harvestOutput.amount)
+				harvestedCount += 1
+				harvestedAmountsByResourceId[harvestOutput.resourceId] =
+					(harvestedAmountsByResourceId[harvestOutput.resourceId] or 0) + harvestOutput.amount
 
 				local harvestEffectPayload = HarvestEffectService.createAppleHarvestEffectPayload(part, harvestOutput)
 				if harvestEffectPayload ~= nil then
@@ -135,6 +146,7 @@ local function handleScytheSwingRequest(player: Player)
 	end
 
 	if harvestedAny then
+		ResourceService.addResources(player, harvestedAmountsByResourceId)
 		Remotes.getScytheHarvestConfirmedRemote():FireClient(player)
 		HarvestEffectService.fireAppleHarvestEffects(player, harvestEffectPayloads)
 	end

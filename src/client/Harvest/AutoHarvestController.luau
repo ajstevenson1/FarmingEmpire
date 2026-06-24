@@ -39,6 +39,8 @@ local isAutoHarvestEnabled = false
 local runToken = 0
 local recentlyVisitedUntilByPart: { [BasePart]: number } = {}
 local lastVisitedTimeByPart: { [BasePart]: number } = {}
+local appleTargetCandidates: { [BasePart]: boolean } = {}
+local appleTargetConnectionsByPart: { [BasePart]: { RBXScriptConnection } } = {}
 local lastVisitedPosition: Vector3? = nil
 local lastVisitedClusterExpiresAt = 0
 
@@ -59,10 +61,16 @@ local MOVEMENT_KEYCODES: { [Enum.KeyCode]: boolean } = {
 	[Enum.KeyCode.DPadRight] = true,
 }
 
-local function getHarvestRemote(): RemoteEvent
+local function getAutoHarvestStateRemote(): RemoteEvent
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local harvestRemotesFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
-	return harvestRemotesFolder:WaitForChild(RemoteNames.requestScytheSwingEventName) :: RemoteEvent
+	return harvestRemotesFolder:WaitForChild(RemoteNames.requestAutoHarvestStateEventName) :: RemoteEvent
+end
+
+local function getAutoHarvestRemote(): RemoteEvent
+	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
+	local harvestRemotesFolder = rootFolder:WaitForChild(RemoteNames.harvestFolderName) :: Folder
+	return harvestRemotesFolder:WaitForChild(RemoteNames.requestAutoHarvestEventName) :: RemoteEvent
 end
 
 local function getPlacedObjectsFolder(): Folder?
@@ -98,7 +106,7 @@ local function getSelectedItemId(): string?
 	return snapshot.hotbarSlots[snapshot.selectedSlotIndex]
 end
 
-local function isOwnedAppleTarget(part: BasePart): boolean
+local function isOwnedPartOnAssignedPlot(part: BasePart): boolean
 	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= localPlayer.UserId then
 		return false
 	end
@@ -108,8 +116,79 @@ local function isOwnedAppleTarget(part: BasePart): boolean
 		return false
 	end
 
-	return part:GetAttribute(BuildingAttributeNames.productionOutputName) == APPLE_RESOURCE_ID
-		and part:GetAttribute(BuildingAttributeNames.isReadyToHarvest) == true
+	return true
+end
+
+local function isOwnedAppleCandidate(part: BasePart): boolean
+	return isOwnedPartOnAssignedPlot(part)
+		and part:GetAttribute(BuildingAttributeNames.productionOutputName) == APPLE_RESOURCE_ID
+end
+
+local function isOwnedAppleTarget(part: BasePart): boolean
+	return isOwnedAppleCandidate(part) and part:GetAttribute(BuildingAttributeNames.isReadyToHarvest) == true
+end
+
+local function refreshAppleTargetCandidate(part: BasePart)
+	if part.Parent ~= nil and isOwnedAppleCandidate(part) then
+		appleTargetCandidates[part] = true
+	else
+		appleTargetCandidates[part] = nil
+	end
+end
+
+local function disconnectAppleTargetCandidate(part: BasePart)
+	local connections = appleTargetConnectionsByPart[part]
+	if connections ~= nil then
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+
+		appleTargetConnectionsByPart[part] = nil
+	end
+
+	appleTargetCandidates[part] = nil
+	recentlyVisitedUntilByPart[part] = nil
+	lastVisitedTimeByPart[part] = nil
+end
+
+local function connectAppleTargetCandidate(part: BasePart)
+	if appleTargetConnectionsByPart[part] ~= nil then
+		refreshAppleTargetCandidate(part)
+		return
+	end
+
+	appleTargetConnectionsByPart[part] = {
+		part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
+			refreshAppleTargetCandidate(part)
+		end),
+		part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
+			refreshAppleTargetCandidate(part)
+		end),
+		part:GetAttributeChangedSignal(BuildingAttributeNames.productionOutputName):Connect(function()
+			refreshAppleTargetCandidate(part)
+		end),
+		part.AncestryChanged:Connect(function(_, parent)
+			if parent == nil then
+				disconnectAppleTargetCandidate(part)
+			end
+		end),
+	}
+
+	refreshAppleTargetCandidate(part)
+end
+
+local function refreshAllAppleTargetCandidates()
+	table.clear(appleTargetCandidates)
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	if placedObjectsFolder == nil then
+		return
+	end
+
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") then
+			connectAppleTargetCandidate(child)
+		end
+	end
 end
 
 local function faceTarget(rootPart: BasePart, targetPart: BasePart)
@@ -209,9 +288,8 @@ local function getTargetScore(part: BasePart, rootPart: BasePart, currentTime: n
 end
 
 local function findNextReadyAppleTarget(): BasePart?
-	local placedObjectsFolder = getPlacedObjectsFolder()
 	local rootPart = getHumanoidRootPart()
-	if placedObjectsFolder == nil or rootPart == nil then
+	if rootPart == nil then
 		return nil
 	end
 
@@ -225,8 +303,13 @@ local function findNextReadyAppleTarget(): BasePart?
 	local selectedTarget: BasePart? = nil
 	local selectedScore = -math.huge
 
-	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
-		if child:IsA("BasePart") and isOwnedAppleTarget(child) then
+	for child in pairs(appleTargetCandidates) do
+		if child.Parent == nil then
+			disconnectAppleTargetCandidate(child)
+			continue
+		end
+
+		if isOwnedAppleTarget(child) then
 			if isAtStorageCapacity(child) then
 				local fullScore = getFullTreeScore(child, rootPart, currentTime)
 				if not isRecentlyVisited(child, currentTime)
@@ -256,16 +339,17 @@ end
 
 local function markTargetVisited(targetPart: BasePart)
 	local expiresAt = os.clock() + AutoHarvestConfig.recentlyVisitedSeconds
-	local placedObjectsFolder = getPlacedObjectsFolder()
-	if placedObjectsFolder ~= nil then
-		for _, child in ipairs(placedObjectsFolder:GetChildren()) do
-			if child:IsA("BasePart")
-				and isOwnedAppleTarget(child)
-				and (child.Position - targetPart.Position).Magnitude <= AutoHarvestConfig.recentClusterRadiusStuds
-			then
-				recentlyVisitedUntilByPart[child] = expiresAt
-				lastVisitedTimeByPart[child] = os.clock()
-			end
+	for child in pairs(appleTargetCandidates) do
+		if child.Parent == nil then
+			disconnectAppleTargetCandidate(child)
+			continue
+		end
+
+		if isOwnedAppleTarget(child)
+			and (child.Position - targetPart.Position).Magnitude <= AutoHarvestConfig.recentClusterRadiusStuds
+		then
+			recentlyVisitedUntilByPart[child] = expiresAt
+			lastVisitedTimeByPart[child] = os.clock()
 		end
 	end
 
@@ -298,11 +382,12 @@ local function setAutoHarvestEnabled(shouldEnable: boolean)
 	isAutoHarvestEnabled = shouldEnable
 	runToken += 1
 	setViewState()
+	getAutoHarvestStateRemote():FireServer(isAutoHarvestEnabled)
 
 	if shouldEnable then
 		local currentToken = runToken
 		task.spawn(function()
-			local requestScytheSwing = getHarvestRemote()
+			local requestAutoHarvest = getAutoHarvestRemote()
 			while isAutoHarvestEnabled and currentToken == runToken do
 				local targetPart = findNextReadyAppleTarget()
 				if targetPart == nil then
@@ -326,7 +411,7 @@ local function setAutoHarvestEnabled(shouldEnable: boolean)
 
 						ScytheController.tryPlaySwing()
 						markTargetVisited(targetPart)
-						requestScytheSwing:FireServer()
+						requestAutoHarvest:FireServer(targetPart)
 					end
 					task.wait(AutoHarvestConfig.harvestIntervalSeconds)
 				else
@@ -378,6 +463,29 @@ function AutoHarvestController.start()
 	createdView:connectToggleRequested(function()
 		setAutoHarvestEnabled(not isAutoHarvestEnabled)
 	end)
+
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	if placedObjectsFolder ~= nil then
+		for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+			if child:IsA("BasePart") then
+				connectAppleTargetCandidate(child)
+			end
+		end
+
+		placedObjectsFolder.ChildAdded:Connect(function(child)
+			if child:IsA("BasePart") then
+				connectAppleTargetCandidate(child)
+			end
+		end)
+
+		placedObjectsFolder.ChildRemoved:Connect(function(child)
+			if child:IsA("BasePart") then
+				disconnectAppleTargetCandidate(child)
+			end
+		end)
+	end
+
+	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(refreshAllAppleTargetCandidates)
 
 	InventoryController.observeSnapshotChanged(function(_snapshot)
 		updateSelectedToolState()

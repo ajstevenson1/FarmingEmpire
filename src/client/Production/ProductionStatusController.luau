@@ -1,14 +1,20 @@
 --!strict
 
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local localPlayer = Players.LocalPlayer
+assert(localPlayer ~= nil, "LocalPlayer must exist before starting ProductionStatusController")
+
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local AppleCounterBillboardView = require(script.Parent.AppleCounterBillboardView)
@@ -33,10 +39,26 @@ type TrackedConnections = {
 }
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
+local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 
 local trackedViewsByPart: { [BasePart]: ProductionViewInstance } = {}
 local trackedConnectionsByPart: { [BasePart]: TrackedConnections } = {}
 local hasStarted = false
+
+local function getAssignedPlotName(): string?
+	local assignedPlotName = localPlayer:GetAttribute(PlotLocator.PlayerAttributes.assignedPlotName)
+	return if type(assignedPlotName) == "string" then assignedPlotName else nil
+end
+
+local function isOwnedPartOnAssignedPlot(part: BasePart): boolean
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= localPlayer.UserId then
+		return false
+	end
+
+	local assignedPlotName = getAssignedPlotName()
+	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
 
 local function destroyTrackedView(part: BasePart)
 	local existingView = trackedViewsByPart[part]
@@ -58,7 +80,7 @@ end
 
 local function shouldTrackPart(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
-	return type(buildingId) == "string"
+	return type(buildingId) == "string" and isOwnedPartOnAssignedPlot(part)
 end
 
 local function shouldUseAppleCounter(part: BasePart): boolean
@@ -98,7 +120,20 @@ local function createView(part: BasePart): ProductionViewInstance
 	return ProductionBillboardView.new(part)
 end
 
-local function trackPart(part: BasePart)
+local trackPart: ((BasePart) -> ())? = nil
+
+local function refreshPartTracking(part: BasePart)
+	if shouldTrackPart(part) then
+		local currentTrackPart = trackPart
+		if currentTrackPart ~= nil then
+			currentTrackPart(part)
+		end
+	else
+		destroyTrackedView(part)
+	end
+end
+
+trackPart = function(part: BasePart)
 	if trackedViewsByPart[part] ~= nil then
 		return
 	end
@@ -133,6 +168,15 @@ local function trackPart(part: BasePart)
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionState):Connect(function()
 			view:refresh()
 		end),
+		part:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(function()
+			refreshPartTracking(part)
+		end),
+		part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
+			refreshPartTracking(part)
+		end),
+		part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
+			refreshPartTracking(part)
+		end),
 	}
 
 	local ancestryConnection = part.AncestryChanged:Connect(function(_, parent)
@@ -160,20 +204,29 @@ local function connectPartForDeferredTracking(part: BasePart)
 		return
 	end
 
-	local attributeConnection: RBXScriptConnection? = nil
-	attributeConnection = part:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(function()
-		if shouldTrackPart(part) then
-			if attributeConnection ~= nil then
-				attributeConnection:Disconnect()
-			end
+	local connections: { RBXScriptConnection } = {}
+	local function disconnectConnections()
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
 
+		table.clear(connections)
+	end
+
+	local function tryTrack()
+		if shouldTrackPart(part) then
+			disconnectConnections()
 			trackPart(part)
 		end
-	end)
+	end
+
+	table.insert(connections, part:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(tryTrack))
+	table.insert(connections, part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(tryTrack))
+	table.insert(connections, part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(tryTrack))
 
 	part.AncestryChanged:Connect(function(_, parent)
-		if parent == nil and attributeConnection ~= nil then
-			attributeConnection:Disconnect()
+		if parent == nil then
+			disconnectConnections()
 		end
 	end)
 end
@@ -193,9 +246,22 @@ local function refreshTrackedViewsForAutoCiderEnabled()
 
 		local existingView = trackedViewsByPart[child]
 		if existingView ~= nil then
-			applyAutoCiderStateToView(child, existingView)
+			if shouldTrackPart(child) then
+				applyAutoCiderStateToView(child, existingView)
+			else
+				destroyTrackedView(child)
+			end
 		elseif shouldTrackPart(child) then
 			trackPart(child)
+		end
+	end
+end
+
+local function refreshAllPlacedParts()
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") then
+			refreshPartTracking(child)
 		end
 	end
 end
@@ -232,6 +298,8 @@ function ProductionStatusController.start()
 	AutoCiderPassController.observeEnabledChanged(function(_isAutoCiderEnabled: boolean)
 		refreshTrackedViewsForAutoCiderEnabled()
 	end)
+
+	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(refreshAllPlacedParts)
 end
 
 return table.freeze(ProductionStatusController)

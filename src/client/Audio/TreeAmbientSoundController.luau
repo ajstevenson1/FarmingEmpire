@@ -7,9 +7,11 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local audioFolder = sharedFolder:WaitForChild("Audio") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local plotsFolder = sharedFolder:WaitForChild("Plots") :: Folder
 local progressionFolder = sharedFolder:WaitForChild("Progression") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local PlotLocator = require(plotsFolder:WaitForChild("PlotLocator") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local TreeAmbientSoundConfig = require(audioFolder:WaitForChild("TreeAmbientSoundConfig") :: ModuleScript)
 local AudioService = require(script.Parent.AudioService)
@@ -24,6 +26,8 @@ type TrackedTreeSound = {
 
 local PLACED_OBJECTS_FOLDER_NAME = "PlacedObjects"
 local CHARACTER_ROOT_PART_NAME = "HumanoidRootPart"
+local OWNER_USER_ID_ATTRIBUTE = "OwnerUserId"
+local PLOT_NAME_ATTRIBUTE = "PlotName"
 
 local localPlayer = Players.LocalPlayer
 local trackedSoundsByPart: { [BasePart]: TrackedTreeSound } = {}
@@ -50,9 +54,23 @@ local function getPlacedObjectsFolder(): Folder
 	return folder
 end
 
+local function getAssignedPlotName(): string?
+	local assignedPlotName = localPlayer:GetAttribute(PlotLocator.PlayerAttributes.assignedPlotName)
+	return if type(assignedPlotName) == "string" then assignedPlotName else nil
+end
+
+local function isOwnedPartOnAssignedPlot(part: BasePart): boolean
+	if part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) ~= localPlayer.UserId then
+		return false
+	end
+
+	local assignedPlotName = getAssignedPlotName()
+	return assignedPlotName ~= nil and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
+
 local function isTreePart(part: BasePart): boolean
 	local buildingId = part:GetAttribute(BuildingAttributeNames.buildingId)
-	return type(buildingId) == "string" and ProgressionConfig.isTreeBuildingId(buildingId)
+	return type(buildingId) == "string" and ProgressionConfig.isTreeBuildingId(buildingId) and isOwnedPartOnAssignedPlot(part)
 end
 
 local function hasFinalBuildingId(part: BasePart): boolean
@@ -194,6 +212,24 @@ local function trackTreePart(part: BasePart)
 		end)
 	end))
 
+	table.insert(trackedSound.connections, part:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(function()
+		if not isTreePart(part) then
+			destroyTrackedSound(part)
+		end
+	end))
+
+	table.insert(trackedSound.connections, part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
+		if not isTreePart(part) then
+			destroyTrackedSound(part)
+		end
+	end))
+
+	table.insert(trackedSound.connections, part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
+		if not isTreePart(part) then
+			destroyTrackedSound(part)
+		end
+	end))
+
 	table.insert(trackedSound.connections, part.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
 			destroyTrackedSound(part)
@@ -224,6 +260,16 @@ local function connectPartForDeferredTracking(part: BasePart)
 			disconnectPendingAttributeConnections(part)
 		end
 	end)
+	local ownerUserIdConnection = part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
+		if isTreePart(part) then
+			trackTreePart(part)
+		end
+	end)
+	local plotNameConnection = part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
+		if isTreePart(part) then
+			trackTreePart(part)
+		end
+	end)
 
 	local ancestryConnection = part.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
@@ -233,8 +279,24 @@ local function connectPartForDeferredTracking(part: BasePart)
 
 	pendingAttributeConnectionsByPart[part] = {
 		buildingIdConnection,
+		ownerUserIdConnection,
+		plotNameConnection,
 		ancestryConnection,
 	}
+end
+
+local function refreshAllPlacedParts()
+	local placedObjectsFolder = getPlacedObjectsFolder()
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") then
+			if isTreePart(child) then
+				trackTreePart(child)
+			else
+				destroyTrackedSound(child)
+				connectPartForDeferredTracking(child)
+			end
+		end
+	end
 end
 
 local function updateTrackedSounds()
@@ -308,6 +370,7 @@ function TreeAmbientSoundController.start()
 		end
 	end)
 
+	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(refreshAllPlacedParts)
 	startUpdateLoop()
 end
 

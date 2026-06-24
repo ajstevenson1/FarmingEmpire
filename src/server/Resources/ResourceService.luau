@@ -18,6 +18,8 @@ type ResourceAddedListener = (Player, ResourceId, number) -> ()
 
 local hasStarted = false
 local resourceAddedListeners: { ResourceAddedListener } = {}
+local pendingUpdateContextsByPlayer: { [Player]: ResourceUpdateContext? } = {}
+local updateScheduledByPlayer: { [Player]: boolean } = {}
 
 local function cloneAmounts(amountsByResourceId: { [ResourceId]: number }): { [ResourceId]: number }
 	local cloned: { [ResourceId]: number } = {}
@@ -34,9 +36,46 @@ local function buildSnapshot(player: Player): ResourceSnapshot
 	}
 end
 
-local function pushResourceUpdate(player: Player, context: ResourceUpdateContext?)
+local function fireResourceUpdate(player: Player, context: ResourceUpdateContext?)
 	local resourceRemotes = Remotes.getResourceRemotes()
 	resourceRemotes.resourceUpdated:FireClient(player, buildSnapshot(player), context)
+end
+
+local function mergeUpdateContext(
+	previousContext: ResourceUpdateContext?,
+	nextContext: ResourceUpdateContext?
+): ResourceUpdateContext?
+	if previousContext == nil then
+		return nextContext
+	end
+
+	if nextContext == nil then
+		return previousContext
+	end
+
+	if previousContext.reason == nextContext.reason then
+		return previousContext
+	end
+
+	return nil
+end
+
+local function pushResourceUpdate(player: Player, context: ResourceUpdateContext?)
+	pendingUpdateContextsByPlayer[player] = mergeUpdateContext(pendingUpdateContextsByPlayer[player], context)
+	if updateScheduledByPlayer[player] == true then
+		return
+	end
+
+	updateScheduledByPlayer[player] = true
+	task.defer(function()
+		updateScheduledByPlayer[player] = nil
+		local pendingContext = pendingUpdateContextsByPlayer[player]
+		pendingUpdateContextsByPlayer[player] = nil
+
+		if player.Parent == Players then
+			fireResourceUpdate(player, pendingContext)
+		end
+	end)
 end
 
 local function notifyResourceAdded(player: Player, resourceId: ResourceId, amount: number)
@@ -113,6 +152,35 @@ end
 
 function ResourceService.addResource(player: Player, resourceId: ResourceId, amount: number)
 	ResourceService.addResourceWithContext(player, resourceId, amount, nil)
+end
+
+function ResourceService.addResourcesWithContext(
+	player: Player,
+	amountsByResourceId: { [ResourceId]: number },
+	context: ResourceUpdateContext?
+)
+	local didChange = false
+	for resourceId, amount in pairs(amountsByResourceId) do
+		if amount <= 0 then
+			continue
+		end
+
+		PlayerDataService.setResourceAmount(
+			player,
+			resourceId,
+			PlayerDataService.getResourceAmount(player, resourceId) + amount
+		)
+		notifyResourceAdded(player, resourceId, amount)
+		didChange = true
+	end
+
+	if didChange then
+		pushResourceUpdate(player, context)
+	end
+end
+
+function ResourceService.addResources(player: Player, amountsByResourceId: { [ResourceId]: number })
+	ResourceService.addResourcesWithContext(player, amountsByResourceId, nil)
 end
 
 function ResourceService.observeResourceAdded(listener: ResourceAddedListener)

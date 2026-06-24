@@ -28,7 +28,8 @@ local AUTO_CIDER_COLLECTION_CONTEXT: ResourceTypes.ResourceUpdateContext = table
 	reason = "AutoCiderCollection",
 })
 
-local trackedCiderMillParts: { [BasePart]: boolean } = {}
+local trackedCiderMillPartsByOwnerUserId: { [number]: { [BasePart]: boolean } } = {}
+local ownerUserIdByTrackedCiderMillPart: { [BasePart]: number } = {}
 local trackedConnectionsByPart: { [BasePart]: { RBXScriptConnection } } = {}
 local autoCiderEnabledByPlayer: { [Player]: boolean } = {}
 local hasStarted = false
@@ -51,16 +52,50 @@ local function shouldTrackPart(part: BasePart): boolean
 	return productionBehaviorId == INPUT_PROCESSOR_BEHAVIOR_ID and outputResourceId == CIDER_RESOURCE_ID
 end
 
-local function refreshTrackedPart(part: BasePart)
-	if shouldTrackPart(part) then
-		trackedCiderMillParts[part] = true
-	else
-		trackedCiderMillParts[part] = nil
+local function getPartOwnerUserId(part: BasePart): number?
+	local ownerUserId = part:GetAttribute(OWNER_USER_ID_ATTRIBUTE)
+	return if type(ownerUserId) == "number" then ownerUserId else nil
+end
+
+local function clearTrackedCiderMillIndex(part: BasePart)
+	local ownerUserId = ownerUserIdByTrackedCiderMillPart[part]
+	if ownerUserId ~= nil then
+		local trackedPartsForOwner = trackedCiderMillPartsByOwnerUserId[ownerUserId]
+		if trackedPartsForOwner ~= nil then
+			trackedPartsForOwner[part] = nil
+			if next(trackedPartsForOwner) == nil then
+				trackedCiderMillPartsByOwnerUserId[ownerUserId] = nil
+			end
+		end
 	end
+
+	ownerUserIdByTrackedCiderMillPart[part] = nil
+end
+
+local function refreshTrackedPart(part: BasePart)
+	clearTrackedCiderMillIndex(part)
+
+	if not shouldTrackPart(part) then
+		return
+	end
+
+	local ownerUserId = getPartOwnerUserId(part)
+	if ownerUserId == nil then
+		return
+	end
+
+	local trackedPartsForOwner = trackedCiderMillPartsByOwnerUserId[ownerUserId]
+	if trackedPartsForOwner == nil then
+		trackedPartsForOwner = {}
+		trackedCiderMillPartsByOwnerUserId[ownerUserId] = trackedPartsForOwner
+	end
+
+	trackedPartsForOwner[part] = true
+	ownerUserIdByTrackedCiderMillPart[part] = ownerUserId
 end
 
 local function clearTrackedPart(part: BasePart)
-	trackedCiderMillParts[part] = nil
+	clearTrackedCiderMillIndex(part)
 
 	local connections = trackedConnectionsByPart[part]
 	if connections == nil then
@@ -87,6 +122,9 @@ local function connectPartForTracking(part: BasePart)
 			refreshTrackedPart(part)
 		end),
 		part:GetAttributeChangedSignal(BuildingAttributeNames.productionOutputName):Connect(function()
+			refreshTrackedPart(part)
+		end),
+		part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
 			refreshTrackedPart(part)
 		end),
 		part.AncestryChanged:Connect(function(_, parent)
@@ -124,10 +162,15 @@ local function collectCiderForPlayer(player: Player)
 		return
 	end
 
+	local trackedPartsForPlayer = trackedCiderMillPartsByOwnerUserId[player.UserId]
+	if trackedPartsForPlayer == nil then
+		return
+	end
+
 	local totalCollectedCider = 0
-	for part in pairs(trackedCiderMillParts) do
+	for part in pairs(trackedPartsForPlayer) do
 		if part.Parent == nil then
-			trackedCiderMillParts[part] = nil
+			clearTrackedPart(part)
 			continue
 		end
 

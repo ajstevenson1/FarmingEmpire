@@ -8,6 +8,7 @@ export type SoundEffectConfig = {
 
 export type ScytheConfig = {
 	cooldownSeconds: number,
+	maxHarvestPartsPerSwing: number,
 	swingHalfAngleDegrees: number,
 	swingRange: number,
 	swingVerticalTolerance: number,
@@ -19,6 +20,7 @@ export type ScytheConfig = {
 
 local ScytheConfig: ScytheConfig = table.freeze({
 	cooldownSeconds = 0.5,
+	maxHarvestPartsPerSwing = 12,
 	swingHalfAngleDegrees = 60,
 	swingRange = 7,
 	swingVerticalTolerance = 6,

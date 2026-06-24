@@ -32,6 +32,8 @@ type TrackedPartConnections = {
 	buildingIdChanged: RBXScriptConnection,
 	ownerUserIdChanged: RBXScriptConnection,
 	plotNameChanged: RBXScriptConnection,
+	gridXChanged: RBXScriptConnection,
+	gridZChanged: RBXScriptConnection,
 	ancestryChanged: RBXScriptConnection,
 }
 
@@ -43,6 +45,7 @@ local PLOT_NAME_ATTRIBUTE = "PlotName"
 
 local hasStarted = false
 local trackedConnectionsByPart: { [BasePart]: TrackedPartConnections } = {}
+local trackedRateParts: { [BasePart]: boolean } = {}
 local workspacePlotsFolder = Workspace:WaitForChild(PlotLocator.PLOTS_FOLDER_NAME) :: Folder
 
 local function getPlacedObjectsFolder(): Folder
@@ -85,32 +88,37 @@ local function getOfflineRateMultiplier(buildingId: BuildingId, gridX: number, g
 	return PlotExpansionRules.getOfflineCiderRateMultiplier(tileDefinition.modifierId, buildingId)
 end
 
-local function getOwnedBuildingIds(placedObjectsFolder: Folder): { OfflineRateBuilding }
+local function shouldAffectLocalRate(part: BasePart): boolean
 	local assignedPlotName = getAssignedPlotName()
 	if assignedPlotName == nil then
-		return {}
+		return false
 	end
 
+	return part:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == localPlayer.UserId
+		and part:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+end
+
+local function getOwnedBuildingIds(): { OfflineRateBuilding }
 	local ownedBuildings: { OfflineRateBuilding } = {}
-	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
-		if child:IsA("BasePart")
-			and child:GetAttribute(OWNER_USER_ID_ATTRIBUTE) == localPlayer.UserId
-			and child:GetAttribute(PLOT_NAME_ATTRIBUTE) == assignedPlotName
+	for child in pairs(trackedRateParts) do
+		if child.Parent == nil or not shouldAffectLocalRate(child) then
+			trackedRateParts[child] = nil
+			continue
+		end
+
+		local buildingIdValue = child:GetAttribute(BuildingAttributeNames.buildingId)
+		local gridXValue = child:GetAttribute(GRID_X_ATTRIBUTE)
+		local gridZValue = child:GetAttribute(GRID_Z_ATTRIBUTE)
+		if type(buildingIdValue) == "string"
+			and BuildingCatalog.hasBuildingDefinition(buildingIdValue)
+			and type(gridXValue) == "number"
+			and type(gridZValue) == "number"
 		then
-			local buildingIdValue = child:GetAttribute(BuildingAttributeNames.buildingId)
-			local gridXValue = child:GetAttribute(GRID_X_ATTRIBUTE)
-			local gridZValue = child:GetAttribute(GRID_Z_ATTRIBUTE)
-			if type(buildingIdValue) == "string"
-				and BuildingCatalog.hasBuildingDefinition(buildingIdValue)
-				and type(gridXValue) == "number"
-				and type(gridZValue) == "number"
-			then
-				local buildingId = buildingIdValue :: BuildingId
-				table.insert(ownedBuildings, {
-					buildingId = buildingId,
-					rateMultiplier = getOfflineRateMultiplier(buildingId, gridXValue, gridZValue),
-				})
-			end
+			local buildingId = buildingIdValue :: BuildingId
+			table.insert(ownedBuildings, {
+				buildingId = buildingId,
+				rateMultiplier = getOfflineRateMultiplier(buildingId, gridXValue, gridZValue),
+			})
 		end
 	end
 
@@ -126,8 +134,8 @@ local function getOfflineWindmillMultiplier(buildings: { OfflineRateBuilding }):
 	return 1 + bonusTotal
 end
 
-local function recomputeOfflineRate(view: OfflineRateViewInstance, placedObjectsFolder: Folder)
-	local ownedBuildings = getOwnedBuildingIds(placedObjectsFolder)
+local function recomputeOfflineRate(view: OfflineRateViewInstance)
+	local ownedBuildings = getOwnedBuildingIds()
 	local ciderPerHour =
 		OfflineCiderRateCalculator.calculateCiderPerHour(ownedBuildings, getOfflineWindmillMultiplier(ownedBuildings))
 	view:render(ciderPerHour)
@@ -142,34 +150,78 @@ local function disconnectTrackedPart(part: BasePart)
 	trackedConnections.buildingIdChanged:Disconnect()
 	trackedConnections.ownerUserIdChanged:Disconnect()
 	trackedConnections.plotNameChanged:Disconnect()
+	trackedConnections.gridXChanged:Disconnect()
+	trackedConnections.gridZChanged:Disconnect()
 	trackedConnections.ancestryChanged:Disconnect()
 	trackedConnectionsByPart[part] = nil
 end
 
-local function trackPart(part: BasePart, view: OfflineRateViewInstance, placedObjectsFolder: Folder)
+local function refreshTrackedRatePart(part: BasePart, view: OfflineRateViewInstance)
+	local wasTracked = trackedRateParts[part] == true
+	local shouldTrack = part.Parent ~= nil and shouldAffectLocalRate(part)
+
+	if shouldTrack then
+		trackedRateParts[part] = true
+	else
+		trackedRateParts[part] = nil
+	end
+
+	if wasTracked or shouldTrack then
+		recomputeOfflineRate(view)
+	end
+end
+
+local function recomputeIfTracked(part: BasePart, view: OfflineRateViewInstance)
+	if trackedRateParts[part] == true then
+		recomputeOfflineRate(view)
+	end
+end
+
+local function trackPart(part: BasePart, view: OfflineRateViewInstance)
 	if trackedConnectionsByPart[part] ~= nil then
 		return
 	end
 
 	trackedConnectionsByPart[part] = {
 		buildingIdChanged = part:GetAttributeChangedSignal(BuildingAttributeNames.buildingId):Connect(function()
-			recomputeOfflineRate(view, placedObjectsFolder)
+			recomputeIfTracked(part, view)
 		end),
 		ownerUserIdChanged = part:GetAttributeChangedSignal(OWNER_USER_ID_ATTRIBUTE):Connect(function()
-			recomputeOfflineRate(view, placedObjectsFolder)
+			refreshTrackedRatePart(part, view)
 		end),
 		plotNameChanged = part:GetAttributeChangedSignal(PLOT_NAME_ATTRIBUTE):Connect(function()
-			recomputeOfflineRate(view, placedObjectsFolder)
+			refreshTrackedRatePart(part, view)
+		end),
+		gridXChanged = part:GetAttributeChangedSignal(GRID_X_ATTRIBUTE):Connect(function()
+			recomputeIfTracked(part, view)
+		end),
+		gridZChanged = part:GetAttributeChangedSignal(GRID_Z_ATTRIBUTE):Connect(function()
+			recomputeIfTracked(part, view)
 		end),
 		ancestryChanged = part.AncestryChanged:Connect(function(_, parent)
 			if parent == nil then
+				local wasTracked = trackedRateParts[part] == true
+				trackedRateParts[part] = nil
 				disconnectTrackedPart(part)
-				recomputeOfflineRate(view, placedObjectsFolder)
+				if wasTracked then
+					recomputeOfflineRate(view)
+				end
 			end
 		end),
 	}
 
-	recomputeOfflineRate(view, placedObjectsFolder)
+	refreshTrackedRatePart(part, view)
+end
+
+local function refreshAllTrackedRateParts(view: OfflineRateViewInstance, placedObjectsFolder: Folder)
+	table.clear(trackedRateParts)
+	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
+		if child:IsA("BasePart") and shouldAffectLocalRate(child) then
+			trackedRateParts[child] = true
+		end
+	end
+
+	recomputeOfflineRate(view)
 end
 
 local OfflineRateController = {}
@@ -186,28 +238,32 @@ function OfflineRateController.start()
 
 	for _, child in ipairs(placedObjectsFolder:GetChildren()) do
 		if child:IsA("BasePart") then
-			trackPart(child, view, placedObjectsFolder)
+			trackPart(child, view)
 		end
 	end
 
 	placedObjectsFolder.ChildAdded:Connect(function(child)
 		if child:IsA("BasePart") then
-			trackPart(child, view, placedObjectsFolder)
+			trackPart(child, view)
 		end
 	end)
 
 	placedObjectsFolder.ChildRemoved:Connect(function(child)
 		if child:IsA("BasePart") then
+			local wasTracked = trackedRateParts[child] == true
+			trackedRateParts[child] = nil
 			disconnectTrackedPart(child)
-			recomputeOfflineRate(view, placedObjectsFolder)
+			if wasTracked then
+				recomputeOfflineRate(view)
+			end
 		end
 	end)
 
 	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(function()
-		recomputeOfflineRate(view, placedObjectsFolder)
+		refreshAllTrackedRateParts(view, placedObjectsFolder)
 	end)
 
-	recomputeOfflineRate(view, placedObjectsFolder)
+	refreshAllTrackedRateParts(view, placedObjectsFolder)
 end
 
 return table.freeze(OfflineRateController)
