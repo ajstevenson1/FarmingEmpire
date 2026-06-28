@@ -11,6 +11,7 @@ local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
+local BillboardAdorneeBinder = require(script.Parent.BillboardAdorneeBinder)
 
 type BuildingId = BuildingTypes.BuildingId
 type WindmillCategory = WindmillConfig.WindmillCategory
@@ -18,6 +19,7 @@ type WindmillCategory = WindmillConfig.WindmillCategory
 type WindmillBillboardWidgets = {
 	rootGui: BillboardGui,
 	boostLabel: TextLabel?,
+	adorneeBinder: BillboardAdorneeBinder.BillboardAdorneeBinder,
 }
 
 export type WindmillBillboardView = {
@@ -101,12 +103,12 @@ local function createWidgets(part: BasePart): WindmillBillboardWidgets
 	local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local rootGui = template:Clone() :: BillboardGui
 	rootGui.Name = string.format("%sBillboard", templateName)
-	rootGui.Adornee = part
 	rootGui.Parent = playerGui
 
 	return {
 		rootGui = rootGui,
 		boostLabel = findCategoryTextLabel(rootGui, definition.category, BOOST_LABEL_NAMES_BY_CATEGORY, BOOST_LABEL_NAMES),
+		adorneeBinder = BillboardAdorneeBinder.new(part, rootGui),
 	}
 end
 
@@ -136,6 +138,8 @@ function WindmillBillboardView.new(part: BasePart): WindmillBillboardView
 end
 
 function WindmillBillboardView:refresh()
+	self._widgets.adorneeBinder:refresh()
+
 	local buildingId = getBuildingId(self._part)
 	if buildingId == nil then
 		return
@@ -147,6 +151,7 @@ function WindmillBillboardView:refresh()
 end
 
 function WindmillBillboardView:destroy()
+	self._widgets.adorneeBinder:destroy()
 	self._widgets.rootGui:Destroy()
 end
 

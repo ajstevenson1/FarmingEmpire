@@ -106,6 +106,7 @@ local treeDefinitions: { TreeTierDefinition } = table.freeze({
 	createTreeTier("GhostwoodTree", "Ghostwood Apple Tree", "GhostwoodApple", 870000000, 290, 4350, 7.65, stock(0.12, 1, 1)),
 	createTreeTier("CandyTree", "Candy Apple Tree", "CandyApple", 2300000000, 350, 5250, 9.85, stock(0.09, 1, 1)),
 	createTreeTier("CyberTree", "Cyber Apple Tree", "CyberApple", 10000000000, 500, 7500, 12.6, stock(0.06, 1, 1)),
+	createTreeTier("PatriotTree", "Patriot Tree", "PatriotApple", 0, 125, 1750, 0, stock(0, 0, 0)),
 })
 
 local millDefinitions: { MillTierDefinition } = table.freeze({

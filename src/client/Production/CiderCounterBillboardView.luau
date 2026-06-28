@@ -10,6 +10,7 @@ local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
+local BillboardAdorneeBinder = require(script.Parent.BillboardAdorneeBinder)
 
 type CiderCounterWidgets = {
 	rootGui: BillboardGui,
@@ -18,6 +19,7 @@ type CiderCounterWidgets = {
 	perSecondLabel: TextLabel,
 	multiplierLabel: TextLabel,
 	stroke: UIStroke,
+	adorneeBinder: BillboardAdorneeBinder.BillboardAdorneeBinder,
 }
 
 export type CiderCounterBillboardView = {
@@ -112,7 +114,6 @@ local function createWidgets(part: BasePart): CiderCounterWidgets
 
 	local rootGui = template:Clone() :: BillboardGui
 	rootGui.Name = "CiderCounterBillboard"
-	rootGui.Adornee = part
 	rootGui.Parent = playerGui
 
 	local countLabel = findRequiredTextLabel(rootGui, COUNT_LABEL_NAME)
@@ -124,6 +125,7 @@ local function createWidgets(part: BasePart): CiderCounterWidgets
 		perSecondLabel = findRequiredTextLabel(rootGui, PER_SECOND_LABEL_NAME),
 		multiplierLabel = findRequiredTextLabel(rootGui, MULTIPLIER_LABEL_NAME),
 		stroke = findStroke(countLabel),
+		adorneeBinder = BillboardAdorneeBinder.new(part, rootGui),
 	}
 end
 
@@ -139,6 +141,8 @@ function CiderCounterBillboardView.new(part: BasePart): CiderCounterBillboardVie
 end
 
 function CiderCounterBillboardView:refresh()
+	self._widgets.adorneeBinder:refresh()
+
 	local storedAmount = getStoredAmount(self._part)
 	local productionMultiplier = getProductionMultiplier(self._part)
 	local ratePerSecond = getProductionRatePerSecond(self._part)
@@ -158,6 +162,7 @@ function CiderCounterBillboardView:setCountVisible(isVisible: boolean)
 end
 
 function CiderCounterBillboardView:destroy()
+	self._widgets.adorneeBinder:destroy()
 	self._widgets.rootGui:Destroy()
 end
 

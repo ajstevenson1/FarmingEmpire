@@ -54,6 +54,7 @@ local DESKTOP_SELL_TOOLTIP_TEXT = "Click to sell"
 local GAMEPAD_SELL_TOOLTIP_TEXT = "Press right trigger to sell"
 local MOBILE_SELL_TOOLTIP_TEXT = "Tap to select"
 local CANNOT_SELL_WINDMILLS_TOOLTIP_TEXT = "Windmills can't be sold. Use pickup mode to move them."
+local CANNOT_SELL_ZERO_PRICE_TOOLTIP_TEXT = "Limited items can't be sold. Use pickup mode to move them."
 local SELL_CANCEL_KEYCODE = Enum.KeyCode.ButtonB
 local SELL_CONFIRM_KEYCODE = Enum.KeyCode.ButtonR2
 
@@ -99,9 +100,26 @@ local function getBuildingIdFromTarget(target: BasePart): BuildingId?
 	return rawBuildingId :: BuildingId
 end
 
-local function isBlockedSellTarget(target: BasePart): boolean
+local function getBlockedSellTooltipText(target: BasePart): string?
 	local buildingId = getBuildingIdFromTarget(target)
-	return buildingId ~= nil and WindmillConfig.isWindmillBuildingId(buildingId)
+	if buildingId == nil then
+		return nil
+	end
+
+	if WindmillConfig.isWindmillBuildingId(buildingId) then
+		return CANNOT_SELL_WINDMILLS_TOOLTIP_TEXT
+	end
+
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
+	if buildingDefinition.sellPrice <= 0 then
+		return CANNOT_SELL_ZERO_PRICE_TOOLTIP_TEXT
+	end
+
+	return nil
+end
+
+local function isBlockedSellTarget(target: BasePart): boolean
+	return getBlockedSellTooltipText(target) ~= nil
 end
 
 local function setBlockedSellTarget(blockedTarget: BasePart)
@@ -151,8 +169,11 @@ local function updateSellTooltip()
 
 	local blockedSellTarget = currentBlockedSellTarget
 	if blockedSellTarget ~= nil and blockedSellTarget.Parent ~= nil then
-		tooltip:show(CANNOT_SELL_WINDMILLS_TOOLTIP_TEXT, false, SELL_TOOLTIP_OWNER_ID)
-		return
+		local blockedTooltipText = getBlockedSellTooltipText(blockedSellTarget)
+		if blockedTooltipText ~= nil then
+			tooltip:show(blockedTooltipText, false, SELL_TOOLTIP_OWNER_ID)
+			return
+		end
 	end
 
 	local sellTarget = currentSellTarget

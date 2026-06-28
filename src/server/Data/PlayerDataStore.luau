@@ -98,6 +98,10 @@ export type DeveloperProductReceiptData = {
 	processedPurchaseIds: { [string]: boolean },
 }
 
+export type PlayerOneTimeRewardClaimsData = {
+	claimedRewardIds: { [string]: boolean },
+}
+
 export type PlayerData = {
 	schemaVersion: number,
 	economy: PlayerEconomyData,
@@ -113,6 +117,7 @@ export type PlayerData = {
 	tutorial: PlayerTutorialData,
 	tutorialFunnel: PlayerTutorialFunnelData,
 	developerProductReceipts: DeveloperProductReceiptData,
+	oneTimeRewards: PlayerOneTimeRewardClaimsData,
 }
 
 export type LoadResult = {
@@ -121,7 +126,7 @@ export type LoadResult = {
 }
 
 local DATA_STORE_NAME = "CiderEmpire_PlayerData_PROD"
-local CURRENT_SCHEMA_VERSION = 5
+local CURRENT_SCHEMA_VERSION = 6
 local TUTORIAL_FUNNEL_VERSION = 1
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
@@ -331,6 +336,27 @@ local function sanitizeDeveloperProductReceiptData(rawReceiptData: unknown): Dev
 
 	return {
 		processedPurchaseIds = processedPurchaseIds,
+	}
+end
+
+local function sanitizeOneTimeRewardClaimsData(rawOneTimeRewards: unknown): PlayerOneTimeRewardClaimsData
+	local claimedRewardIds: { [string]: boolean } = {}
+	local rawOneTimeRewardValues: { [string]: unknown } = {}
+	if type(rawOneTimeRewards) == "table" then
+		rawOneTimeRewardValues = rawOneTimeRewards :: { [string]: unknown }
+	end
+
+	local rawClaimedRewardIds = rawOneTimeRewardValues.claimedRewardIds
+	if type(rawClaimedRewardIds) == "table" then
+		for rawRewardId, rawIsClaimed in pairs(rawClaimedRewardIds :: { [string]: unknown }) do
+			if type(rawRewardId) == "string" and rawRewardId ~= "" and rawIsClaimed == true then
+				claimedRewardIds[rawRewardId] = true
+			end
+		end
+	end
+
+	return {
+		claimedRewardIds = claimedRewardIds,
 	}
 end
 
@@ -597,6 +623,9 @@ local function createDefaultData(): PlayerData
 		developerProductReceipts = {
 			processedPurchaseIds = {},
 		},
+		oneTimeRewards = {
+			claimedRewardIds = {},
+		},
 	}
 end
 
@@ -862,6 +891,7 @@ local function sanitizeData(rawData: unknown): PlayerData
 		tutorial = sanitizeTutorialData(rawDataTable.tutorial),
 		tutorialFunnel = sanitizeTutorialFunnelData(rawDataTable.tutorialFunnel),
 		developerProductReceipts = sanitizeDeveloperProductReceiptData(rawDataTable.developerProductReceipts),
+		oneTimeRewards = sanitizeOneTimeRewardClaimsData(rawDataTable.oneTimeRewards),
 	}
 end
 
@@ -953,6 +983,7 @@ local function cloneData(data: PlayerData): PlayerData
 		tutorial = sanitizeTutorialData(data.tutorial),
 		tutorialFunnel = sanitizeTutorialFunnelData(data.tutorialFunnel),
 		developerProductReceipts = sanitizeDeveloperProductReceiptData(data.developerProductReceipts),
+		oneTimeRewards = sanitizeOneTimeRewardClaimsData(data.oneTimeRewards),
 	}
 end
 

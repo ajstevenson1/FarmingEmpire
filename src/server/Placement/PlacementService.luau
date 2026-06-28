@@ -533,7 +533,8 @@ local function handleSellRequest(player: Player, requestedTarget: unknown)
 		return
 	end
 
-	if WindmillConfig.isWindmillBuildingId(validatedTarget.buildingId) then
+	local buildingDefinition = BuildingCatalog.getBuildingDefinition(validatedTarget.buildingId)
+	if WindmillConfig.isWindmillBuildingId(validatedTarget.buildingId) or buildingDefinition.sellPrice <= 0 then
 		return
 	end
 
@@ -542,7 +543,6 @@ local function handleSellRequest(player: Player, requestedTarget: unknown)
 		ResourceService.addResource(player, storedOutput.resourceId, storedOutput.amount)
 	end
 
-	local buildingDefinition = BuildingCatalog.getBuildingDefinition(validatedTarget.buildingId)
 	EconomyService.addCash(player, buildingDefinition.sellPrice)
 	ProductionService.unregisterPlacedBuilding(validatedTarget.part)
 	validatedTarget.part:Destroy()

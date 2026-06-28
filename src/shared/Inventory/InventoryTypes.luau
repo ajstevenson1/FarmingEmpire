@@ -40,6 +40,7 @@ export type ItemId =
 	| "ModernCashWindmill"
 	| "GoldCashWindmill"
 	| "DiamondCashWindmill"
+	| "PatriotTree"
 export type ItemKind = "Tool" | "Placeable"
 
 export type ItemDefinition = {

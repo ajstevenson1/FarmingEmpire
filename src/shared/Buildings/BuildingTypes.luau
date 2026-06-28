@@ -48,6 +48,7 @@ export type BuildingId =
 	| "ModernCashWindmill"
 	| "GoldCashWindmill"
 	| "DiamondCashWindmill"
+	| "PatriotTree"
 
 export type PlacementRotationQuarterTurns = number
 
@@ -81,6 +82,7 @@ export type BuildingVisualConfig = StagedBuildingVisualConfig | SingleBuildingVi
 export type HarvestVisualConfig = {
 	appleModelName: string,
 	maxAppleEffectCount: number,
+	appleEffectScale: number?,
 }
 
 export type OfflineEarningsConfig = {

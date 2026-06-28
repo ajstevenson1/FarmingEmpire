@@ -31,6 +31,7 @@ type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
 type HotbarSlotData = PlayerDataStore.HotbarSlotData
 type DeveloperProductReceiptData = PlayerDataStore.DeveloperProductReceiptData
+type PlayerOneTimeRewardClaimsData = PlayerDataStore.PlayerOneTimeRewardClaimsData
 export type PlacedBuildingData = PlayerDataStore.PlacedBuildingData
 export type PlayerOfflineData = PlayerDataStore.PlayerOfflineData
 export type PlayerTutorialData = PlayerDataStore.PlayerTutorialData
@@ -453,6 +454,19 @@ local function cloneDeveloperProductReceiptData(receiptData: DeveloperProductRec
 
 	return {
 		processedPurchaseIds = processedPurchaseIds,
+	}
+end
+
+local function cloneOneTimeRewardClaimsData(oneTimeRewards: PlayerOneTimeRewardClaimsData): PlayerOneTimeRewardClaimsData
+	local claimedRewardIds: { [string]: boolean } = {}
+	for rewardId, isClaimed in pairs(oneTimeRewards.claimedRewardIds) do
+		if isClaimed and rewardId ~= "" then
+			claimedRewardIds[rewardId] = true
+		end
+	end
+
+	return {
+		claimedRewardIds = claimedRewardIds,
 	}
 end
 
@@ -989,6 +1003,32 @@ function PlayerDataService.markDeveloperProductPurchaseProcessed(player: Player,
 	receiptData.processedPurchaseIds[purchaseId] = true
 	record.data.developerProductReceipts = receiptData
 	markDirty(record)
+end
+
+function PlayerDataService.hasClaimedOneTimeReward(player: Player, rewardId: string): boolean
+	if rewardId == "" then
+		return false
+	end
+
+	local record = loadPlayerData(player)
+	return record.data.oneTimeRewards.claimedRewardIds[rewardId] == true
+end
+
+function PlayerDataService.markOneTimeRewardClaimed(player: Player, rewardId: string): boolean
+	if rewardId == "" then
+		return false
+	end
+
+	local record = loadPlayerData(player)
+	if record.data.oneTimeRewards.claimedRewardIds[rewardId] == true then
+		return false
+	end
+
+	local oneTimeRewards = cloneOneTimeRewardClaimsData(record.data.oneTimeRewards)
+	oneTimeRewards.claimedRewardIds[rewardId] = true
+	record.data.oneTimeRewards = oneTimeRewards
+	markDirty(record)
+	return true
 end
 
 function PlayerDataService.setTutorialStep(player: Player, stepIndex: number)

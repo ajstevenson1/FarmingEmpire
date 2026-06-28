@@ -18,6 +18,7 @@ type AppleHarvestEffectPayload = {
 	sourcePosition: Vector3,
 	appleModelName: string,
 	appleCount: number,
+	appleEffectScale: number?,
 }
 
 type AnimatedPart = {
@@ -41,7 +42,7 @@ local LEAVES_RUSTLE_OFFSET_STUDS = 0.18
 local LEAVES_RUSTLE_FREQUENCY = 24
 local MAX_APPLES_PER_PAYLOAD = 3
 local MAX_PAYLOADS_PER_EVENT = 12
-local BASE_APPLE_SCALE = 1.6
+local DEFAULT_APPLE_EFFECT_SCALE = 1.6
 local MIN_SCALE = 0.06
 local SHRINK_START_ALPHA = 0.74
 
@@ -233,7 +234,21 @@ local function playLeavesRustle(buildingPart: BasePart)
 	end)
 end
 
-local function animateApple(sourceModel: Model, sourcePosition: Vector3, appleIndex: number, appleCount: number)
+local function getAppleEffectScale(payloadScale: unknown): number
+	if type(payloadScale) ~= "number" or payloadScale <= 0 then
+		return DEFAULT_APPLE_EFFECT_SCALE
+	end
+
+	return payloadScale
+end
+
+local function animateApple(
+	sourceModel: Model,
+	sourcePosition: Vector3,
+	appleIndex: number,
+	appleCount: number,
+	appleEffectScale: number
+)
 	local model = sourceModel:Clone()
 	model.Name = "HarvestAppleEffect"
 	local animatedParts = prepareEffectModel(model)
@@ -316,7 +331,7 @@ local function animateApple(sourceModel: Model, sourcePosition: Vector3, appleIn
 		end
 
 		local elapsed = now - startedAt
-		model:ScaleTo(BASE_APPLE_SCALE * scale)
+		model:ScaleTo(appleEffectScale * scale)
 		model:PivotTo(CFrame.new(position) * popSpin * CFrame.Angles(
 			spinVelocity.X * elapsed,
 			spinVelocity.Y * elapsed,
@@ -344,9 +359,10 @@ local function playPayload(payload: AppleHarvestEffectPayload)
 	end
 
 	local appleCount = math.clamp(math.floor(payload.appleCount), 1, MAX_APPLES_PER_PAYLOAD)
+	local appleEffectScale = getAppleEffectScale(payload.appleEffectScale)
 	for appleIndex = 1, appleCount do
 		task.delay((appleIndex - 1) * SPAWN_STAGGER_SECONDS, function()
-			animateApple(sourceModel, payload.sourcePosition, appleIndex, appleCount)
+			animateApple(sourceModel, payload.sourcePosition, appleIndex, appleCount, appleEffectScale)
 		end)
 	end
 end

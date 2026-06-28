@@ -7,11 +7,13 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
+local BillboardAdorneeBinder = require(script.Parent.BillboardAdorneeBinder)
 
 type BillboardWidgets = {
 	rootGui: BillboardGui,
 	statusLabel: TextLabel,
 	barFill: Frame,
+	adorneeBinder: BillboardAdorneeBinder.BillboardAdorneeBinder,
 }
 
 export type ProductionBillboardView = {
@@ -38,7 +40,6 @@ local function createWidgets(part: BasePart): BillboardWidgets
 
 	local rootGui = Instance.new("BillboardGui")
 	rootGui.Name = "ProductionStatusBillboard"
-	rootGui.Adornee = part
 	rootGui.AlwaysOnTop = true
 	rootGui.LightInfluence = 0
 	rootGui.MaxDistance = 100
@@ -107,6 +108,7 @@ local function createWidgets(part: BasePart): BillboardWidgets
 		rootGui = rootGui,
 		statusLabel = statusLabel,
 		barFill = barFill,
+		adorneeBinder = BillboardAdorneeBinder.new(part, rootGui),
 	}
 end
 
@@ -138,6 +140,8 @@ function ProductionBillboardView.new(part: BasePart): ProductionBillboardView
 end
 
 function ProductionBillboardView:refresh()
+	self._widgets.adorneeBinder:refresh()
+
 	local progressValue = self._part:GetAttribute(BuildingAttributeNames.productionProgress)
 	local statusTextValue = self._part:GetAttribute(BuildingAttributeNames.productionStatusText)
 	local productionStateValue = self._part:GetAttribute(BuildingAttributeNames.productionState)
@@ -152,6 +156,7 @@ function ProductionBillboardView:refresh()
 end
 
 function ProductionBillboardView:destroy()
+	self._widgets.adorneeBinder:destroy()
 	self._widgets.rootGui:Destroy()
 end
 

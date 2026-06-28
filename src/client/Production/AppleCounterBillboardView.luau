@@ -10,12 +10,14 @@ local templatesFolder = ReplicatedStorage:WaitForChild("Templates") :: Folder
 
 local BuildingAttributeNames = require(buildingsFolder:WaitForChild("BuildingAttributeNames") :: ModuleScript)
 local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
+local BillboardAdorneeBinder = require(script.Parent.BillboardAdorneeBinder)
 
 type AppleCounterWidgets = {
 	rootGui: BillboardGui,
 	countLabel: TextLabel,
 	multiplierLabel: TextLabel,
 	stroke: UIStroke,
+	adorneeBinder: BillboardAdorneeBinder.BillboardAdorneeBinder,
 }
 
 export type AppleCounterBillboardView = {
@@ -68,7 +70,6 @@ local function createWidgets(part: BasePart): AppleCounterWidgets
 
 	local rootGui = template:Clone() :: BillboardGui
 	rootGui.Name = "AppleCounterBillboard"
-	rootGui.Adornee = part
 	rootGui.Parent = playerGui
 
 	local countLabelInstance = rootGui:FindFirstChild(COUNT_LABEL_NAME, true)
@@ -95,6 +96,7 @@ local function createWidgets(part: BasePart): AppleCounterWidgets
 		countLabel = countLabel,
 		multiplierLabel = multiplierLabelInstance :: TextLabel,
 		stroke = strokeInstance :: UIStroke,
+		adorneeBinder = BillboardAdorneeBinder.new(part, rootGui),
 	}
 end
 
@@ -110,6 +112,8 @@ function AppleCounterBillboardView.new(part: BasePart): AppleCounterBillboardVie
 end
 
 function AppleCounterBillboardView:refresh()
+	self._widgets.adorneeBinder:refresh()
+
 	local storedAmount, storageCap = getClampedCounterValues(self._part)
 	local productionMultiplier = getProductionMultiplier(self._part)
 	local isFull = storageCap > 0 and storedAmount >= storageCap
@@ -126,6 +130,7 @@ function AppleCounterBillboardView:refresh()
 end
 
 function AppleCounterBillboardView:destroy()
+	self._widgets.adorneeBinder:destroy()
 	self._widgets.rootGui:Destroy()
 end
 

@@ -69,6 +69,13 @@ type MonetizationRemotes = {
 	setAutoCiderEnabled: RemoteEvent,
 }
 
+type LimitedItemRemotes = {
+	limitedItemsSnapshotUpdated: RemoteEvent,
+	getLimitedItemsSnapshot: RemoteFunction,
+	reserveLimitedItemPurchase: RemoteFunction,
+	releaseLimitedItemReservation: RemoteEvent,
+}
+
 type SettingsRemotes = {
 	getSettingsSnapshot: RemoteFunction,
 	settingChanged: RemoteEvent,
@@ -111,6 +118,7 @@ local cachedPlotExpansionRemotes: PlotExpansionRemotes? = nil
 local cachedTeleportRemotes: TeleportRemotes? = nil
 local cachedShopRemotes: ShopRemotes? = nil
 local cachedMonetizationRemotes: MonetizationRemotes? = nil
+local cachedLimitedItemRemotes: LimitedItemRemotes? = nil
 local cachedSettingsRemotes: SettingsRemotes? = nil
 local cachedPlaytimeRewardsRemotes: PlaytimeRewardsRemotes? = nil
 local cachedNotificationRemotes: NotificationRemotes? = nil
@@ -329,6 +337,34 @@ function Remotes.getMonetizationRemotes(): MonetizationRemotes
 	}
 
 	return cachedMonetizationRemotes
+end
+
+function Remotes.getLimitedItemRemotes(): LimitedItemRemotes
+	if cachedLimitedItemRemotes ~= nil then
+		return cachedLimitedItemRemotes
+	end
+
+	local limitedItemsFolder = getOrCreateFolder(getRootFolder(), RemoteNames.limitedItemsFolderName)
+	cachedLimitedItemRemotes = {
+		limitedItemsSnapshotUpdated = getOrCreateRemoteEvent(
+			limitedItemsFolder,
+			RemoteNames.limitedItemsSnapshotUpdatedEventName
+		),
+		getLimitedItemsSnapshot = getOrCreateRemoteFunction(
+			limitedItemsFolder,
+			RemoteNames.getLimitedItemsSnapshotFunctionName
+		),
+		reserveLimitedItemPurchase = getOrCreateRemoteFunction(
+			limitedItemsFolder,
+			RemoteNames.reserveLimitedItemPurchaseFunctionName
+		),
+		releaseLimitedItemReservation = getOrCreateRemoteEvent(
+			limitedItemsFolder,
+			RemoteNames.releaseLimitedItemReservationEventName
+		),
+	}
+
+	return cachedLimitedItemRemotes
 end
 
 function Remotes.getSettingsRemotes(): SettingsRemotes

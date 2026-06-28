@@ -35,6 +35,7 @@ local itemImageAssetIdsById: { [ItemId]: string } = table.freeze({
 	GhostwoodTree = "rbxassetid://76743627812405",
 	CandyTree = "rbxassetid://73127433981881",
 	CyberTree = "rbxassetid://127029151232213",
+	PatriotTree = "rbxassetid://95404273237745",
 
 	CiderMill = MILL_IMAGE_ASSET_ID,
 	CopperCiderMill = "rbxassetid://132030114105139",
@@ -93,11 +94,19 @@ local function createPlaceableItemDefinition(id: ItemId, displayName: string, in
 end
 
 for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
-	itemsById[treeDefinition.id :: ItemId] = createPlaceableItemDefinition(treeDefinition.id :: ItemId, treeDefinition.displayName, 10 + index - 1)
+	itemsById[treeDefinition.id :: ItemId] = createPlaceableItemDefinition(
+		treeDefinition.id :: ItemId,
+		treeDefinition.displayName,
+		10 + index - 1
+	)
 end
 
 for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
-	itemsById[millDefinition.id :: ItemId] = createPlaceableItemDefinition(millDefinition.id :: ItemId, millDefinition.displayName, 30 + index - 1)
+	itemsById[millDefinition.id :: ItemId] = createPlaceableItemDefinition(
+		millDefinition.id :: ItemId,
+		millDefinition.displayName,
+		30 + index - 1
+	)
 end
 
 for index, windmillDefinition: WindmillDefinition in ipairs(WindmillConfig.getDefinitions()) do

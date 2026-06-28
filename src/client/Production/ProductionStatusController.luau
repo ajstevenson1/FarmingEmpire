@@ -300,6 +300,7 @@ function ProductionStatusController.start()
 	end)
 
 	localPlayer:GetAttributeChangedSignal(PlotLocator.PlayerAttributes.assignedPlotName):Connect(refreshAllPlacedParts)
+	task.defer(refreshAllPlacedParts)
 end
 
 return table.freeze(ProductionStatusController)

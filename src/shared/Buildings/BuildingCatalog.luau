@@ -23,6 +23,8 @@ local CIDER_MILL_ASSET_NAME = "CiderMill"
 local WINDMILL_ASSET_NAME = "OldWindmill"
 local SINGLE_VISUAL_STAGE_NAME = "Single"
 local MAX_APPLE_HARVEST_EFFECT_COUNT = 3
+local TREE_PLACEMENT_SIZE = Vector3.new(6, 6, 6)
+local MILL_PLACEMENT_SIZE = Vector3.new(4, 6, 4)
 
 local TREE_STAGES: { GrowthVisualStage } = table.freeze({
 	table.freeze({
@@ -92,7 +94,7 @@ local function createAppleTreeDefinition(treeDefinition: TreeTierDefinition): Bu
 		id = treeDefinition.id,
 		displayName = treeDefinition.displayName,
 		sellPrice = treeDefinition.sellPrice,
-		placementSize = Vector3.new(6, 6, 6),
+		placementSize = TREE_PLACEMENT_SIZE,
 		productionConfig = table.freeze({
 			behaviorId = "TimedStorageProducer",
 			produceIntervalSeconds = ProgressionConfig.getTreeProduceIntervalSeconds(),
@@ -116,7 +118,7 @@ local function createCiderMillDefinition(millDefinition: MillTierDefinition): Bu
 		id = millDefinition.id,
 		displayName = millDefinition.displayName,
 		sellPrice = millDefinition.sellPrice,
-		placementSize = Vector3.new(4, 6, 4),
+		placementSize = MILL_PLACEMENT_SIZE,
 		productionConfig = table.freeze({
 			behaviorId = "InputProcessor",
 			cycleDurationSeconds = 1,

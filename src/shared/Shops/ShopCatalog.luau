@@ -2,9 +2,11 @@
 
 local ShopTypes = require(script.Parent.ShopTypes)
 local inventoryFolder = script.Parent.Parent:WaitForChild("Inventory") :: Folder
+local limitedItemsFolder = script.Parent.Parent:WaitForChild("LimitedItems") :: Folder
 local progressionFolder = script.Parent.Parent:WaitForChild("Progression") :: Folder
 local windmillsFolder = script.Parent.Parent:WaitForChild("Windmills") :: Folder
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
+local LimitedItemCatalog = require(limitedItemsFolder:WaitForChild("LimitedItemCatalog") :: ModuleScript)
 local ProgressionConfig = require(progressionFolder:WaitForChild("ProgressionConfig") :: ModuleScript)
 local ShopDeveloperProductConfig = require(script.Parent:WaitForChild("ShopDeveloperProductConfig") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
@@ -77,7 +79,11 @@ local function createFixedStock(stockPerRestock: number): ShopStockRollConfig
 end
 
 local treeProducts: { ShopProductDefinition } = {}
-for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+for _, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTreeDefinitions()) do
+	if LimitedItemCatalog.isLimitedSaleItemId(treeDefinition.id) then
+		continue
+	end
+
 	table.insert(treeProducts, table.freeze({
 		id = treeDefinition.id,
 		shopId = "TreesShop",
@@ -88,14 +94,18 @@ for index, treeDefinition: TreeTierDefinition in ipairs(ProgressionConfig.getTre
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
 		stock = treeDefinition.stock,
-		sortOrder = 10 + index - 1,
+		sortOrder = 10 + #treeProducts,
 		description = treeDefinition.description,
 	}))
 end
 productsByShopId.TreesShop = table.freeze(treeProducts)
 
 local millProducts: { ShopProductDefinition } = {}
-for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+for _, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMillDefinitions()) do
+	if LimitedItemCatalog.isLimitedSaleItemId(millDefinition.id) then
+		continue
+	end
+
 	table.insert(millProducts, table.freeze({
 		id = millDefinition.id,
 		shopId = "MillsShop",
@@ -106,7 +116,7 @@ for index, millDefinition: MillTierDefinition in ipairs(ProgressionConfig.getMil
 		priceCurrency = "Cash",
 		quantityPerPurchase = 1,
 		stock = millDefinition.stock,
-		sortOrder = 10 + index - 1,
+		sortOrder = 10 + #millProducts,
 		description = millDefinition.description,
 	}))
 end

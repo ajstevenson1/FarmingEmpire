@@ -19,6 +19,7 @@ export type AppleHarvestEffectPayload = {
 	sourcePosition: Vector3,
 	appleModelName: string,
 	appleCount: number,
+	appleEffectScale: number?,
 }
 
 local APPLE_RESOURCE_ID = "Apple"
@@ -74,6 +75,7 @@ function HarvestEffectService.createAppleHarvestEffectPayload(
 		sourcePosition = part.Position + Vector3.yAxis * ((part.Size.Y * 0.5) + SOURCE_HEIGHT_PADDING_STUDS),
 		appleModelName = visualConfig.appleModelName,
 		appleCount = appleCount,
+		appleEffectScale = visualConfig.appleEffectScale,
 	}
 end
 

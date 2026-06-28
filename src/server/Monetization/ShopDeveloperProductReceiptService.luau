@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 
 local PlayerDataService = require(script.Parent.Parent.Data.PlayerDataService)
 local RobuxSpentLeaderboardService = require(script.Parent.Parent.Leaderboards.RobuxSpentLeaderboardService)
+local LimitedItemPurchaseService = require(script.Parent.LimitedItemPurchaseService)
 local RobuxStoreService = require(script.Parent.RobuxStoreService)
 local ShopService = require(script.Parent.Parent.Shops.ShopService)
 
@@ -52,10 +53,20 @@ local function processReceipt(receiptInfo: ReceiptInfo): Enum.ProductPurchaseDec
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	if not RobuxStoreService.grantDeveloperProductPurchase(player, receiptInfo.ProductId)
-		and not ShopService.grantDeveloperProductPurchase(player, receiptInfo.ProductId)
-	then
+	local limitedItemGrantResult = LimitedItemPurchaseService.grantDeveloperProductPurchase(
+		player,
+		receiptInfo.ProductId,
+		purchaseId
+	)
+	local didGrantLimitedItem = limitedItemGrantResult == true
+	if limitedItemGrantResult == false then
 		return Enum.ProductPurchaseDecision.NotProcessedYet
+	elseif not didGrantLimitedItem then
+		if not RobuxStoreService.grantDeveloperProductPurchase(player, receiptInfo.ProductId)
+			and not ShopService.grantDeveloperProductPurchase(player, receiptInfo.ProductId)
+		then
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 	end
 
 	PlayerDataService.markDeveloperProductPurchaseProcessed(player, purchaseId)
@@ -64,7 +75,9 @@ local function processReceipt(receiptInfo: ReceiptInfo): Enum.ProductPurchaseDec
 	end
 
 	recordRobuxSpent(player, receiptInfo)
-	ShopService.notifyDeveloperProductPurchaseCompleted(player, receiptInfo.ProductId)
+	if not didGrantLimitedItem then
+		ShopService.notifyDeveloperProductPurchaseCompleted(player, receiptInfo.ProductId)
+	end
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
