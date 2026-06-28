@@ -29,6 +29,7 @@ local developerProductIdByItemId: DeveloperProductIdByItemId = table.freeze({
 	GhostwoodTree = 3605068577,
 	CandyTree = 3605068623,
 	CyberTree = 3605068644,
+	GlassTree = 3607067403,
 
 	CiderMill = 3605067549,
 	CopperCiderMill = 3605080348,
@@ -45,6 +46,7 @@ local developerProductIdByItemId: DeveloperProductIdByItemId = table.freeze({
 	QuantumReactorMill = 3605080873,
 	DyingForgeMill = 3605080910,
 	DeepSpaceMill = 3605080933,
+	TempestMill = 3607077304,
 })
 
 local ShopDeveloperProductConfig = {}

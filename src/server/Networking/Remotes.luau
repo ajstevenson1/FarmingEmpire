@@ -107,6 +107,10 @@ type WeatherRemotes = {
 	moneyDropResolved: RemoteEvent,
 }
 
+type UpdateEventRemotes = {
+	promptUpdateEventRsvp: RemoteEvent,
+}
+
 local cachedInventoryRemotes: InventoryRemotes? = nil
 local cachedPlacementRemotes: PlacementRemotes? = nil
 local cachedHarvestRemote: RemoteEvent? = nil
@@ -125,6 +129,7 @@ local cachedPlaytimeRewardsRemotes: PlaytimeRewardsRemotes? = nil
 local cachedNotificationRemotes: NotificationRemotes? = nil
 local cachedTutorialRemotes: TutorialRemotes? = nil
 local cachedWeatherRemotes: WeatherRemotes? = nil
+local cachedUpdateEventRemotes: UpdateEventRemotes? = nil
 
 local function getOrCreateFolder(parent: Instance, name: string): Folder
 	local existing = parent:FindFirstChild(name)
@@ -442,6 +447,19 @@ function Remotes.getWeatherRemotes(): WeatherRemotes
 	}
 
 	return cachedWeatherRemotes
+end
+
+function Remotes.getUpdateEventRemotes(): UpdateEventRemotes
+	if cachedUpdateEventRemotes ~= nil then
+		return cachedUpdateEventRemotes
+	end
+
+	local updateEventsFolder = getOrCreateFolder(getRootFolder(), RemoteNames.updateEventsFolderName)
+	cachedUpdateEventRemotes = {
+		promptUpdateEventRsvp = getOrCreateRemoteEvent(updateEventsFolder, RemoteNames.promptUpdateEventRsvpEventName),
+	}
+
+	return cachedUpdateEventRemotes
 end
 
 return table.freeze(Remotes)

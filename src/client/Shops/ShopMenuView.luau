@@ -664,7 +664,7 @@ local function populateProductRow(
 
 	local robuxButton = findRequiredDescendant(row, "RobuxButton")
 	assert(robuxButton:IsA("GuiButton"), string.format("%s must be a GuiButton", robuxButton:GetFullName()))
-	local canBuyWithRobux = productDefinition.developerProductId ~= nil and isInStock
+	local canBuyWithRobux = productDefinition.developerProductId ~= nil and not renderProduct.isOwned
 	robuxButton.Active = canBuyWithRobux
 	robuxButton.AutoButtonColor = canBuyWithRobux
 	robuxButton:SetAttribute(ButtonSoundConfig.SuppressSoundAttributeName, not canBuyWithRobux)

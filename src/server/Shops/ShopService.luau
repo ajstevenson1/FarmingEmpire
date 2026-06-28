@@ -460,16 +460,6 @@ function ShopService.grantDeveloperProductPurchase(player: Player, developerProd
 		return true
 	end
 
-	local stockRemaining = getStockRemaining(player, productDefinition.shopId, productDefinition)
-	if stockRemaining > 0 then
-		decrementStock(player, productDefinition.shopId, productDefinition)
-	elseif ShopCatalog.getShopDefinition(productDefinition.shopId).usesStock then
-		warn(string.format(
-			"[ShopService] Granting paid product %s even though the local stock snapshot is empty.",
-			productDefinition.id
-		))
-	end
-
 	grantProductToPlayer(player, productDefinition)
 	return true
 end

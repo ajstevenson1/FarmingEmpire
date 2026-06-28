@@ -142,6 +142,16 @@ local function setModelFade(animatedParts: { AnimatedPart }, fadeAlpha: number)
 	end
 end
 
+local function playAppleSounds(model: Model)
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("Sound") then
+			descendant:Stop()
+			descendant.TimePosition = 0
+			descendant:Play()
+		end
+	end
+end
+
 local function easeOutCubic(alpha: number): number
 	local inverse = 1 - math.clamp(alpha, 0, 1)
 	return 1 - inverse * inverse * inverse
@@ -168,68 +178,71 @@ local function getAbsorbTargetPosition(): Vector3?
 	return rootPart.Position + Vector3.new(0, 1.4, 0)
 end
 
-local function findLeavesPart(buildingPart: BasePart): BasePart?
+local function findLeavesParts(buildingPart: BasePart): { BasePart }
+	local leavesParts: { BasePart } = {}
 	local currentVisual = buildingPart:FindFirstChild(CURRENT_VISUAL_MODEL_NAME)
 	if currentVisual == nil then
-		return nil
+		return leavesParts
 	end
 
-	local leavesPart = currentVisual:FindFirstChild(LEAVES_PART_NAME, true)
-	if leavesPart == nil or not leavesPart:IsA("BasePart") then
-		return nil
+	for _, descendant in ipairs(currentVisual:GetDescendants()) do
+		if descendant.Name == LEAVES_PART_NAME and descendant:IsA("BasePart") then
+			table.insert(leavesParts, descendant)
+		end
 	end
 
-	return leavesPart
+	return leavesParts
+end
+
+local function playLeavesPartRustle(leavesPart: BasePart)
+	local existingConnection = rustleConnectionsByPart[leavesPart]
+	if existingConnection ~= nil then
+		existingConnection:Disconnect()
+		rustleConnectionsByPart[leavesPart] = nil
+	end
+
+	local baseCFrame = leavesPart.CFrame
+	local startedAt = os.clock()
+	local connection: RBXScriptConnection? = nil
+
+	connection = RunService.Heartbeat:Connect(function()
+		if leavesPart.Parent == nil then
+			if connection ~= nil then
+				connection:Disconnect()
+			end
+			rustleConnectionsByPart[leavesPart] = nil
+			return
+		end
+
+		local elapsed = os.clock() - startedAt
+		local alpha = math.clamp(elapsed / LEAVES_RUSTLE_DURATION_SECONDS, 0, 1)
+		if alpha >= 1 then
+			leavesPart.CFrame = baseCFrame
+			if connection ~= nil then
+				connection:Disconnect()
+			end
+			rustleConnectionsByPart[leavesPart] = nil
+			return
+		end
+
+		local strength = (1 - alpha) ^ 1.35
+		local sway = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY) * LEAVES_RUSTLE_ANGLE_RADIANS * strength
+		local twist = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY * 0.73) * LEAVES_RUSTLE_ANGLE_RADIANS * 0.45 * strength
+		local offset = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY * 0.82) * LEAVES_RUSTLE_OFFSET_STUDS * strength
+		leavesPart.CFrame = baseCFrame
+			* CFrame.new(offset, math.abs(offset) * 0.35, 0)
+			* CFrame.Angles(sway, twist, -sway * 0.35)
+	end)
+
+	if connection ~= nil then
+		rustleConnectionsByPart[leavesPart] = connection
+	end
 end
 
 local function playLeavesRustle(buildingPart: BasePart)
 	task.delay(LEAVES_RUSTLE_START_DELAY_SECONDS, function()
-		local leavesPart = findLeavesPart(buildingPart)
-		if leavesPart == nil then
-			return
-		end
-
-		local existingConnection = rustleConnectionsByPart[leavesPart]
-		if existingConnection ~= nil then
-			existingConnection:Disconnect()
-			rustleConnectionsByPart[leavesPart] = nil
-		end
-
-		local baseCFrame = leavesPart.CFrame
-		local startedAt = os.clock()
-		local connection: RBXScriptConnection? = nil
-
-		connection = RunService.Heartbeat:Connect(function()
-			if leavesPart.Parent == nil then
-				if connection ~= nil then
-					connection:Disconnect()
-				end
-				rustleConnectionsByPart[leavesPart] = nil
-				return
-			end
-
-			local elapsed = os.clock() - startedAt
-			local alpha = math.clamp(elapsed / LEAVES_RUSTLE_DURATION_SECONDS, 0, 1)
-			if alpha >= 1 then
-				leavesPart.CFrame = baseCFrame
-				if connection ~= nil then
-					connection:Disconnect()
-				end
-				rustleConnectionsByPart[leavesPart] = nil
-				return
-			end
-
-			local strength = (1 - alpha) ^ 1.35
-			local sway = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY) * LEAVES_RUSTLE_ANGLE_RADIANS * strength
-			local twist = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY * 0.73) * LEAVES_RUSTLE_ANGLE_RADIANS * 0.45 * strength
-			local offset = math.sin(elapsed * LEAVES_RUSTLE_FREQUENCY * 0.82) * LEAVES_RUSTLE_OFFSET_STUDS * strength
-			leavesPart.CFrame = baseCFrame
-				* CFrame.new(offset, math.abs(offset) * 0.35, 0)
-				* CFrame.Angles(sway, twist, -sway * 0.35)
-		end)
-
-		if connection ~= nil then
-			rustleConnectionsByPart[leavesPart] = connection
+		for _, leavesPart in ipairs(findLeavesParts(buildingPart)) do
+			playLeavesPartRustle(leavesPart)
 		end
 	end)
 end
@@ -277,6 +290,7 @@ local function animateApple(
 
 	model.Parent = getEffectsFolder()
 	model:PivotTo(CFrame.new(startPosition))
+	playAppleSounds(model)
 
 	local startedAt = os.clock()
 	local popEndsAt = startedAt + POP_DURATION_SECONDS

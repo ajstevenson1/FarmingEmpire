@@ -10,11 +10,13 @@ assert(localPlayer ~= nil, "LocalPlayer must exist before starting sell")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
+local formattingFolder = sharedFolder:WaitForChild("Formatting") :: Folder
 local networkingFolder = sharedFolder:WaitForChild("Networking") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
 
 local BuildingCatalog = require(buildingsFolder:WaitForChild("BuildingCatalog") :: ModuleScript)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
+local NumberFormatter = require(formattingFolder:WaitForChild("NumberFormatter") :: ModuleScript)
 local RemoteNames = require(networkingFolder:WaitForChild("RemoteNames") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
 local ClientInputProfile = require(script.Parent.Parent.Input.ClientInputProfile)
@@ -91,6 +93,13 @@ local function escapeRichText(text: string): string
 	return escapedText
 end
 
+local function formatSellPrice(sellPrice: number): string
+	return NumberFormatter.formatAbbreviated(math.max(0, math.floor(sellPrice)), {
+		decimalPlaces = 1,
+		trimTrailingZeros = true,
+	})
+end
+
 local function getBuildingIdFromTarget(target: BasePart): BuildingId?
 	local rawBuildingId = target:GetAttribute(ITEM_ID_ATTRIBUTE)
 	if type(rawBuildingId) ~= "string" or not BuildingCatalog.hasBuildingDefinition(rawBuildingId) then
@@ -139,20 +148,21 @@ local function getSellTargetTooltipText(sellTarget: BasePart): string?
 	end
 
 	local buildingDefinition = BuildingCatalog.getBuildingDefinition(buildingId)
+	local formattedSellPrice = formatSellPrice(buildingDefinition.sellPrice)
 	if ClientInputProfile.usesGamepadControls() then
 		return string.format(
-			"Press right trigger to sell %s for <font color=\"%s\">+$%d</font>",
+			"Press right trigger to sell %s for <font color=\"%s\">+$%s</font>",
 			escapeRichText(buildingDefinition.displayName),
 			MONEY_RICH_TEXT_COLOR,
-			buildingDefinition.sellPrice
+			formattedSellPrice
 		)
 	end
 
 	return string.format(
-		"Sell %s for <font color=\"%s\">+$%d</font>",
+		"Sell %s for <font color=\"%s\">+$%s</font>",
 		escapeRichText(buildingDefinition.displayName),
 		MONEY_RICH_TEXT_COLOR,
-		buildingDefinition.sellPrice
+		formattedSellPrice
 	)
 end
 

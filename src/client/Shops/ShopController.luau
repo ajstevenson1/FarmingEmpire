@@ -240,25 +240,6 @@ local function getFailedPurchaseMessage(status: ShopPurchaseStatus, productDefin
 	return "Purchase Failed!"
 end
 
-local function getCurrentStockRemaining(shopId: ShopId, productDefinition: ShopProductDefinition): number
-	local snapshot = latestSnapshot
-	if snapshot == nil then
-		return 0
-	end
-
-	local shopDefinition = ShopCatalog.getShopDefinition(shopId)
-	if not shopDefinition.usesStock then
-		return 1
-	end
-
-	local shopState = snapshot.shopsById[shopId]
-	if shopState == nil then
-		return 0
-	end
-
-	return shopState.stockRemainingByProductId[productDefinition.id] or 0
-end
-
 local function showPurchaseNotification(result: ShopPurchaseResult)
 	local shopId = result.shopId
 	local productId = result.productId
@@ -393,11 +374,6 @@ function ShopController.start()
 		local developerProductId = productDefinition.developerProductId
 		if developerProductId == nil then
 			HudNotificationController.showToast("Robux Purchase Unavailable!", "Error")
-			return
-		end
-
-		if getCurrentStockRemaining(shopId, productDefinition) <= 0 then
-			HudNotificationController.showToast("Out Of Stock!", "Error")
 			return
 		end
 

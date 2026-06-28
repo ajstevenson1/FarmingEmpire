@@ -36,6 +36,7 @@ local itemImageAssetIdsById: { [ItemId]: string } = table.freeze({
 	CandyTree = "rbxassetid://73127433981881",
 	CyberTree = "rbxassetid://127029151232213",
 	PatriotTree = "rbxassetid://95404273237745",
+	GlassTree = "rbxassetid://89596382791298",
 
 	CiderMill = MILL_IMAGE_ASSET_ID,
 	CopperCiderMill = "rbxassetid://132030114105139",
@@ -52,6 +53,7 @@ local itemImageAssetIdsById: { [ItemId]: string } = table.freeze({
 	QuantumReactorMill = "rbxassetid://94655814198878",
 	DyingForgeMill = "rbxassetid://113138977305606",
 	DeepSpaceMill = "rbxassetid://72101162622309",
+	TempestMill = "rbxassetid://80118651818158",
 
 	OfflineEarningsWindmill = "rbxassetid://75744019440681",
 	ModernAFKWindmill = "rbxassetid://97254974522636",

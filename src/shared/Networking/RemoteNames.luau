@@ -18,6 +18,7 @@ local RemoteNames = {
 	notificationsFolderName = "Notifications",
 	tutorialFolderName = "Tutorial",
 	weatherFolderName = "Weather",
+	updateEventsFolderName = "UpdateEvents",
 	inventoryUpdatedEventName = "InventoryUpdated",
 	getInventorySnapshotFunctionName = "GetInventorySnapshot",
 	setSelectedSlotEventName = "SetSelectedSlot",
@@ -71,6 +72,7 @@ local RemoteNames = {
 	moneyDropSpawnedEventName = "MoneyDropSpawned",
 	requestMoneyDropPickupEventName = "RequestMoneyDropPickup",
 	moneyDropResolvedEventName = "MoneyDropResolved",
+	promptUpdateEventRsvpEventName = "PromptUpdateEventRsvp",
 }
 
 return table.freeze(RemoteNames)
