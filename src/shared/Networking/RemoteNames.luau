@@ -23,6 +23,7 @@ local RemoteNames = {
 	setSelectedSlotEventName = "SetSelectedSlot",
 	assignHotbarSlotEventName = "AssignHotbarSlot",
 	unassignHotbarItemEventName = "UnassignHotbarItem",
+	fillHotbarEventName = "FillHotbar",
 	requestPlacementEventName = "RequestPlacement",
 	requestPickupEventName = "RequestPickup",
 	requestPickupAllEventName = "RequestPickupAll",

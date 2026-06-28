@@ -453,6 +453,48 @@ local function unassignHotbarItem(player: Player, requestedItemId: ItemId)
 	pushInventoryUpdate(player)
 end
 
+local function fillHotbarSlots(player: Player)
+	local inventoryState = getPlayerInventoryState(player)
+	sanitizeState(inventoryState)
+	local previousItemId = InventoryService.getEquippedItemId(player)
+	local assignedItems = getAssignedHotbarItems(inventoryState)
+
+	if #assignedItems >= MAX_ASSIGNABLE_SLOTS then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	local assignedItemIds: { [ItemId]: boolean } = {}
+	for _, itemId in ipairs(assignedItems) do
+		assignedItemIds[itemId] = true
+	end
+
+	local didAssignItem = false
+	for _, entry in ipairs(getSortedEntries(inventoryState)) do
+		if #assignedItems >= MAX_ASSIGNABLE_SLOTS then
+			break
+		end
+
+		if entry.itemId == "Scythe" or entry.quantity <= 0 or assignedItemIds[entry.itemId] == true then
+			continue
+		end
+
+		table.insert(assignedItems, entry.itemId)
+		assignedItemIds[entry.itemId] = true
+		didAssignItem = true
+	end
+
+	if not didAssignItem then
+		pushInventoryUpdate(player)
+		return
+	end
+
+	applyAssignedHotbarItems(inventoryState, assignedItems, previousItemId)
+	syncInventoryStateToPlayerData(player, inventoryState)
+	notifySelectedItemChanged(player, previousItemId, InventoryService.getEquippedItemId(player))
+	pushInventoryUpdate(player)
+end
+
 local function initializePlayer(player: Player)
 	local inventoryState = createInventoryStateForPlayer(player)
 	playerInventories[player] = inventoryState
@@ -516,6 +558,10 @@ function InventoryService.start()
 		end
 
 		unassignHotbarItem(player, requestedItemId :: ItemId)
+	end)
+
+	inventoryRemotes.fillHotbar.OnServerEvent:Connect(function(player: Player)
+		fillHotbarSlots(player)
 	end)
 
 	Players.PlayerAdded:Connect(initializePlayer)

@@ -12,6 +12,7 @@ type InventoryRemotes = {
 	setSelectedSlot: RemoteEvent,
 	assignHotbarSlot: RemoteEvent,
 	unassignHotbarItem: RemoteEvent,
+	fillHotbar: RemoteEvent,
 }
 
 type ResourceRemotes = {
@@ -186,6 +187,7 @@ function Remotes.getInventoryRemotes(): InventoryRemotes
 		setSelectedSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.setSelectedSlotEventName),
 		assignHotbarSlot = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.assignHotbarSlotEventName),
 		unassignHotbarItem = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.unassignHotbarItemEventName),
+		fillHotbar = getOrCreateRemoteEvent(inventoryFolder, RemoteNames.fillHotbarEventName),
 	}
 
 	return cachedInventoryRemotes

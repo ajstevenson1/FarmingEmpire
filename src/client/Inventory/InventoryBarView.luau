@@ -51,6 +51,7 @@ export type InventoryBarView = {
 	_hotbarFrame: Frame,
 	_hotbarGrid: UIGridLayout?,
 	_openButton: GuiButtonLike,
+	_fillButton: GuiButtonLike,
 	_inventoryContentFrame: GuiObject,
 	_inventoryGrid: UIGridLayout?,
 	_searchBox: TextBox,
@@ -73,11 +74,13 @@ export type InventoryBarView = {
 	_slotActivatedCallbacks: { (slotIndex: number) -> () },
 	_hotbarAssignCallbacks: { (itemId: ItemId, slotIndex: number) -> () },
 	_hotbarUnassignCallbacks: { (itemId: ItemId) -> () },
+	_hotbarFillCallbacks: { () -> () },
 	getInventoryPanel: (self: InventoryBarView) -> Frame,
 	connectInventoryToggleRequested: (self: InventoryBarView, callback: () -> ()) -> (),
 	connectSlotActivated: (self: InventoryBarView, callback: (slotIndex: number) -> ()) -> (),
 	connectHotbarAssignRequested: (self: InventoryBarView, callback: (itemId: ItemId, slotIndex: number) -> ()) -> (),
 	connectHotbarUnassignRequested: (self: InventoryBarView, callback: (itemId: ItemId) -> ()) -> (),
+	connectHotbarFillRequested: (self: InventoryBarView, callback: () -> ()) -> (),
 	setInventoryPanelOpen: (self: InventoryBarView, isOpen: boolean) -> (),
 	render: (self: InventoryBarView, snapshot: InventorySnapshot?) -> (),
 	destroy: (self: InventoryBarView) -> (),
@@ -523,6 +526,12 @@ function InventoryBarView.new(): InventoryBarView
 	assert(frames:IsA("Frame"), "GUI.Frames must be a Frame")
 	local inventoryMenu = frames:WaitForChild("InventoryMenu")
 	assert(inventoryMenu:IsA("Frame"), "GUI.Frames.InventoryMenu must be a Frame")
+	local fillButtonInstance = inventoryMenu:WaitForChild("FillButton")
+	assert(
+		fillButtonInstance:IsA("TextButton") or fillButtonInstance:IsA("ImageButton"),
+		"GUI.Frames.InventoryMenu.FillButton must be a TextButton or ImageButton"
+	)
+	local fillButton = fillButtonInstance :: GuiButtonLike
 	local window = inventoryMenu:WaitForChild("Window")
 	assert(window:IsA("GuiObject"), "GUI.Frames.InventoryMenu.Window must be a GuiObject")
 	local inventoryContentFrame = window:WaitForChild("Frame")
@@ -573,6 +582,7 @@ function InventoryBarView.new(): InventoryBarView
 		_hotbarFrame = hotbarFrame,
 		_hotbarGrid = hotbarGrid,
 		_openButton = openButton,
+		_fillButton = fillButton,
 		_inventoryContentFrame = inventoryContentFrame,
 		_inventoryGrid = inventoryGrid,
 		_searchBox = searchBox,
@@ -595,10 +605,17 @@ function InventoryBarView.new(): InventoryBarView
 		_slotActivatedCallbacks = {},
 		_hotbarAssignCallbacks = {},
 		_hotbarUnassignCallbacks = {},
+		_hotbarFillCallbacks = {},
 	}, InventoryBarView) :: InventoryBarView
 
 	table.insert(self._connections, openButton.Activated:Connect(function()
 		for _, callback in ipairs(self._inventoryToggleRequestedCallbacks) do
+			callback()
+		end
+	end))
+
+	table.insert(self._connections, fillButton.Activated:Connect(function()
+		for _, callback in ipairs(self._hotbarFillCallbacks) do
 			callback()
 		end
 	end))
@@ -698,6 +715,10 @@ end
 
 function InventoryBarView:connectHotbarUnassignRequested(callback: (itemId: ItemId) -> ())
 	table.insert(self._hotbarUnassignCallbacks, callback)
+end
+
+function InventoryBarView:connectHotbarFillRequested(callback: () -> ())
+	table.insert(self._hotbarFillCallbacks, callback)
 end
 
 function InventoryBarView:setInventoryPanelOpen(isOpen: boolean)

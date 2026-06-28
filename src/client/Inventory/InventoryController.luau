@@ -47,7 +47,7 @@ local function disableDefaultBackpack()
 	end)
 end
 
-local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent, RemoteEvent, RemoteEvent)
+local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent, RemoteEvent, RemoteEvent, RemoteEvent)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName) :: Folder
 	local remotesFolder = rootFolder:WaitForChild(RemoteNames.inventoryFolderName) :: Folder
 
@@ -56,8 +56,9 @@ local function getInventoryRemotes(): (RemoteEvent, RemoteFunction, RemoteEvent,
 	local setSelectedSlot = remotesFolder:WaitForChild(RemoteNames.setSelectedSlotEventName) :: RemoteEvent
 	local assignHotbarSlot = remotesFolder:WaitForChild(RemoteNames.assignHotbarSlotEventName) :: RemoteEvent
 	local unassignHotbarItem = remotesFolder:WaitForChild(RemoteNames.unassignHotbarItemEventName) :: RemoteEvent
+	local fillHotbar = remotesFolder:WaitForChild(RemoteNames.fillHotbarEventName) :: RemoteEvent
 
-	return inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem
+	return inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem, fillHotbar
 end
 
 local function publishSnapshot(snapshot: InventorySnapshot, view: InventoryBarViewInstance)
@@ -166,7 +167,8 @@ function InventoryController.start()
 		closedPosition = getClosedInventoryPanelPosition(inventoryPanel),
 	})
 
-	local inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem = getInventoryRemotes()
+	local inventoryUpdated, getInventorySnapshot, setSelectedSlot, assignHotbarSlot, unassignHotbarItem, fillHotbar =
+		getInventoryRemotes()
 	local initialSnapshot = getInventorySnapshot:InvokeServer() :: InventorySnapshot
 
 	FrameManager.observeFrameState(INVENTORY_FRAME_ID, function(isOpen: boolean)
@@ -194,6 +196,10 @@ function InventoryController.start()
 
 	view:connectHotbarUnassignRequested(function(itemId: ItemId)
 		unassignHotbarItem:FireServer(itemId)
+	end)
+
+	view:connectHotbarFillRequested(function()
+		fillHotbar:FireServer()
 	end)
 
 	inventoryUpdated.OnClientEvent:Connect(function(snapshot: InventorySnapshot)
