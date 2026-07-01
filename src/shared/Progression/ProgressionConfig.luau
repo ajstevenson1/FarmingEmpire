@@ -106,7 +106,7 @@ local treeDefinitions: { TreeTierDefinition } = table.freeze({
 	createTreeTier("GhostwoodTree", "Ghostwood Apple Tree", "GhostwoodApple", 870000000, 290, 4350, 7.65, stock(0.12, 1, 1)),
 	createTreeTier("CandyTree", "Candy Apple Tree", "CandyApple", 2300000000, 350, 5250, 9.85, stock(0.1, 1, 1)),
 	createTreeTier("CyberTree", "Cyber Apple Tree", "CyberApple", 10000000000, 500, 7500, 12.6, stock(0.1, 1, 1)),
-	--createTreeTier("GlassTree", "Glass Apple Tree", "GlassApple", 50000000000, 1250, 15000, 16.5, stock(0.1, 1, 1)),
+	createTreeTier("GlassTree", "Glass Apple Tree", "GlassApple", 50000000000, 1250, 15000, 16.5, stock(0.1, 1, 1)),
 	createTreeTier("PatriotTree", "Patriot Tree", "PatriotApple", 0, 125, 1750, 0, stock(0, 0, 0)),
 })
 
@@ -126,7 +126,7 @@ local millDefinitions: { MillTierDefinition } = table.freeze({
 	createMillTier("QuantumReactorMill", "Quantum Reactor Mill", 340000000, 320, 320, 21.4, stock(0.12, 1, 1)),
 	createMillTier("DyingForgeMill", "Dying Forge Mill", 1050000000, 400, 400, 28.1, stock(0.09, 1, 1)),
 	createMillTier("DeepSpaceMill", "Deep Space Mill", 7200000000, 500, 500, 36.3, stock(0.06, 1, 1)),
-	--createMillTier("TempestMill", "Tempest Mill", 45000000000, 1000, 1000, 55, stock(0.1, 1, 1)),
+	createMillTier("TempestMill", "Tempest Mill", 45000000000, 1000, 1000, 55, stock(0.1, 1, 1)),
 })
 
 local treeBuildingIds: { [string]: boolean } = {}

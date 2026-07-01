@@ -102,6 +102,23 @@ WeatherEventConfig.eventsById = table.freeze({
 			}),
 		}),
 	}),
+	Fireworks = table.freeze({
+		id = "Fireworks",
+		weight = 85,
+		displayMessage = '<b><font color="#FF8CFF">Fireworks event!</font></b> Fireworks are lighting up the sky. All production is doubled.',
+		sky = table.freeze({
+			activeSkyName = "Sky",
+			defaultSkyName = "Sky",
+		}),
+		effects = table.freeze({
+			sourceFolderName = "Fireworks",
+			targetName = "WeatherPart",
+			playSounds = true,
+		}),
+		productionModifier = table.freeze({
+			globalOutputMultiplier = 2,
+		}),
+	}),
 })
 
 function WeatherEventConfig.getEventDefinition(eventId: WeatherEventId): WeatherEventDefinition?

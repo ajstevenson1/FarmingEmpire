@@ -13,6 +13,7 @@ local WeatherTypes = require(weatherFolder:WaitForChild("WeatherTypes") :: Modul
 
 type WeatherCloudConfig = WeatherTypes.WeatherCloudConfig
 type WeatherEventDefinition = WeatherTypes.WeatherEventDefinition
+type WeatherFolderEffectsConfig = WeatherTypes.WeatherFolderEffectsConfig
 
 local SKYS_FOLDER_NAME = "Skys"
 local WEATHER_FOLDER_NAME = "Weather"
@@ -107,6 +108,13 @@ local function clearParticles()
 	end
 end
 
+local function trackActiveEffect(activeEffectsFolder: Folder, instance: Instance, markerName: string)
+	local marker = Instance.new("ObjectValue")
+	marker.Name = markerName
+	marker.Value = instance
+	marker.Parent = activeEffectsFolder
+end
+
 local function cloneParticles(particleName: string, targetName: string, cloneCount: number)
 	local weatherAssetsFolder = getWeatherAssetsFolder()
 	local particleTemplate = weatherAssetsFolder:WaitForChild(particleName)
@@ -121,10 +129,31 @@ local function cloneParticles(particleName: string, targetName: string, cloneCou
 		particle.Name = string.format("%s_%02d", particleName, index)
 		particle.Parent = target
 
-		local marker = Instance.new("ObjectValue")
-		marker.Name = particle.Name
-		marker.Value = particle
-		marker.Parent = activeParticlesFolder
+		trackActiveEffect(activeParticlesFolder, particle, particle.Name)
+	end
+end
+
+local function cloneFolderEffects(effectsConfig: WeatherFolderEffectsConfig)
+	local weatherAssetsFolder = getWeatherAssetsFolder()
+	local sourceFolder = weatherAssetsFolder:WaitForChild(effectsConfig.sourceFolderName)
+	assert(
+		sourceFolder:IsA("Folder"),
+		string.format("ReplicatedStorage.Weather.%s must be a Folder", effectsConfig.sourceFolderName)
+	)
+
+	local target = Workspace:WaitForChild(effectsConfig.targetName)
+	assert(target:IsA("BasePart"), string.format("Workspace.%s must be a BasePart", effectsConfig.targetName))
+
+	local activeParticlesFolder = getOrCreateActiveParticlesFolder()
+	for index, child in ipairs(sourceFolder:GetChildren()) do
+		local effect = child:Clone()
+		effect.Parent = target
+
+		if effectsConfig.playSounds == true and effect:IsA("Sound") then
+			effect:Play()
+		end
+
+		trackActiveEffect(activeParticlesFolder, effect, string.format("%s_%02d", effectsConfig.sourceFolderName, index))
 	end
 end
 
@@ -177,12 +206,21 @@ function WeatherEnvironmentService.applyEvent(eventDefinition: WeatherEventDefin
 	captureDefaultClouds()
 	clearParticles()
 	applySky(eventDefinition.sky.activeSkyName)
-	cloneParticles(eventDefinition.particles.topParticleName, eventDefinition.particles.topTargetName, eventDefinition.particles.cloneCount)
 
-	local bottomParticleName = eventDefinition.particles.bottomParticleName
-	local bottomTargetName = eventDefinition.particles.bottomTargetName
-	if bottomParticleName ~= nil and bottomTargetName ~= nil then
-		cloneParticles(bottomParticleName, bottomTargetName, eventDefinition.particles.cloneCount)
+	local particlesConfig = eventDefinition.particles
+	if particlesConfig ~= nil then
+		cloneParticles(particlesConfig.topParticleName, particlesConfig.topTargetName, particlesConfig.cloneCount)
+
+		local bottomParticleName = particlesConfig.bottomParticleName
+		local bottomTargetName = particlesConfig.bottomTargetName
+		if bottomParticleName ~= nil and bottomTargetName ~= nil then
+			cloneParticles(bottomParticleName, bottomTargetName, particlesConfig.cloneCount)
+		end
+	end
+
+	local effectsConfig = eventDefinition.effects
+	if effectsConfig ~= nil then
+		cloneFolderEffects(effectsConfig)
 	end
 
 	tweenClouds(eventDefinition.clouds)

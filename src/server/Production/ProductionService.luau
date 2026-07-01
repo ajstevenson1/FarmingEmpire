@@ -218,7 +218,8 @@ local function getEffectiveProductionConfig(part: BasePart, buildingDefinition: 
 
 	local outputResourceId = getOutputResourceId(baseProductionConfig)
 	assert(outputResourceId ~= nil, string.format("%s production must have an output resource", buildingDefinition.id))
-	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId)
+	local weatherOutputMultiplier = WeatherModifierService.getGlobalOutputMultiplier()
+	local outputMultiplier = PlotExpansionService.getResourceOutputMultiplierForPlacedPart(part, outputResourceId) * weatherOutputMultiplier
 	local storageCapMultiplier = PlotExpansionService.getStorageCapMultiplierForPlacedPart(part, outputResourceId)
 	local treeSpeedMultiplier = getTreeSpeedMultiplier(buildingDefinition)
 	if outputMultiplier <= 1 and storageCapMultiplier <= 1 and treeSpeedMultiplier <= 1 then

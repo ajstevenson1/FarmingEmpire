@@ -16,19 +16,23 @@ type VariantConfig = {
 	tweenInfo: TweenInfo,
 }
 
+type HoverImageState = {
+	imageLabel: ImageLabel,
+	defaultRotation: number,
+	activeTween: Tween?,
+	activeIdleTween: Tween?,
+}
+
 type BoundButtonState = {
 	button: GuiButtonLike,
 	stroke: UIStroke?,
-	imageLabel: ImageLabel?,
+	imageStates: { HoverImageState },
 	config: VariantConfig,
 	defaultAutoButtonColor: boolean,
 	defaultSize: UDim2,
 	defaultStrokeColor: Color3?,
-	defaultImageRotation: number?,
 	activeSizeTween: Tween?,
 	activeStrokeTween: Tween?,
-	activeImageTween: Tween?,
-	activeIdleImageTween: Tween?,
 	idleAnimationToken: number,
 	isHovered: boolean,
 	connections: { RBXScriptConnection },
@@ -41,6 +45,7 @@ export type ButtonHoverController = {
 
 local ROOT_GUI_NAME = "GUI"
 local VARIANT_ATTRIBUTE_NAME = "Type"
+local IMAGE_NAMES: { string } = { "Image", "Image2" }
 
 local VARIANT_CONFIGS: { [string]: VariantConfig } = {
 	Top = {
@@ -111,18 +116,20 @@ local function getStroke(designFrame: GuiObject): UIStroke?
 	return stroke
 end
 
-local function getImageLabel(button: GuiButtonLike): ImageLabel?
-	local imageLabel = button:FindFirstChild("Image", true)
-	if imageLabel == nil then
-		return nil
+local function getImageLabels(button: GuiButtonLike): { ImageLabel }
+	local imageLabels: { ImageLabel } = {}
+	for _, imageName in ipairs(IMAGE_NAMES) do
+		local imageLabel = button:FindFirstChild(imageName, true)
+		if imageLabel ~= nil then
+			if imageLabel:IsA("ImageLabel") then
+				table.insert(imageLabels, imageLabel :: ImageLabel)
+			else
+				warn(string.format("%s must be an ImageLabel for hover styling", imageLabel:GetFullName()))
+			end
+		end
 	end
 
-	if not imageLabel:IsA("ImageLabel") then
-		warn(string.format("%s.Image must be an ImageLabel for hover styling", button:GetFullName()))
-		return nil
-	end
-
-	return imageLabel
+	return imageLabels
 end
 
 local function addSizeDelta(size: UDim2, sizeDelta: UDim2): UDim2
@@ -147,18 +154,22 @@ local function cancelTweens(boundState: BoundButtonState)
 		boundState.activeStrokeTween = nil
 	end
 
-	local activeImageTween = boundState.activeImageTween
-	if activeImageTween ~= nil then
-		activeImageTween:Cancel()
-		boundState.activeImageTween = nil
+	for _, imageState in ipairs(boundState.imageStates) do
+		local activeImageTween = imageState.activeTween
+		if activeImageTween ~= nil then
+			activeImageTween:Cancel()
+			imageState.activeTween = nil
+		end
 	end
 end
 
 local function cancelIdleTween(boundState: BoundButtonState)
-	local activeIdleImageTween = boundState.activeIdleImageTween
-	if activeIdleImageTween ~= nil then
-		activeIdleImageTween:Cancel()
-		boundState.activeIdleImageTween = nil
+	for _, imageState in ipairs(boundState.imageStates) do
+		local activeIdleImageTween = imageState.activeIdleTween
+		if activeIdleImageTween ~= nil then
+			activeIdleImageTween:Cancel()
+			imageState.activeIdleTween = nil
+		end
 	end
 end
 
@@ -191,14 +202,12 @@ local function getIdleTargetRotation(rotationRange: NumberRange, directionSign: 
 end
 
 local function startIdleAnimation(boundState: BoundButtonState, initialDelaySeconds: number)
-	local imageLabel = boundState.imageLabel
-	local defaultImageRotation = boundState.defaultImageRotation
+	local imageStates = boundState.imageStates
 	local idleImageRotationRange = boundState.config.idleImageRotationRange
 	local idleSwingTweenInfo = boundState.config.idleSwingTweenInfo
 	local idleActiveDurationSeconds = boundState.config.idleActiveDurationSeconds
 	local idlePauseDurationSeconds = boundState.config.idlePauseDurationSeconds
-	if imageLabel == nil
-		or defaultImageRotation == nil
+	if #imageStates == 0
 		or idleImageRotationRange == nil
 		or idleSwingTweenInfo == nil
 		or idleActiveDurationSeconds == nil
@@ -228,17 +237,26 @@ local function startIdleAnimation(boundState: BoundButtonState, initialDelaySeco
 					return
 				end
 
-				local targetRotation = getIdleTargetRotation(idleImageRotationRange, directionSign)
+				local idleTweens: { Tween } = {}
+				for _, imageState in ipairs(imageStates) do
+					local imageTargetRotation = getIdleTargetRotation(idleImageRotationRange, directionSign)
+					local idleTween = TweenService:Create(imageState.imageLabel, idleSwingTweenInfo, {
+						Rotation = imageTargetRotation,
+					})
+					imageState.activeIdleTween = idleTween
+					table.insert(idleTweens, idleTween)
+				end
 				directionSign *= -1
 
-				local idleTween = TweenService:Create(imageLabel, idleSwingTweenInfo, {
-					Rotation = targetRotation,
-				})
-				boundState.activeIdleImageTween = idleTween
-				idleTween:Play()
-				local playbackState = idleTween.Completed:Wait()
-				if playbackState ~= Enum.PlaybackState.Completed then
-					return
+				for _, idleTween in ipairs(idleTweens) do
+					idleTween:Play()
+				end
+
+				for _, idleTween in ipairs(idleTweens) do
+					local playbackState = idleTween.Completed:Wait()
+					if playbackState ~= Enum.PlaybackState.Completed then
+						return
+					end
 				end
 			end
 
@@ -246,14 +264,24 @@ local function startIdleAnimation(boundState: BoundButtonState, initialDelaySeco
 				return
 			end
 
-			local resetTween = TweenService:Create(imageLabel, idleSwingTweenInfo, {
-				Rotation = defaultImageRotation,
-			})
-			boundState.activeIdleImageTween = resetTween
-			resetTween:Play()
-			local playbackState = resetTween.Completed:Wait()
-			if playbackState ~= Enum.PlaybackState.Completed then
-				return
+			local resetTweens: { Tween } = {}
+			for _, imageState in ipairs(imageStates) do
+				local resetTween = TweenService:Create(imageState.imageLabel, idleSwingTweenInfo, {
+					Rotation = imageState.defaultRotation,
+				})
+				imageState.activeIdleTween = resetTween
+				table.insert(resetTweens, resetTween)
+			end
+
+			for _, resetTween in ipairs(resetTweens) do
+				resetTween:Play()
+			end
+
+			for _, resetTween in ipairs(resetTweens) do
+				local playbackState = resetTween.Completed:Wait()
+				if playbackState ~= Enum.PlaybackState.Completed then
+					return
+				end
 			end
 
 			if not waitForDurationWhileIdle(boundState, token, idlePauseDurationSeconds) then
@@ -293,18 +321,18 @@ local function tweenToState(boundState: BoundButtonState, isHovered: boolean)
 		strokeTween:Play()
 	end
 
-	local imageLabel = boundState.imageLabel
-	local defaultImageRotation = boundState.defaultImageRotation
 	local hoverImageRotationRange = boundState.config.hoverImageRotationRange
-	if imageLabel ~= nil and defaultImageRotation ~= nil and hoverImageRotationRange ~= nil then
-		local targetRotation = if isHovered
-			then randomGenerator:NextNumber(hoverImageRotationRange.Min, hoverImageRotationRange.Max)
-			else defaultImageRotation
-		local imageTween = TweenService:Create(imageLabel, boundState.config.tweenInfo, {
-			Rotation = targetRotation,
-		})
-		boundState.activeImageTween = imageTween
-		imageTween:Play()
+	if hoverImageRotationRange ~= nil then
+		for _, imageState in ipairs(boundState.imageStates) do
+			local targetRotation = if isHovered
+				then randomGenerator:NextNumber(hoverImageRotationRange.Min, hoverImageRotationRange.Max)
+				else imageState.defaultRotation
+			local imageTween = TweenService:Create(imageState.imageLabel, boundState.config.tweenInfo, {
+				Rotation = targetRotation,
+			})
+			imageState.activeTween = imageTween
+			imageTween:Play()
+		end
 	end
 
 	if not isHovered then
@@ -329,10 +357,8 @@ local function unbindButton(button: GuiButtonLike)
 		stroke.Color = defaultStrokeColor
 	end
 
-	local imageLabel = boundState.imageLabel
-	local defaultImageRotation = boundState.defaultImageRotation
-	if imageLabel ~= nil and defaultImageRotation ~= nil then
-		imageLabel.Rotation = defaultImageRotation
+	for _, imageState in ipairs(boundState.imageStates) do
+		imageState.imageLabel.Rotation = imageState.defaultRotation
 	end
 
 	for _, connection in ipairs(boundState.connections) do
@@ -369,31 +395,35 @@ local function bindButton(button: GuiButtonLike)
 		defaultStrokeColor = stroke.Color
 	end
 
-	local imageLabel: ImageLabel? = nil
-	local defaultImageRotation: number? = nil
+	local imageStates: { HoverImageState } = {}
 	local hoverImageRotationRange = variantConfig.hoverImageRotationRange
 	if hoverImageRotationRange ~= nil then
-		imageLabel = getImageLabel(button)
-		if imageLabel == nil then
+		local imageLabels = getImageLabels(button)
+		if #imageLabels == 0 then
 			return
 		end
 
-		defaultImageRotation = imageLabel.Rotation
+		for _, imageLabel in ipairs(imageLabels) do
+			local imageState: HoverImageState = {
+				imageLabel = imageLabel,
+				defaultRotation = imageLabel.Rotation,
+				activeTween = nil,
+				activeIdleTween = nil,
+			}
+			table.insert(imageStates, imageState)
+		end
 	end
 
 	local boundState: BoundButtonState = {
 		button = button,
 		stroke = stroke,
-		imageLabel = imageLabel,
+		imageStates = imageStates,
 		config = variantConfig,
 		defaultAutoButtonColor = button.AutoButtonColor,
 		defaultSize = button.Size,
 		defaultStrokeColor = defaultStrokeColor,
-		defaultImageRotation = defaultImageRotation,
 		activeSizeTween = nil,
 		activeStrokeTween = nil,
-		activeImageTween = nil,
-		activeIdleImageTween = nil,
 		idleAnimationToken = 0,
 		isHovered = false,
 		connections = {},

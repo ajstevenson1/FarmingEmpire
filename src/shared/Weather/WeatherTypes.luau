@@ -1,6 +1,6 @@
 --!strict
 
-export type WeatherEventId = "Rain" | "Money"
+export type WeatherEventId = "Rain" | "Money" | "Fireworks"
 
 export type WeatherSkyConfig = {
 	activeSkyName: string,
@@ -13,6 +13,12 @@ export type WeatherParticlesConfig = {
 	bottomParticleName: string?,
 	bottomTargetName: string?,
 	cloneCount: number,
+}
+
+export type WeatherFolderEffectsConfig = {
+	sourceFolderName: string,
+	targetName: string,
+	playSounds: boolean?,
 }
 
 export type WeatherMoneyDropTierConfig = {
@@ -41,7 +47,8 @@ export type WeatherCloudConfig = {
 }
 
 export type WeatherProductionModifierConfig = {
-	treeSpeedMultiplier: number,
+	treeSpeedMultiplier: number?,
+	globalOutputMultiplier: number?,
 }
 
 export type WeatherWindmillModifierConfig = {
@@ -58,7 +65,8 @@ export type WeatherEventDefinition = {
 	weight: number,
 	displayMessage: string,
 	sky: WeatherSkyConfig,
-	particles: WeatherParticlesConfig,
+	particles: WeatherParticlesConfig?,
+	effects: WeatherFolderEffectsConfig?,
 	clouds: WeatherCloudConfig?,
 	productionModifier: WeatherProductionModifierConfig?,
 	windmillModifier: WeatherWindmillModifierConfig?,

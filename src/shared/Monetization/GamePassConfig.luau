@@ -8,12 +8,19 @@ export type GamePassDefinition = {
 }
 
 local AUTO_CIDER_GAME_PASS_KEY = "AutoCiderPass"
+local SPECIAL_OFFER_GAME_PASS_KEY = "SpecialOffer"
 
 local GAME_PASS_DEFINITIONS: { [string]: GamePassDefinition } = {
 	AutoCiderPass = {
 		id = "AutoCiderPass",
 		displayName = "Auto Cider",
 		gamePassId = 1861793571,
+		cashMultiplier = nil,
+	},
+	SpecialOffer = {
+		id = "SpecialOffer",
+		displayName = "Special Offer",
+		gamePassId = 1900116715,
 		cashMultiplier = nil,
 	},
 	Cash2x = {
@@ -69,6 +76,12 @@ end
 function GamePassConfig.getAutoCiderDefinition(): GamePassDefinition
 	local definition = GAME_PASS_DEFINITIONS[AUTO_CIDER_GAME_PASS_KEY]
 	assert(definition ~= nil, string.format("%s game pass definition is required", AUTO_CIDER_GAME_PASS_KEY))
+	return definition
+end
+
+function GamePassConfig.getSpecialOfferDefinition(): GamePassDefinition
+	local definition = GAME_PASS_DEFINITIONS[SPECIAL_OFFER_GAME_PASS_KEY]
+	assert(definition ~= nil, string.format("%s game pass definition is required", SPECIAL_OFFER_GAME_PASS_KEY))
 	return definition
 end
 
