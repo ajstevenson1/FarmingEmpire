@@ -23,6 +23,7 @@ local TutorialTargetResolver = require(script.Parent.TutorialTargetResolver)
 
 type TutorialStepPayload = TutorialTypes.TutorialStepPayload
 type InventorySnapshot = InventoryTypes.InventorySnapshot
+type GuiButtonLike = TextButton | ImageButton
 
 local LOADING_GATE_TIMEOUT_SECONDS = 12
 
@@ -30,13 +31,14 @@ local hasStarted = false
 local hudView: TutorialHudView.TutorialHudView? = nil
 local spotlightView: TutorialSpotlightView.TutorialSpotlightView? = nil
 local beamView: TutorialBeamView.TutorialBeamView? = nil
-local currentStepIndex: number? = nil
-local shouldHideStepEightSpotlight = false
+local shouldHideEquippedHotbarSpotlight = false
+local currentSpotlightTargetName = "None"
 local hasSeenIncompleteTutorial = false
 local didAutoOpenDailyRewards = false
 local activeOnboardingIndicator: GuiObject? = nil
 local activeOnboardingIndicatorOriginalVisible = false
 local activeOnboardingTargetName = "None"
+local activeTargetActivatedConnection: RBXScriptConnection? = nil
 
 local function getTutorialRemotes(): (RemoteEvent, RemoteEvent, RemoteEvent, RemoteFunction)
 	local rootFolder = ReplicatedStorage:WaitForChild(RemoteNames.rootFolderName)
@@ -76,14 +78,25 @@ local function getSelectedItemId(snapshot: InventorySnapshot): string?
 	return snapshot.hotbarSlots[selectedSlotIndex]
 end
 
+local function getEquippedItemIdForSpotlightTarget(targetName: string): string?
+	if targetName == "OakTreeHotbar" then
+		return "OakTree"
+	elseif targetName == "CiderMillHotbar" then
+		return "CiderMill"
+	end
+
+	return nil
+end
+
 local function updateEquipStepSpotlight(snapshot: InventorySnapshot?)
 	local spotlight = spotlightView
-	if spotlight == nil or currentStepIndex ~= 8 or shouldHideStepEightSpotlight then
+	if spotlight == nil or shouldHideEquippedHotbarSpotlight then
 		return
 	end
 
-	if snapshot ~= nil and getSelectedItemId(snapshot) == "OakTree" then
-		shouldHideStepEightSpotlight = true
+	local targetItemId = getEquippedItemIdForSpotlightTarget(currentSpotlightTargetName)
+	if targetItemId ~= nil and snapshot ~= nil and getSelectedItemId(snapshot) == targetItemId then
+		shouldHideEquippedHotbarSpotlight = true
 		spotlight:hide()
 		local indicator = activeOnboardingIndicator
 		if indicator ~= nil and indicator.Parent ~= nil then
@@ -102,6 +115,56 @@ local function clearOnboardingIndicator()
 
 	activeOnboardingIndicator = nil
 	activeOnboardingTargetName = "None"
+end
+
+local function disconnectActiveTargetActivated()
+	local connection = activeTargetActivatedConnection
+	if connection ~= nil then
+		connection:Disconnect()
+	end
+
+	activeTargetActivatedConnection = nil
+end
+
+local function hideCurrentTargetGuidance()
+	disconnectActiveTargetActivated()
+
+	local spotlight = spotlightView
+	if spotlight ~= nil then
+		spotlight:hide()
+	end
+
+	clearOnboardingIndicator()
+end
+
+local function getActivatedButton(target: GuiObject): GuiButtonLike?
+	if target:IsA("TextButton") then
+		return target :: TextButton
+	elseif target:IsA("ImageButton") then
+		return target :: ImageButton
+	end
+
+	return nil
+end
+
+local function connectTargetActivated(targetName: string)
+	disconnectActiveTargetActivated()
+
+	if targetName == "None" then
+		return
+	end
+
+	local target = TutorialTargetResolver.getGuiTarget(targetName)
+	if target == nil then
+		return
+	end
+
+	local button = getActivatedButton(target)
+	if button == nil then
+		return
+	end
+
+	activeTargetActivatedConnection = button.Activated:Connect(hideCurrentTargetGuidance)
 end
 
 local function findOnboardingIndicator(target: GuiObject): GuiObject?
@@ -126,12 +189,14 @@ local function updateOnboardingIndicator(targetName: string)
 	end
 
 	local target = TutorialTargetResolver.getGuiTarget(targetName)
-	if target == nil then
+	if target == nil or not TutorialTargetResolver.isGuiObjectEffectivelyVisible(target) then
+		clearOnboardingIndicator()
 		return
 	end
 
 	local indicator = findOnboardingIndicator(target)
 	if indicator == nil then
+		clearOnboardingIndicator()
 		return
 	end
 
@@ -151,6 +216,10 @@ local function updateOnboardingIndicator(targetName: string)
 end
 
 local function showOnboardingIndicatorForTarget(targetName: string)
+	if activeOnboardingTargetName ~= targetName then
+		clearOnboardingIndicator()
+	end
+
 	activeOnboardingTargetName = targetName
 	updateOnboardingIndicator(targetName)
 end
@@ -162,7 +231,6 @@ local function applyPayload(payload: TutorialStepPayload)
 	assert(hud ~= nil and spotlight ~= nil and beam ~= nil, "Tutorial views must exist before applying payload")
 
 	local step = payload.step
-	currentStepIndex = if step ~= nil then step.id else nil
 	TutorialClientState.setCurrentStep(if step ~= nil then step.id else nil, payload.data.completed)
 	if payload.data.completed or step == nil then
 		clearOnboardingIndicator()
@@ -171,7 +239,9 @@ local function applyPayload(payload: TutorialStepPayload)
 			PlaytimeRewardsController.open("Daily")
 		end
 
-		shouldHideStepEightSpotlight = false
+		shouldHideEquippedHotbarSpotlight = false
+		currentSpotlightTargetName = "None"
+		disconnectActiveTargetActivated()
 		hud:hide()
 		spotlight:hide()
 		beam:hide()
@@ -180,7 +250,9 @@ local function applyPayload(payload: TutorialStepPayload)
 
 	hasSeenIncompleteTutorial = true
 	hud:showStep(step)
-	shouldHideStepEightSpotlight = false
+	shouldHideEquippedHotbarSpotlight = false
+	currentSpotlightTargetName = step.spotlightTarget
+	connectTargetActivated(step.spotlightTarget)
 	showOnboardingIndicatorForTarget(step.spotlightTarget)
 
 	if step.spotlightTarget == "None" then

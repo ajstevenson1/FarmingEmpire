@@ -44,7 +44,7 @@ local LikeAndGroupRewardConfig: LikeAndGroupRewardConfig = {
 		},
 	},
 	notifications = {
-		success = "Thanks for joining! Cherry Apple Tree and Copper Cider Mill added to your inventory!",
+		success = "Thanks for joining! Cherry Apple Tree and Copper Juice Mill added to your inventory!",
 		notInGroup = "Join the group and like the game to claim these rewards!",
 		alreadyClaimed = "You have already claimed this group reward.",
 		unavailable = "Group reward is not set up yet.",

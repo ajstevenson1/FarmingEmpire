@@ -17,7 +17,7 @@ local service = AccumulatingLeaderboardServiceFactory.create(
 	CiderEarnedLeaderboardConfig,
 	"CiderEarnedLeaderboard",
 	"",
-	"No cider records yet"
+	"No juice records yet"
 )
 
 local hasStarted = false

@@ -11,6 +11,7 @@ local resourcesFolder = sharedFolder:WaitForChild("Resources") :: Folder
 local settingsFolder = sharedFolder:WaitForChild("Settings") :: Folder
 local playtimeRewardsFolder = sharedFolder:WaitForChild("PlaytimeRewards") :: Folder
 local windmillsFolder = sharedFolder:WaitForChild("Windmills") :: Folder
+local tutorialFolder = sharedFolder:WaitForChild("Tutorial") :: Folder
 
 local PlayerDataStore = require(script.Parent.PlayerDataStore)
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
@@ -26,6 +27,8 @@ local PlotExpansionUtils = require(plotsFolder:WaitForChild("PlotExpansionUtils"
 local ResourceTypes = require(resourcesFolder:WaitForChild("ResourceTypes") :: ModuleScript)
 local SettingsConfig = require(settingsFolder:WaitForChild("SettingsConfig") :: ModuleScript)
 local WindmillConfig = require(windmillsFolder:WaitForChild("WindmillConfig") :: ModuleScript)
+local TutorialConfig = require(tutorialFolder:WaitForChild("TutorialConfig") :: ModuleScript)
+local TutorialTypes = require(tutorialFolder:WaitForChild("TutorialTypes") :: ModuleScript)
 
 type PlayerData = PlayerDataStore.PlayerData
 type PlayerInventoryData = PlayerDataStore.PlayerInventoryData
@@ -45,6 +48,7 @@ type ResourceId = ResourceTypes.ResourceId
 type SavedProductionState = BuildingTypes.SavedProductionState
 type SettingId = SettingsConfig.SettingId
 type SettingsValues = SettingsConfig.SettingsValues
+type TutorialVariant = TutorialTypes.TutorialVariant
 export type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 export type PlayerDailyRewardsData = PlaytimeRewardsTypes.PlayerDailyRewardsData
 
@@ -436,6 +440,8 @@ local function cloneTutorialFunnelData(tutorialFunnel: PlayerTutorialFunnelData)
 
 	return {
 		version = sanitizeAmount(tutorialFunnel.version),
+		tutorialVariant = tutorialFunnel.tutorialVariant,
+		funnelSessionId = tutorialFunnel.funnelSessionId,
 		startedAtUnix = sanitizeTimestamp(tutorialFunnel.startedAtUnix),
 		completedAtUnix = completedAtUnix,
 		skippedAtUnix = skippedAtUnix,
@@ -966,7 +972,55 @@ function PlayerDataService.getTutorialData(player: Player): PlayerTutorialData
 	return {
 		stepIndex = record.data.tutorial.stepIndex,
 		completed = record.data.tutorial.completed,
+		variant = record.data.tutorial.variant,
+		starterKitGranted = record.data.tutorial.starterKitGranted,
 	}
+end
+
+function PlayerDataService.ensureTutorialVariant(player: Player): TutorialVariant
+	local record = loadPlayerData(player)
+	local existingVariant = record.data.tutorial.variant
+	if record.data.tutorial.completed then
+		return existingVariant or TutorialConfig.getDefaultVariant()
+	end
+
+	local assignedVariant =
+		TutorialConfig.getVariantForUnassignedTutorial(player.UserId, record.data.tutorial.stepIndex)
+	local shouldForceStarterKit = TutorialConfig.shouldForceStarterKitForIncompleteTutorials()
+	if existingVariant ~= nil and (existingVariant == assignedVariant or not shouldForceStarterKit) then
+		return existingVariant
+	end
+
+	local nextStepIndex = record.data.tutorial.stepIndex
+	local nextStarterKitGranted = record.data.tutorial.starterKitGranted
+	if shouldForceStarterKit then
+		nextStepIndex = 1
+		nextStarterKitGranted = false
+	end
+
+	record.data.tutorial = {
+		stepIndex = nextStepIndex,
+		completed = record.data.tutorial.completed,
+		variant = assignedVariant,
+		starterKitGranted = nextStarterKitGranted,
+	}
+	markDirty(record)
+	return assignedVariant
+end
+
+function PlayerDataService.markTutorialStarterKitGranted(player: Player)
+	local record = loadPlayerData(player)
+	if record.data.tutorial.starterKitGranted then
+		return
+	end
+
+	record.data.tutorial = {
+		stepIndex = record.data.tutorial.stepIndex,
+		completed = record.data.tutorial.completed,
+		variant = record.data.tutorial.variant,
+		starterKitGranted = true,
+	}
+	markDirty(record)
 end
 
 function PlayerDataService.getTutorialFunnelData(player: Player): PlayerTutorialFunnelData
@@ -1041,6 +1095,8 @@ function PlayerDataService.setTutorialStep(player: Player, stepIndex: number)
 	record.data.tutorial = {
 		stepIndex = sanitizedStepIndex,
 		completed = false,
+		variant = record.data.tutorial.variant,
+		starterKitGranted = record.data.tutorial.starterKitGranted,
 	}
 	markDirty(record)
 end
@@ -1054,6 +1110,8 @@ function PlayerDataService.completeTutorial(player: Player)
 	record.data.tutorial = {
 		stepIndex = record.data.tutorial.stepIndex,
 		completed = true,
+		variant = record.data.tutorial.variant,
+		starterKitGranted = record.data.tutorial.starterKitGranted,
 	}
 	markDirty(record)
 end

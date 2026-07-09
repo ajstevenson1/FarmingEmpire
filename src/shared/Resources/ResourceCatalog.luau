@@ -13,7 +13,7 @@ local resourcesById: { [ResourceId]: ResourceDefinition } = {
 	}),
 	Cider = table.freeze({
 		id = "Cider",
-		displayName = "Cider",
+		displayName = "Apple Juice",
 		displayOrder = 20,
 	}),
 }

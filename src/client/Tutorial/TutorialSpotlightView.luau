@@ -91,7 +91,7 @@ end
 
 function TutorialSpotlightView:_getRects(): { RectDefinition }?
 	local target = TutorialTargetResolver.getGuiTarget(self._targetName)
-	if target == nil or not target.Visible then
+	if target == nil or not TutorialTargetResolver.isGuiObjectEffectivelyVisible(target) then
 		return nil
 	end
 

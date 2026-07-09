@@ -123,6 +123,29 @@ local function getHotbarItemButton(rootGui: ScreenGui, itemDisplayName: string):
 	return nil
 end
 
+function TutorialTargetResolver.isGuiObjectEffectivelyVisible(target: GuiObject): boolean
+	local current: Instance? = target
+	while current ~= nil do
+		if current:IsA("GuiObject") then
+			local guiObject = current :: GuiObject
+			if not guiObject.Visible then
+				return false
+			end
+		end
+
+		if current:IsA("LayerCollector") then
+			local layerCollector = current :: LayerCollector
+			if not layerCollector.Enabled then
+				return false
+			end
+		end
+
+		current = current.Parent
+	end
+
+	return true
+end
+
 function TutorialTargetResolver.getGuiTarget(targetName: string): GuiObject?
 	local rootGui = getRootGui()
 	if rootGui == nil then
@@ -143,6 +166,8 @@ function TutorialTargetResolver.getGuiTarget(targetName: string): GuiObject?
 		return getFrameButton(rootGui, "Sell", "SellButton")
 	elseif targetName == "OakTreeHotbar" then
 		return getHotbarItemButton(rootGui, "Oak Apple Tree")
+	elseif targetName == "CiderMillHotbar" then
+		return getHotbarItemButton(rootGui, "Juice Mill")
 	elseif targetName == "ScytheHotbar" then
 		return getHotbarItemButton(rootGui, "Scythe")
 	end

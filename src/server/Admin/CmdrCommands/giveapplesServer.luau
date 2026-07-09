@@ -1,11 +1,7 @@
 --!strict
 
-local ResourceService = require(script.Parent.Parent.Parent.Resources.ResourceService)
+local AdminGrantService = require(script.Parent.Parent.AdminGrantService)
 
 return function(_context, players: { Player }, amount: number): string
-	for _, player in ipairs(players) do
-		ResourceService.addResource(player, "Apple", amount)
-	end
-
-	return string.format("Gave %d Apples to %d player(s).", amount, #players)
+	return AdminGrantService.grantResource(players, "Apple", amount)
 end

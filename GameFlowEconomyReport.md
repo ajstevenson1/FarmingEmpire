@@ -9,7 +9,7 @@ Actual placement density can change if Studio `PlacementBox` sizes differ from t
 ## Core Game Flow
 
 1. New players start with 250 cash and a `Scythe`.
-2. The tutorial makes the first `OakTree` and first `CiderMill` free, so the baseline start after tutorial is 250 cash, 1 tree, and 1 mill.
+2. The current tutorial rollout is `StarterKitV2` only: it grants the first `OakTree` and first `CiderMill` directly before placement. Historical `ShopV1` data granted them through free shop purchases.
 3. Trees produce apples into local tree storage every 1 second.
 4. Players harvest trees to move apples into player resources.
 5. Mills consume player apples and produce stored cider at a 1 apple -> 1 cider ratio.

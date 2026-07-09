@@ -3,18 +3,18 @@
 return {
 	Name = "givecider",
 	Aliases = { "cider" },
-	Description = "Gives cider to one or more players.",
+	Description = "Gives apple juice to one or more players.",
 	Group = "Admin",
 	Args = {
 		{
 			Type = "players",
 			Name = "players",
-			Description = "The players to receive cider.",
+			Description = "The players to receive apple juice.",
 		},
 		{
 			Type = "positiveInteger",
 			Name = "amount",
-			Description = "The cider amount to give.",
+			Description = "The apple juice amount to give.",
 		},
 	},
 }

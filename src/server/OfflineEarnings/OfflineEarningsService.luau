@@ -129,7 +129,7 @@ local function formatPendingCider(pendingCider: number): string
 		return "Collected!"
 	end
 
-	return string.format("+%s Cider", NumberFormatter.formatAbbreviated(pendingCider, {
+	return string.format("+%s Apple Juice", NumberFormatter.formatAbbreviated(pendingCider, {
 		decimalPlaces = 1,
 		trimTrailingZeros = true,
 	}))

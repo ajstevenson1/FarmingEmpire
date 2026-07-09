@@ -1,6 +1,7 @@
 --!strict
 
 export type TutorialStepId = number
+export type TutorialVariant = "ShopV1" | "StarterKitV2"
 
 export type TutorialTarget =
 	"None"
@@ -11,6 +12,7 @@ export type TutorialTarget =
 	| "CiderMillBuyButton"
 	| "CiderSellButton"
 	| "OakTreeHotbar"
+	| "CiderMillHotbar"
 	| "ScytheHotbar"
 
 export type TutorialBeamTarget = "None" | "OakTree" | "CiderMill" | "TreesShop" | "MillsShop" | "SellStand"
@@ -19,6 +21,7 @@ export type TutorialStepDefinition = {
 	id: TutorialStepId,
 	text: string,
 	analyticsName: string,
+	analyticsStepId: number?,
 	tapToContinue: boolean,
 	spotlightTarget: TutorialTarget,
 	beamTarget: TutorialBeamTarget,
@@ -29,6 +32,8 @@ export type TutorialStepDefinition = {
 export type TutorialData = {
 	stepIndex: number,
 	completed: boolean,
+	variant: TutorialVariant?,
+	starterKitGranted: boolean,
 }
 
 export type TutorialStepPayload = {

@@ -143,13 +143,13 @@ function CiderMarketController.start()
 		local marketSnapshot = latestMarketSnapshot
 		local ciderAmount = getCiderAmount()
 		if marketSnapshot == nil or ciderAmount <= 0 then
-			latestStatusText = "No cider to sell."
+			latestStatusText = "No juice to sell."
 			renderIfReady(view)
 			return
 		end
 
 		latestStatusText = string.format(
-			"Sell request sent for %d cider at $%d each.",
+			"Sell request sent for %d juice at $%d each.",
 			ciderAmount,
 			marketSnapshot.ciderSellPrice
 		)

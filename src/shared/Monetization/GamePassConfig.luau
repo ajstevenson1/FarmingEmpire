@@ -13,7 +13,7 @@ local SPECIAL_OFFER_GAME_PASS_KEY = "SpecialOffer"
 local GAME_PASS_DEFINITIONS: { [string]: GamePassDefinition } = {
 	AutoCiderPass = {
 		id = "AutoCiderPass",
-		displayName = "Auto Cider",
+		displayName = "Auto Juice",
 		gamePassId = 1861793571,
 		cashMultiplier = nil,
 	},

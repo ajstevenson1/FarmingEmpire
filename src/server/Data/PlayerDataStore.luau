@@ -18,7 +18,9 @@ local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: M
 local PlaytimeRewardsConfig = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsConfig") :: ModuleScript)
 local DailyRewardsConfig = require(playtimeRewardsFolder:WaitForChild("DailyRewardsConfig") :: ModuleScript)
 local PlaytimeRewardsTypes = require(playtimeRewardsFolder:WaitForChild("PlaytimeRewardsTypes") :: ModuleScript)
+local TutorialConfig = require(tutorialFolder:WaitForChild("TutorialConfig") :: ModuleScript)
 local TutorialFunnelTypes = require(tutorialFolder:WaitForChild("TutorialFunnelTypes") :: ModuleScript)
+local TutorialTypes = require(tutorialFolder:WaitForChild("TutorialTypes") :: ModuleScript)
 local HotbarConfig = require(inventoryFolder:WaitForChild("HotbarConfig") :: ModuleScript)
 local InventoryTypes = require(inventoryFolder:WaitForChild("InventoryTypes") :: ModuleScript)
 local ItemCatalog = require(inventoryFolder:WaitForChild("ItemCatalog") :: ModuleScript)
@@ -42,6 +44,7 @@ type SettingsValues = SettingsConfig.SettingsValues
 type PlayerPlaytimeRewardsData = PlaytimeRewardsTypes.PlayerPlaytimeRewardsData
 type PlayerDailyRewardsData = PlaytimeRewardsTypes.PlayerDailyRewardsData
 type TutorialCompletionSource = TutorialFunnelTypes.TutorialCompletionSource
+type TutorialVariant = TutorialTypes.TutorialVariant
 
 export type PlayerEconomyData = {
 	cash: number,
@@ -76,6 +79,8 @@ export type PlayerInventoryData = {
 export type PlayerTutorialData = {
 	stepIndex: number,
 	completed: boolean,
+	variant: TutorialVariant?,
+	starterKitGranted: boolean,
 }
 
 export type PlayerTutorialFunnelStepData = {
@@ -87,6 +92,8 @@ export type PlayerTutorialFunnelStepData = {
 
 export type PlayerTutorialFunnelData = {
 	version: number,
+	tutorialVariant: TutorialVariant?,
+	funnelSessionId: string?,
 	startedAtUnix: number,
 	completedAtUnix: number?,
 	skippedAtUnix: number?,
@@ -125,9 +132,9 @@ export type LoadResult = {
 	data: PlayerData,
 }
 
-local DATA_STORE_NAME = "CiderEmpire_PlayerData_PROD"
-local CURRENT_SCHEMA_VERSION = 6
-local TUTORIAL_FUNNEL_VERSION = 1
+local DATA_STORE_NAME = "CiderEmpire_PlayerData_yurrr"
+local CURRENT_SCHEMA_VERSION = 7
+local TUTORIAL_FUNNEL_VERSION = TutorialConfig.getFunnelVersion()
 local MAX_ATTEMPTS = 3
 local RETRY_DELAY_SECONDS = 2
 
@@ -201,6 +208,35 @@ local function sanitizeTimestamp(value: unknown): number
 	return math.floor(value)
 end
 
+local function sanitizeTutorialVariant(value: unknown): TutorialVariant?
+	if type(value) == "string" and TutorialConfig.isVariant(value) then
+		return value :: TutorialVariant
+	end
+
+	return nil
+end
+
+local function sanitizeNonEmptyString(value: unknown): string?
+	if type(value) ~= "string" or value == "" then
+		return nil
+	end
+
+	return value
+end
+
+local function createEmptyTutorialFunnelData(tutorialVariant: TutorialVariant?): PlayerTutorialFunnelData
+	return {
+		version = TUTORIAL_FUNNEL_VERSION,
+		tutorialVariant = tutorialVariant,
+		funnelSessionId = nil,
+		startedAtUnix = 0,
+		completedAtUnix = nil,
+		skippedAtUnix = nil,
+		skippedAtStepId = nil,
+		steps = {},
+	}
+end
+
 local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
 	local rawTutorialValues: { [string]: unknown } = {}
 	if type(rawTutorial) == "table" then
@@ -215,6 +251,8 @@ local function sanitizeTutorialData(rawTutorial: unknown): PlayerTutorialData
 	return {
 		stepIndex = stepIndex,
 		completed = rawTutorialValues.completed == true,
+		variant = sanitizeTutorialVariant(rawTutorialValues.variant),
+		starterKitGranted = rawTutorialValues.starterKitGranted == true,
 	}
 end
 
@@ -297,6 +335,11 @@ local function sanitizeTutorialFunnelData(rawFunnel: unknown): PlayerTutorialFun
 		rawFunnelValues = rawFunnel :: { [string]: unknown }
 	end
 
+	local rawVersion = rawFunnelValues.version
+	if type(rawVersion) ~= "number" or rawVersion ~= math.floor(rawVersion) or rawVersion ~= TUTORIAL_FUNNEL_VERSION then
+		return createEmptyTutorialFunnelData(sanitizeTutorialVariant(rawFunnelValues.tutorialVariant))
+	end
+
 	local skippedAtUnix = sanitizeOptionalTimestamp(rawFunnelValues.skippedAtUnix)
 	local skippedAtStepId: number? = nil
 	local rawSkippedAtStepId = rawFunnelValues.skippedAtStepId
@@ -310,6 +353,8 @@ local function sanitizeTutorialFunnelData(rawFunnel: unknown): PlayerTutorialFun
 
 	return {
 		version = TUTORIAL_FUNNEL_VERSION,
+		tutorialVariant = sanitizeTutorialVariant(rawFunnelValues.tutorialVariant),
+		funnelSessionId = sanitizeNonEmptyString(rawFunnelValues.funnelSessionId),
 		startedAtUnix = sanitizeTimestamp(rawFunnelValues.startedAtUnix),
 		completedAtUnix = sanitizeOptionalTimestamp(rawFunnelValues.completedAtUnix),
 		skippedAtUnix = skippedAtUnix,
@@ -611,15 +656,10 @@ local function createDefaultData(): PlayerData
 		tutorial = {
 			stepIndex = 1,
 			completed = false,
+			variant = nil,
+			starterKitGranted = false,
 		},
-		tutorialFunnel = {
-			version = TUTORIAL_FUNNEL_VERSION,
-			startedAtUnix = 0,
-			completedAtUnix = nil,
-			skippedAtUnix = nil,
-			skippedAtStepId = nil,
-			steps = {},
-		},
+		tutorialFunnel = createEmptyTutorialFunnelData(nil),
 		developerProductReceipts = {
 			processedPurchaseIds = {},
 		},

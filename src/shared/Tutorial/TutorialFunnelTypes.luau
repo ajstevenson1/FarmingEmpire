@@ -1,6 +1,10 @@
 --!strict
 
+local TutorialTypes = require(script.Parent.TutorialTypes)
+
 local TutorialFunnelTypes = {}
+
+type TutorialVariant = TutorialTypes.TutorialVariant
 
 export type TutorialCompletionSource =
 	"TapContinue"
@@ -23,6 +27,8 @@ export type TutorialFunnelStepData = {
 
 export type TutorialFunnelData = {
 	version: number,
+	tutorialVariant: TutorialVariant?,
+	funnelSessionId: string?,
 	startedAtUnix: number,
 	completedAtUnix: number?,
 	skippedAtUnix: number?,

@@ -154,7 +154,7 @@ local function refreshOwnership()
 		end)
 
 		if not success then
-			warn(string.format("[AutoCiderPassController] Failed to check Auto Cider ownership: %s", tostring(ownsPass)))
+			warn(string.format("[AutoCiderPassController] Failed to check Auto Juice ownership: %s", tostring(ownsPass)))
 			return
 		end
 

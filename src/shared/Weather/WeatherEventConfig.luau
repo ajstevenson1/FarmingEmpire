@@ -104,7 +104,7 @@ WeatherEventConfig.eventsById = table.freeze({
 	}),
 	Fireworks = table.freeze({
 		id = "Fireworks",
-		weight = 85,
+		weight = 60,
 		displayMessage = '<b><font color="#FF8CFF">Fireworks event!</font></b> Fireworks are lighting up the sky. All production is doubled.',
 		sky = table.freeze({
 			activeSkyName = "Sky",

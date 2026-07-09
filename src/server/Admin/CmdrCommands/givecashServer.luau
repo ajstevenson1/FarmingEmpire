@@ -1,11 +1,7 @@
 --!strict
 
-local EconomyService = require(script.Parent.Parent.Parent.Economy.EconomyService)
+local AdminGrantService = require(script.Parent.Parent.AdminGrantService)
 
 return function(_context, players: { Player }, amount: number): string
-	for _, player in ipairs(players) do
-		EconomyService.addCash(player, amount)
-	end
-
-	return string.format("Gave $%d to %d player(s).", amount, #players)
+	return AdminGrantService.grantCash(players, amount)
 end

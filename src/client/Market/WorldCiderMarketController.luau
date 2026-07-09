@@ -74,7 +74,7 @@ local function findWidgets(): WorldCiderMarketWidgets?
 		return nil
 	end
 
-	nameLabel.Text = "Cider Market"
+	nameLabel.Text = "Juice Market"
 
 	return {
 		nameLabel = nameLabel,
@@ -94,12 +94,12 @@ local function render()
 
 	local marketSnapshot = latestMarketSnapshot
 	if marketSnapshot == nil then
-		currentWidgets.timerLabel.Text = "$-- / cider | --:--"
+		currentWidgets.timerLabel.Text = "$-- / juice | --:--"
 		return
 	end
 
 	currentWidgets.timerLabel.Text = string.format(
-		"$%d / cider | %s | %s",
+		"$%d / juice | %s | %s",
 		marketSnapshot.ciderSellPrice,
 		MarketPriceRank.getCiderPriceRank(marketSnapshot.ciderSellPrice).displayName,
 		formatSeconds(getSecondsUntilPriceChange(marketSnapshot))

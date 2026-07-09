@@ -136,6 +136,7 @@ Remote folders:
 - `Shop`
 - `Settings`
 - `PlaytimeRewards`
+- `Tutorial`
 
 Remote contract summary:
 
@@ -149,6 +150,7 @@ Remote contract summary:
 - Shop: `ShopOpened`, `GetShopSnapshot`, `RequestShopPurchase`
 - Settings: `GetSettingsSnapshot`, `SettingChanged`
 - Playtime rewards: `PlaytimeRewardsUpdated`, `GetPlaytimeRewardsSnapshot`, `ClaimPlaytimeReward`
+- Tutorial: `TutorialStepUpdated`, `TutorialTapContinue`, `TutorialSkipRequested`, `GetTutorialSnapshot`
 
 Remote design rule:
 
@@ -232,14 +234,17 @@ Current resources:
 Starting inventory:
 
 - `1` Scythe
-- `12` BasicTree
-- `1` CiderMill
+
+Tutorial starter buildings:
+
+- Current rollout: new and incomplete tutorials use `StarterKitV2`.
+- `StarterKitV2` grants `1` `OakTree` and `1` `CiderMill` directly once per player before placement steps.
+- Historical `ShopV1` support remains for existing funnel comparison and grants the first `OakTree` and `CiderMill` through free shop purchases when enabled.
 
 Starting hotbar:
 
 - Internal slot `1`: locked to `Scythe`
-- Internal slot `2`: `BasicTree`
-- Internal slot `3`: `CiderMill`
+- Starter-kit grants are auto-assigned to open assignable hotbar slots by `InventoryService`.
 
 ## Building Design
 

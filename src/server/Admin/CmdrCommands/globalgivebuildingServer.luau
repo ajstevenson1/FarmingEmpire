@@ -6,10 +6,14 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared") :: Folder
 local buildingsFolder = sharedFolder:WaitForChild("Buildings") :: Folder
 
 local BuildingTypes = require(buildingsFolder:WaitForChild("BuildingTypes") :: ModuleScript)
-local AdminGrantService = require(script.Parent.Parent.AdminGrantService)
+local AdminGlobalGiveService = require(script.Parent.Parent.AdminGlobalGiveService)
 
 type BuildingId = BuildingTypes.BuildingId
 
-return function(_context, players: { Player }, buildingId: BuildingId, quantity: number): string
-	return AdminGrantService.grantBuilding(players, buildingId, quantity)
+return function(_context, buildingId: BuildingId, quantity: number): string
+	return AdminGlobalGiveService.publishGrant({
+		kind = "Building",
+		buildingId = buildingId,
+		quantity = quantity,
+	})
 end
